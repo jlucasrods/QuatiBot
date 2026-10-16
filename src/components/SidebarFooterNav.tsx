@@ -1,8 +1,7 @@
-import { CalendarDays, FolderOpen, Network, Puzzle, Zap } from "lucide-react";
+import { CalendarDays, Network, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
-import { useCloudFilesReady } from "@/lib/cloud-files";
 import { t } from "@/lib/i18n";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { isRoutineProblemRun } from "@/lib/routines";
@@ -58,28 +57,6 @@ function NavRow({
   );
 }
 
-export function SidebarAppsButton() {
-  const { state, dispatch } = useStore();
-  const label = t("sidebar.nav.apps");
-  return (
-    <button
-      type="button"
-      data-tour="nav-apps"
-      data-sidebar-nav="apps"
-      onClick={() => dispatch({ type: "togglePlugins", open: true })}
-      aria-label={label}
-      title={label}
-      aria-pressed={state.pluginsOpen}
-      className={cn(
-        "flex size-[46px] shrink-0 items-center justify-center rounded-xl transition-colors",
-        state.pluginsOpen ? "bg-raised text-accent" : "text-ink-secondary hover:bg-raised/50 hover:text-ink",
-      )}
-    >
-      <Puzzle size={18} />
-    </button>
-  );
-}
-
 export function SidebarFooterNav({
   density,
   collapsed = false,
@@ -97,16 +74,7 @@ export function SidebarFooterNav({
   const iconSize = iconsOnly ? 20 : 18;
   const tone = (active: boolean) => (active ? "text-accent" : "text-ink-secondary");
   const routinesNeedYou = state.routineRuns.some((run) => isRoutineProblemRun(run) && !run.seenAt);
-  const filesRow = useCloudFilesReady() && <NavRow
-    id="files"
-    label={t("sidebar.nav.files")}
-    iconsOnly={iconsOnly}
-    active={state.activeView === "files"}
-    icon={(active) => <FolderOpen size={iconSize} className={tone(active)} />}
-    onClick={() => dispatch({ type: "showFiles" })}
-  />;
-  // Simple mode keeps Files, on its own without the Tools header.
-  if (!advanced && !iconsOnly) return filesRow ? <nav aria-label={t("sidebar.nav.files")} className="flex flex-col gap-0.5">{filesRow}</nav> : null;
+  if (!advanced && !iconsOnly) return null;
 
   const rows = (
     <>
@@ -128,15 +96,6 @@ export function SidebarFooterNav({
         icon={(active) => <Zap size={iconSize} className={tone(active)} />}
         onClick={() => dispatch({ type: "toggleTriggers", open: true })}
       />}
-      {iconsOnly && <NavRow
-        id="apps"
-        label={t("sidebar.nav.apps")}
-        tourId="nav-apps"
-        iconsOnly={iconsOnly}
-        active={state.pluginsOpen}
-        icon={(active) => <Puzzle size={iconSize} className={tone(active)} />}
-        onClick={() => dispatch({ type: "togglePlugins", open: true })}
-      />}
       {advanced && (
         <NavRow
           id="team-map"
@@ -148,7 +107,6 @@ export function SidebarFooterNav({
           onClick={() => dispatch({ type: "showTeamMap" })}
         />
       )}
-      {filesRow}
     </>
   );
 

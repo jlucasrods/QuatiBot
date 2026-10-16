@@ -23,7 +23,6 @@ import { canAccessTeam } from "./peer-roster.ts";
 import { Store, toWireTask, type BotRecord } from "./store.ts";
 import type { TeamSetupRequest } from "../shared/team-setup.ts";
 import { SECTION_CONTEXTS_FILE, readSectionContext, writeSectionContext } from "./section-context.ts";
-import { TeamComputers } from "./team-computers.ts";
 import { allowsTool } from "../shared/tool-scope.ts";
 
 const selection = (): ModelSelection => ({ instanceId: "claude", model: "claude-sonnet-5" });
@@ -163,7 +162,7 @@ describe("Store", () => {
       .toEqual(JSON.parse(before).find((g: { id: string }) => g.id === room.id).memberIds);
   });
 
-  it("renames populated teams without changing members, conversations, grants or computer identity", () => {
+  it("renames populated teams without changing members, conversations or grants", () => {
     const store = new Store(selection);
     const chief = store.createBot({ section: "Delivery" });
     store.setChiefOfStaff(chief.id);
@@ -176,10 +175,7 @@ describe("Store", () => {
     const room = store.createGroup("Room", [chief.id], false, "Delivery");
     const message = store.appendMessage(chief.threadId, { role: "user", kind: "text", text: "Keep this conversation" });
     writeSectionContext("Delivery", "Shared team instructions");
-    const computers = new TeamComputers(join(DATA_DIR, "team-computers.json"), "5c57ceec-f5aa-4d79-a9c7-0e1f93875e70");
-    const computer = computers.create("Shared desktop");
-    computers.assign(computer.id, "Delivery");
-    expect(store.renameSection("Delivery", "Launch", computers)).toBeUndefined();
+    expect(store.renameSection("Delivery", "Launch")).toBeUndefined();
     expect(store.bot(chief.id)).toBe(chief);
     expect(chief).toMatchObject({ section: "Launch", chiefOfStaff: true });
     expect(archived).toMatchObject({ section: "Launch", hidden: true });
@@ -188,7 +184,6 @@ describe("Store", () => {
     expect(room.section).toBe("Launch");
     expect(readSectionContext("Launch")?.text).toBe("Shared team instructions");
     expect(readSectionContext("Delivery")).toBeNull();
-    expect(computers.forSection("Launch")?.id).toBe(computer.id);
     const restored = new Store(selection);
     expect(restored.bot(chief.id)?.section).toBe("Launch");
     expect(canAccessTeam(restored.bot(manager.id)!, "Launch")).toBe(true);
@@ -2124,7 +2119,7 @@ describe("Store redacts bot-authored secrets on write", () => {
       role: "bot",
       kind: "secret",
       secret: {
-        target: "xaiApiKey",
+        target: "ttsKey",
         label: "xAI API key",
         description: `The agent accidentally included ${key}`,
         placeholder: "xai-…",

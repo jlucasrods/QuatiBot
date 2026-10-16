@@ -102,7 +102,6 @@ export class LoginStore {
   private readonly keyFile: string;
   private readonly now: () => number;
   private cache: StoreFile | null = null;
-  private unreadableWarned = false;
   version = 0;
 
   constructor(options: { dataDir: string; now?: () => number }) {
@@ -134,10 +133,7 @@ export class LoginStore {
         const disk = fileSchema.parse(JSON.parse(decryptBrowserState(readFileSync(this.file), key)));
         data = { ...disk, logins: disk.logins.map(fromDisk) };
       } catch {
-        // Never log an unreadable file's contents.
-        if (!this.unreadableWarned) console.warn("saved logins: the saved logins file could not be opened; it will be replaced on the next save");
-        this.unreadableWarned = true;
-        data = EMPTY;
+        throw new Error("Saved logins cannot be decrypted. Restore the original vault key before making changes.");
       }
     }
     this.cache = data;

@@ -4,24 +4,6 @@
  * config path, label, URL, or arbitrary field name.
  */
 export const CREDENTIAL_TARGETS = {
-  xaiApiKey: {
-    label: "xAI API key",
-    description: "Used by the built-in Grok provider.",
-    placeholder: "xai-…",
-    helpUrl: "https://console.x.ai/",
-  },
-  boxToken: {
-    label: "Boat API key",
-    description: "Gives bots an isolated cloud computer when Boat is selected.",
-    placeholder: "Paste your Boat API key",
-    helpUrl: "https://docs.boat.dev/api-keys",
-  },
-  opencodeGoApiKey: {
-    label: "OpenCode API key",
-    description: "Used for OpenCode Zen and Go.",
-    placeholder: "Paste your OpenCode API key",
-    helpUrl: "https://opencode.ai/docs/providers/",
-  },
   ttsKey: {
     label: "ElevenLabs API key",
     description: "Enables text-to-speech voices in calls.",
@@ -44,9 +26,6 @@ export const CREDENTIAL_TARGETS = {
 
 export type CredentialTargetId = keyof typeof CREDENTIAL_TARGETS;
 export type CredentialConfig = {
-  xai?: { key?: string };
-  box?: { token?: string };
-  opencodeGo?: { apiKey?: string };
   tts?: { key?: string; fishKey?: string };
   imageGen?: { key?: string };
 };
@@ -57,12 +36,6 @@ export function isCredentialTargetId(value: unknown): value is CredentialTargetI
 
 export function credentialConfigPatch(id: CredentialTargetId, value: string): CredentialConfig {
   switch (id) {
-    case "xaiApiKey":
-      return { xai: { key: value } };
-    case "boxToken":
-      return { box: { token: value } };
-    case "opencodeGoApiKey":
-      return { opencodeGo: { apiKey: value } };
     case "ttsKey":
       return { tts: { key: value } };
     case "fishAudioKey":
@@ -74,12 +47,6 @@ export function credentialConfigPatch(id: CredentialTargetId, value: string): Cr
 
 export function credentialIsConfigured(config: CredentialConfig, id: CredentialTargetId): boolean {
   switch (id) {
-    case "xaiApiKey":
-      return Boolean(config.xai?.key);
-    case "boxToken":
-      return Boolean(config.box?.token);
-    case "opencodeGoApiKey":
-      return Boolean(config.opencodeGo?.apiKey);
     case "ttsKey":
       return Boolean(config.tts?.key);
     case "fishAudioKey":

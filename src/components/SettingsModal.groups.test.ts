@@ -56,7 +56,7 @@ vi.mock("@/lib/interface-mode", () => ({
   useAdvancedMode: () => fixture.advancedMode,
   setAdvancedMode: fixture.setAdvancedMode,
 }));
-vi.mock("@/lib/analytics", () => ({ analyticsEnabled: () => false, setAnalyticsEnabled: vi.fn() }));
+
 vi.mock("./SettingsPrimitives", async (importOriginal) => {
   const original = await importOriginal<typeof import("./SettingsPrimitives")>();
   return {
@@ -108,7 +108,7 @@ describe("Settings rail groups", () => {
     expect(SETTINGS_GROUPS.map((group) => group.id)).toEqual(["you", "ai", "computers", "account"]);
     const ids = SECTIONS.map((entry) => entry.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toHaveLength(18); // 16 + the shared Skills library (AI group) + Logins (Computers)
+    expect(ids).toHaveLength(17);
     for (const entry of SECTIONS) expect(SETTINGS_GROUPS.map((group) => group.id)).toContain(entry.group);
   });
 
@@ -119,7 +119,7 @@ describe("Settings rail groups", () => {
     expect(html).toContain("glass-surface");
     expect(rail(html)).toEqual({
       you: ["general", "appearance", "companion"],
-      ai: ["engines", "connections", "decisionModel"],
+      ai: ["engines", "decisionModel"],
       computers: ["desktopWorkspaces", "computer", "logins"],
       account: ["cloudAccount", "organization", "usage", "backups", "experimental"],
     });
@@ -139,11 +139,11 @@ describe("Settings rail groups", () => {
     expect(rail(render())).toEqual({ you: ["appearance", "companion"], computers: ["desktopWorkspaces"] });
   });
 
-  it("keeps the old deep links landing on the same page", () => {
+  it("routes legacy deep links to their current settings pages", () => {
     vi.stubGlobal("window", { ogb: { environments: {} } });
     fixture.section = "remote" as AppSettingsSection;
     expect(render()).toContain('data-settings-section="companion" aria-current="page"');
     fixture.section = "connections";
-    expect(render()).toContain('data-settings-section="connections" aria-current="page"');
+    expect(render()).toContain('data-settings-section="engines" aria-current="page"');
   });
 });

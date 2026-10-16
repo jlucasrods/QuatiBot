@@ -28,7 +28,7 @@ vi.mock("@/state/store", () => ({
   api: store.api,
   useStore: () => ({ state: store.state, dispatch: vi.fn() }),
 }));
-vi.mock("@/lib/analytics", () => ({ emailGateDone: () => false }));
+
 vi.mock("./Spotlight", () => ({ Spotlight: () => null }));
 import { FirstConversationTour } from "./FirstConversationTour";
 import { Spotlight } from "./Spotlight";

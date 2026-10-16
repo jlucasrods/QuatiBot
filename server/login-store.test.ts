@@ -1,7 +1,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { loginPlace } from "../shared/logins.ts";
@@ -59,16 +59,14 @@ describe("the saved logins store", () => {
     expect(readdirSync(dir)).toEqual([]);
   });
 
-  it("opens nothing, and says so once, when the key does not fit", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  it("refuses reads and writes without replacing the vault when the key does not fit", () => {
     new LoginStore({ dataDir: dir }).create({ ...at("example.com"), username: "a", password: PASSWORD, source: "card", bots: ["b1"] });
     writeFileSync(join(dir, LOGINS_KEY_FILE), `${"0".repeat(64)}\n`);
     const store = new LoginStore({ dataDir: dir });
-    expect(store.list()).toEqual([]);
-    expect(store.list()).toEqual([]);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0])).not.toContain(PASSWORD);
-    warn.mockRestore();
+    const before = readFileSync(join(dir, LOGINS_FILE));
+    expect(() => store.list()).toThrow("Saved logins cannot be decrypted");
+    expect(() => store.create({ ...at("example.com"), username: "b", password: "new-password", source: "card", bots: "all" })).toThrow("Saved logins cannot be decrypted");
+    expect(readFileSync(join(dir, LOGINS_FILE))).toEqual(before);
   });
 
   it("gives a login saved for one host its site, so it fills on www and other subdomains, and keeps the file readable by the previous release", () => {

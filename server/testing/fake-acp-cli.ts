@@ -44,6 +44,8 @@
 //   FAKE_ACP_UPDATES_FILE  JSON array of session/update params ({update, _meta?}) re-read per prompt, sent as-is
 //   FAKE_ACP_MODE_ACK_FILE  while it exists a mode switch answers "empty" (no configOptions) or "error"
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 
 const mode = process.env.FAKE_ACP_MODE ?? "happy";
@@ -153,6 +155,30 @@ const sessionModels = () =>
   acpModels.length ? { currentModelId: acpModels[0].modelId, availableModels: acpModels } : null;
 
 const argv = process.argv.slice(2);
+if (argv[0] === "api") {
+  const directory = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "opencode");
+  if (argv.at(-1) === "/api/skill") {
+    process.stdout.write(JSON.stringify({ data: [
+      { id: "global-skill", name: "Global skill", path: join(directory, "skills/global-skill/SKILL.md"), content: "private" },
+      { id: "project-skill", name: "Project skill", path: join(process.cwd(), ".opencode/skills/project-skill/SKILL.md"), content: "private" },
+    ] }));
+    process.exit(0);
+  }
+  if (argv.at(-1) === "/api/plugin") {
+    process.stdout.write(JSON.stringify({ data: [] }));
+    process.exit(0);
+  }
+  process.stdout.write(JSON.stringify([
+    { type: "document", path: join(directory, "opencode.jsonc"), info: { plugins: ["fixture-plugin@1"], mcp: { servers: {
+      "global-local": { type: "local", command: ["fixture-mcp"], environment: { TOKEN: "fixture-secret" }, disabled: true },
+      "global-remote": { type: "remote", url: "https://fixture.invalid/secret", headers: { Authorization: "fixture-secret" } },
+    } } } },
+    { type: "document", path: join(process.cwd(), "opencode.json"), info: { mcp: { servers: {
+      "project-only": { type: "local", command: ["project-mcp"] },
+    } } } },
+  ]));
+  process.exit(0);
+}
 const dumpEnv = Object.fromEntries(
   [
     "PATH",
@@ -168,6 +194,7 @@ const dumpEnv = Object.fromEntries(
     "TEST_POLICY",
     "OPENCODE_API_KEY",
     "OPENCODE_PERMISSION",
+    "OPENCODE_CONFIG_CONTENT",
     "OPENAI_API_KEY",
     "OPENROUTER_API_KEY",
     "ANTHROPIC_API_KEY",
@@ -239,7 +266,7 @@ if (process.env.FAKE_ACP_LAUNCH_COUNT_FILE) {
   } catch {}
 }
 if (argv.includes("--version")) {
-  console.log("fake-acp 1.0.0");
+  console.log(`fake-acp ${process.env.FAKE_ACP_VERSION ?? "1.0.0"}`);
   process.exit(0);
 }
 // Cursor's driver probes `agent status` / `agent models` on the binary it spawns for ACP.
@@ -653,6 +680,7 @@ function handle(msg: any) {
         agentsMcp ??= (msg.params?.mcpServers ?? []).find((server: any) => server.name === "agents") ?? null;
       }
       if (process.env.FAKE_ACP_DUMP) {
+        writeFileSync(`${process.env.FAKE_ACP_DUMP}.session.json`, JSON.stringify(msg.params));
         writeFileSync(`${process.env.FAKE_ACP_DUMP}.mcp.json`, JSON.stringify(msg.params?.mcpServers ?? []));
       }
       if (!cachedLiveLoad) sessionMcp = msg.params?.mcpServers ?? [];

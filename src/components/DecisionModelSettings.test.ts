@@ -321,16 +321,6 @@ describe("DecisionModelSettings", () => {
       expect(view.master.props.checked).toBe(true);
     });
 
-    it("on the desktop the key goes to the credential store under its own name", async () => {
-      const setCredential = vi.fn().mockResolvedValue(openrouter({ configured: true, enabled: true }));
-      vi.stubGlobal("window", { ogb: { setCredential } });
-      type(render().input, KEY);
-      click(render().save);
-      await flush();
-      expect(setCredential).toHaveBeenCalledWith("openrouterDeciderKey", KEY);
-      expect(fixture.api).not.toHaveBeenCalled();
-    });
-
     it("Test names OpenRouter, and warns when the answer is slower than a room may wait", async () => {
       fixture.config = openrouter({ configured: true, enabled: true });
       fixture.api.mockResolvedValueOnce({ ok: true, latencyMs: 342 });

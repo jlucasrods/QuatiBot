@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@/state/store";
 
 const dispatch = vi.fn();
-const fixture = vi.hoisted(() => ({ counting: false, values: [] as unknown[], index: 0, api: vi.fn(), track: vi.fn() }));
+const fixture = vi.hoisted(() => ({ counting: false, values: [] as unknown[], index: 0, api: vi.fn() }));
 vi.mock("react", async (original) => {
   const react = await original<typeof import("react")>();
   return {
@@ -22,7 +22,7 @@ vi.mock("@/state/store", async (original) => ({
   api: fixture.api,
   useStore: () => ({ dispatch }),
 }));
-vi.mock("@/lib/analytics", () => ({ track: fixture.track }));
+
 
 import { SecretRequestCard } from "./SecretRequestCard";
 
@@ -100,8 +100,8 @@ describe("SecretRequestCard ask card", () => {
   });
 });
 
-describe("SecretRequestCard key analytics", () => {
-  const KEY = "boat_ZZtestSECRET0123456789abcdef";
+describe("SecretRequestCard credential persistence", () => {
+  const KEY = "voice_ZZtestSECRET0123456789abcdef";
   type Props = { children?: ReactNode; type?: string; onChange?: (event: { target: { value: string } }) => void; onSubmit?: (event: { preventDefault(): void }) => void };
   const nodes = (tree: ReactNode): Array<ReactElement<Props>> =>
     Children.toArray(tree).flatMap((child) => isValidElement<Props>(child) ? [child, ...nodes(child.props.children)] : []);
@@ -124,33 +124,32 @@ describe("SecretRequestCard key analytics", () => {
   beforeEach(() => {
     fixture.values = [];
     fixture.api.mockReset();
-    fixture.track.mockReset();
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it("reports a Boat key saved over the desktop bridge once, even when only the resume is retried", async () => {
-    const setCredential = vi.fn().mockResolvedValue({ box: { configured: true } });
+  it("saves a voice key over the desktop bridge once, even when only the resume is retried", async () => {
+    const setCredential = vi.fn().mockResolvedValue({ tts: { configured: true } });
     vi.stubGlobal("window", { ogb: { setCredential } });
     fixture.api.mockRejectedValueOnce(new Error("resume failed")).mockResolvedValueOnce({ ok: true });
-    await submit("boxToken");
-    card("boxToken").find((node) => node.type === "form")!.props.onSubmit!({ preventDefault: () => {} });
+    await submit("ttsKey");
+    card("ttsKey").find((node) => node.type === "form")!.props.onSubmit!({ preventDefault: () => {} });
     await flush();
-    expect(setCredential).toHaveBeenCalledExactlyOnceWith("boxToken", KEY);
+    expect(setCredential).toHaveBeenCalledExactlyOnceWith("ttsKey", KEY);
     expect(fixture.api).toHaveBeenCalledTimes(2);
-    expect(fixture.track.mock.calls).toEqual([["api_key_saved", { provider: "boat", via: "chat_request", result: "ok" }]]);
-    for (const fragment of [KEY, KEY.slice(0, 6), KEY.slice(-6), String(KEY.length)]) expect(JSON.stringify(fixture.track.mock.calls)).not.toContain(fragment);
   });
 
-  it("reports a Boat key boat.dev refused as rejected", async () => {
-    vi.stubGlobal("window", { ogb: { setCredential: vi.fn().mockRejectedValue(new Error("Error invoking remote method 'credential:set': KeyRejected: That doesn't look like a Boat API key")) } });
-    await submit("boxToken");
-    expect(fixture.track.mock.calls).toEqual([["api_key_saved", { provider: "boat", via: "chat_request", result: "rejected" }]]);
+  it("keeps the error and does not resume when saving the credential fails", async () => {
+    const error = new Error("The voice provider rejected that key");
+    vi.stubGlobal("window", { ogb: { setCredential: vi.fn().mockRejectedValue(error) } });
+    await submit("ttsKey");
+    expect(fixture.api).not.toHaveBeenCalled();
+    expect(fixture.values).toContain(error.message);
   });
 
-  it("reports an xAI key saved from chat as unverified: nothing checks it before it is used", async () => {
-    fixture.api.mockResolvedValueOnce({ xai: { configured: true } }).mockResolvedValueOnce({ ok: true });
-    await submit("xaiApiKey", "xai-ZZtestSECRET0123456789");
-    expect(fixture.api.mock.calls[0]).toEqual(["/api/config", { method: "PUT", body: JSON.stringify({ xai: { key: "xai-ZZtestSECRET0123456789" } }) }]);
-    expect(fixture.track.mock.calls).toEqual([["api_key_saved", { provider: "xai", via: "chat_request", result: "unverified" }]]);
+  it("saves the image service credential before resuming the bot", async () => {
+    fixture.api.mockResolvedValueOnce({ imageGen: { openaiConfigured: true } }).mockResolvedValueOnce({ ok: true });
+    await submit("openaiImageApiKey", KEY);
+    expect(fixture.api.mock.calls[0]).toEqual(["/api/config", { method: "PUT", body: JSON.stringify({ imageGen: { key: KEY } }) }]);
+    expect(fixture.api.mock.calls[1]).toEqual(["/api/bots/bot-1/secret-cards/secret-card/provided", { method: "POST", body: JSON.stringify({ threadId: "thread-1" }) }]);
   });
 });

@@ -13,10 +13,6 @@ vi.mock("@/state/store", async (importOriginal) => {
 vi.mock("../DesktopCapabilities", () => ({
   useDesktopCapabilities: () => ({ capabilities: { host: { homeDir: undefined } } }),
 }));
-vi.mock("@/lib/mcp-servers", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/mcp-servers")>(),
-  useMcpServers: () => ({ servers: [] as Array<{ name: string; enabled: boolean }>, error: false, refresh: vi.fn() }),
-}));
 
 const { ProposalStatus } = await import("./ProposalStatus");
 const { AccessSection } = await import("./AccessSection");

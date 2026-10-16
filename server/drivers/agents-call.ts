@@ -552,13 +552,19 @@ export async function callTool(name: string, args: Json, context: ToolCallContex
     };
   }
   if (name === "select_computer") {
-    if (args.surface !== undefined && (typeof args.surface !== "string" || !["auto", "cloud", "vm", "local", "browser"].includes(args.surface))) {
-      return { text: "Choose auto, cloud, vm, local or browser; omit surface to inspect connected choices.", isError: true };
+    if (args.surface !== undefined && (typeof args.surface !== "string" || !["auto", "vm", "browser"].includes(args.surface))) {
+      return { text: "Choose auto, vm or browser; omit surface to inspect connected choices.", isError: true };
     }
     const result = await api("/api/internal/computer/select", args.surface === undefined ? undefined : {
       method: "POST", body: JSON.stringify({ surface: args.surface }),
     });
     return { text: JSON.stringify(result) };
+  }
+  if (name === "record_screen") {
+    const result = await api("/api/internal/record-screen", {
+      method: "POST", body: JSON.stringify({ source: args.source, seconds: args.seconds ?? 5 }),
+    });
+    return { text: JSON.stringify(result), ...(result.error ? { isError: true } : {}) };
   }
   if (name === "list_threads") {
     const query = new URLSearchParams({ fromBotId: BOT_ID, fromThreadId: THREAD_ID });
@@ -1106,32 +1112,6 @@ export async function callTool(name: string, args: Json, context: ToolCallContex
     const proposal = args.action === "update" ? `updating skill “${nameLabel}”` : `new skill “${nameLabel}”`;
     return {
       text: `A confirmation card is now visible to the user for ${proposal}.${warningText}\n\n${status} End this turn and wait for the decision.`,
-    };
-  }
-  if (name === "add_mcp_server") {
-    let saved: Json;
-    try {
-      saved = await api("/api/internal/mcp-servers", {
-        method: "POST",
-        body: JSON.stringify(args),
-      });
-    } catch (error) {
-      return { text: error instanceof Error ? error.message : String(error), isError: true };
-    }
-    const serverName = typeof saved.name === "string" && saved.name ? saved.name : "the MCP server";
-    const transport = saved.transport === "command" || saved.transport === "http" || saved.transport === "sse" ? saved.transport : "";
-    const target = typeof saved.target === "string" ? saved.target : "";
-    const keyNames = (value: unknown) => Array.isArray(value) && value.every((key) => typeof key === "string") ? value.join(", ") : "";
-    const envKeys = keyNames(saved.envKeys);
-    const headerKeys = keyNames(saved.headerKeys);
-    const where = transport && target ? ` (${transport} ${target})` : "";
-    const named = [
-      envKeys ? `Environment names on file: ${envKeys}.` : "",
-      headerKeys ? `Header names on file: ${headerKeys}.` : "",
-    ].filter(Boolean).join(" ");
-    const local = transport === "command" ? " Enabling a local command runs that command on their computer." : "";
-    return {
-      text: `Saved MCP server “${serverName}”${where} switched off. It stays off in MCP server settings until the user turns it on.${local}${named ? ` ${named}` : ""}`,
     };
   }
   return { text: `Unknown tool: ${name}`, isError: true };

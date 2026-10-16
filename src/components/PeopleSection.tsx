@@ -8,7 +8,7 @@ import { useCopyFeedback } from "@/lib/copy-text";
 import { formatUsd, hasFiniteCost } from "@/lib/usage";
 import { readMembership, type Membership } from "../lib/membership";
 import { readSessionState, type SessionState } from "../lib/session";
-import { canPairDevices } from "./ServerPairingCard";
+import { isOwnerOrAdmin } from "@/lib/session";
 import { normalizeAccessEntry, withEntry, withoutEntry, type SignInLists } from "./SignInAccessCard";
 import { Card } from "./SettingsPrimitives";
 import { Select } from "./Select";
@@ -224,7 +224,7 @@ export function PeopleSection() {
   useEffect(() => {
     void readSessionState().then((state) => {
       setSession(state);
-      if (canPairDevices(state)) void load();
+      if (isOwnerOrAdmin(state)) void load();
     });
   }, [load]);
 
@@ -253,7 +253,7 @@ export function PeopleSection() {
     setLink(inviteLink(base, entry));
   };
 
-  if (!canPairDevices(session)) return null;
+  if (!isOwnerOrAdmin(session)) return null;
   if (membership?.authority === "portal") return <PortalPeople peopleUrl={membership.peopleUrl} people={people} />;
   return (
     <Card title={t("people.title")} subtitle={t("people.subtitle")}>

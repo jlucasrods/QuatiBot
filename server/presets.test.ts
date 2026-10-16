@@ -173,7 +173,7 @@ describe("preset store", () => {
     expect(app.presets.listBotPresets(app.presetStore, new Map([[org.installId, "removed" as const]])).map((preset) => preset.source)).toEqual(["file"]);
 
     const stored = JSON.parse(readFileSync(app.presetFile, "utf8"));
-    Object.assign(stored.presets[0].bot, { approvalMode: "full", modelSelection: { instanceId: "x", model: "y" }, cwd: "/", computer: "local" });
+    Object.assign(stored.presets[0].bot, { approvalMode: "full", modelSelection: { instanceId: "x", model: "y" }, cwd: "/", computer: "vm" });
     stored.presets[1].seed = { memory: { "memory/log/2026-09-24.md": "chat" } };
     writeFileSync(app.presetFile, JSON.stringify(stored));
     const after = app.presets.listBotPresets(app.presetStore, new Map());
@@ -233,7 +233,7 @@ describe("sharing my New bot defaults as a preset", () => {
   const defaults = (overrides: Partial<NewBotDefaults> = {}): NewBotDefaults => ({
     profile: {
       name: "Sky", title: "Support", description: "Answers customers.", soul: "Be kind.\n", color: "blue", mascotExpression: "happy",
-      modelSelection: { instanceId: "claude", model: "opus" }, computer: "local", cwd: "/Users/me/secret", approvalMode: "full",
+      modelSelection: { instanceId: "claude", model: "opus" }, computer: "vm", cwd: "/Users/me/secret", approvalMode: "full",
       alwaysAllow: ["Bash(*)"], chiefOfStaff: true, managedSections: ["Ops"], peers: ["x"], composio: true, browser: true,
       browserProfile: "work", mcpServers: ["crm"], section: "Support", approvePeerComms: true, parkDirectMessages: true, avatarCrop: "rounded",
     },
@@ -257,7 +257,7 @@ describe("sharing my New bot defaults as a preset", () => {
     });
     expect(JSON.stringify(built.value)).not.toMatch(/opus|secret|full|Bash|crm|work|Ops|Daily/);
     expect(app.presets.presetFromDefaults(defaults(), { includeNotes: false }).value!.preset).not.toHaveProperty("seed");
-    const empty = app.presets.presetFromDefaults({ profile: { approvalMode: "auto", computer: "local" }, memory: {}, skills: [], routines: [] }, { includeNotes: true });
+    const empty = app.presets.presetFromDefaults({ profile: { approvalMode: "auto", computer: "vm" }, memory: {}, skills: [], routines: [] }, { includeNotes: true });
     expect(empty).toEqual({ value: null, skipped: [{ part: "presets[new-bot-defaults]", reason: "preset_empty" }] });
   });
 

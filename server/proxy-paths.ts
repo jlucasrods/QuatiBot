@@ -12,19 +12,12 @@ export function resolveProxy(relative: string): string {
 
 export const SPAWNED_PROXIES = {
   harnessMcp: resolveProxy("harness-mcp-proxy"),
-  localComputer: resolveProxy("local-computer-proxy"),
   permission: resolveProxy("permission-proxy"),
   containerMcp: resolveProxy("container-mcp"),
-  vpsContainerMcp: resolveProxy("vps-container-mcp"),
   agents: resolveProxy("drivers/agents-proxy"),
   dweb: resolveProxy("drivers/dweb-proxy"),
-  connectors: resolveProxy("connector-proxy"),
   mcpGate: resolveProxy("mcp-gate"),
   mcpRemote: resolveProxy("mcp-remote-proxy"),
   phone: resolveProxy("drivers/phone-proxy"),
   hook: resolveProxy("hooks/omb-hook"),
-  piMcpExtension: resolveProxy("drivers/pi-mcp-extension"),
 } as const;
-
-// in the packaged app process.execPath is Electron — run the proxy as node
-export const AGENTS_NODE_FLAG = { ELECTRON_RUN_AS_NODE: "1" };

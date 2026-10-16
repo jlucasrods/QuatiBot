@@ -68,14 +68,6 @@ export function sharedComputersEnabled(config: FeatureFlagConfig | null | undefi
   return config?.features?.sharedComputers === true;
 }
 
-export function claudeUserMcpEnabled(config: FeatureFlagConfig | null | undefined): boolean {
-  return config?.features?.claudeUserMcp === true;
-}
-
-export function claudeUserSkillsEnabled(config: FeatureFlagConfig | null | undefined): boolean {
-  return config?.features?.claudeUserSkills === true;
-}
-
 export function llmThreadTitlesEnabled(config: FeatureFlagConfig | null | undefined): boolean {
   return config?.features?.llmThreadTitles === true;
 }

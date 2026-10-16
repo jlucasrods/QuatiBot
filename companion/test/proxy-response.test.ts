@@ -2,7 +2,7 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createProxyHandler, proxyHeadersTimeoutMs } from "../src/proxy.ts";
+import { createProxyHandler } from "../src/proxy.ts";
 import type { CompanionEndpoint } from "../src/endpoints.ts";
 import { scrub } from "../src/wire.ts";
 
@@ -75,11 +75,6 @@ afterAll(async () => {
 });
 
 describe("preparing a harness response for a device", () => {
-  it("gives only transactional phone credential saves the longer deadline", () => {
-    expect(proxyHeadersTimeoutMs("/api/bots/b1/secret-cards/m1/provide")).toBe(105_000);
-    expect(proxyHeadersTimeoutMs("/api/bots/b1/messages")).toBe(30_000);
-    expect(proxyHeadersTimeoutMs("/api/bots/b1/secret-cards/m1/provide", 17)).toBe(17);
-  });
 
   it("drops an endpoint whose runtime URL is not a string", async () => {
     const malformed: CompanionEndpoint = { kind: "hosted", priority: 0, url: "https://ok.example" };

@@ -4,9 +4,9 @@ import { desktopViewerUrl, type DesktopTarget } from "./routes/desktop-viewer.ts
 
 export const viewerTargetId = (target: { key: string }) => `local/${target.key.replace(":", "-")}`;
 
-/** Native owner windows keep the existing direct viewer and cookie isolation. */
-export function localVmViewerStatus<T extends { target_key: string; viewer_url: string }>(status: T, auth: RequestAuth): T {
-  return auth.kind === "loopback" ? status : {
+/** Serve VM pixels through the authenticated origin without exposing container credentials. */
+export function localVmViewerStatus<T extends { target_key: string; viewer_url: string }>(status: T, _auth: RequestAuth): T {
+  return {
     ...status,
     viewer_url: status.viewer_url ? desktopViewerUrl(viewerTargetId({ key: status.target_key })) : "",
   };

@@ -80,7 +80,8 @@ const defaults: LiveMediaDeps = {
   capabilities: desktopCapabilitiesNow,
   pageMicrophone: async () => {
     try {
-      return (await globalThis.window?.ogb?.permStatus?.())?.pageMic;
+      const permission = await navigator.permissions.query({ name: "microphone" as PermissionName });
+      return permission.state === "denied" ? "refused" : permission.state === "granted" ? "allowed" : undefined;
     } catch {
       return undefined;
     }

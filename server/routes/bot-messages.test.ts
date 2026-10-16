@@ -108,7 +108,6 @@ async function fixture() {
     parksBehindCoordination: () => false,
     activeGroupTurnForBot: () => null,
     cloudThreadRefusal: () => null,
-    phoneSecretSubmissions: { hasThread: () => false },
     turnSelection: () => undefined,
     registry: { get: () => ({ instanceId: "claude", driverKind: "claudeAgent" }) },
     policyModelRefusal: () => undefined,

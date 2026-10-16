@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { t } from "@/lib/i18n";
 import { api } from "@/state/store";
 import { readSessionState, type SessionState } from "../lib/session";
-import { canPairDevices } from "./ServerPairingCard";
+import { isOwnerOrAdmin } from "@/lib/session";
 import { Card } from "./SettingsPrimitives";
 
 export interface SignInLists {
@@ -56,11 +56,11 @@ export function SignInAccessCard() {
   useEffect(() => {
     void readSessionState().then((state) => {
       setSession(state);
-      if (canPairDevices(state)) void load();
+      if (isOwnerOrAdmin(state)) void load();
     });
   }, []);
 
-  if (!canPairDevices(session) || !lists) return null;
+  if (!isOwnerOrAdmin(session) || !lists) return null;
 
   async function save(next: SignInLists) {
     setBusy(true);

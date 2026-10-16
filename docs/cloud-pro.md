@@ -87,38 +87,6 @@ session; that is how the web UI knows to open the engine sign-in instead of
 the welcome flow, which describes the person's own computer (it can still be
 replayed from Settings).
 
-### Use My Cloud on your phone
-
-1. Get the phone app: the menu under your name → **Get the phone app** (App
-   Store for iPhone, APK for Android).
-2. The same menu → **Connect your phone · to your Cloud (always on)**, or
-   **Settings → MausBot Cloud → Use My Cloud on your phone**. The Cloud opens in
-   the app window at its phone pairing.
-3. **Create pairing code**, and scan the QR code with the phone app.
-
-How it fits together (`src/lib/phone-pairing.ts`):
-
-- **Connect your phone** opens Settings → Remote access at the pairing that
-  fits the window, with focus on the button that shows the code: this
-  computer's phone flow in the desktop app on its own computer, the Cloud's
-  own pairing code (`ServerPairingCard`) on a Cloud home, and any other
-  server's pairing code only for a session that may make one (the owner on
-  that machine or an admin session, where pairing codes are on).
-- On this computer, when the verified snapshot shows a paid plan (any tier)
-  and a Ready Cloud, the menu has two **Connect your phone** lines: *to your
-  Cloud (always on)* first, which does what **Use My Cloud on your phone**
-  does, then *to this computer*. A paid plan whose Cloud is not Ready keeps
-  the single *to this computer* line, with a note that the Cloud will show
-  there. A failed switch opens Settings → MausBot Cloud.
-- **Use My Cloud on your phone** shows for a paid plan. With a Ready Cloud it
-  calls `cloud-account:connectHomeForPhone`, which takes no arguments and
-  connects as **Open My Cloud** does, adding the one fixed request
-  `?desktop-settings=phone` (on `/pair` too, which carries it on once paired).
-  The Cloud's page opens Settings on its phone pairing. It never makes a code
-  by itself. Before the Cloud is Ready, or if opening it failed, the card
-  lists the two steps instead. On the Cloud itself, Settings → MausBot Cloud
-  offers the same button and opens the pairing directly.
-
 ### Only your own devices
 
 A Cloud home is personal (`server/cloud-owner.ts`): only the owner's own
@@ -1184,10 +1152,8 @@ time, and none after one closes until another launch:
    to us". Its numbers are the Admin's. Any button, its X,
    Escape or a click outside end it for good (browser storage and the
    workspace's hint record). It takes focus at its title, keeps Tab inside
-   and gives focus back when it closes. `cloud_pro_popup`
-   ([docs/analytics.md](analytics.md)) counts it, and a click by someone
-   signed in to MausBot Cloud first ties their analytics to their Cloud
-   account's email.
+    and gives focus back when it closes. No product events or analytics email
+    identifiers are sent by this fork.
 2. **The card after the update** (`CloudTrialIntro`, id `cloud-trial-intro-v1`):
    MausBot Cloud's free trial for someone signed out or with no plan who
    has used the app before this launch, only while the Admin offers a trial
@@ -1341,10 +1307,7 @@ screen's note.
 
 Nothing in the app is a price: with the Admin's trial switch off, no card is
 shown, and the dialog offers today's plans at the Admin's prices, charged
-today. Analytics (the app's existing, optional PostHog) register `app_version`
-and `surface` (`local` or `server`) on every event, and count the card, its
-actions, the tip, the dialog's views and checkouts opened, with no content.
-[docs/analytics.md](analytics.md) lists every event and property.
+today. This fork does not send product analytics for these interactions.
 
 ## Copy this computer to your Cloud
 

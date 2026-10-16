@@ -81,6 +81,8 @@ export type RequestOutcome = "allowed-once" | "rejected" | "answered" | "unavail
 
 // Sessions start implicitly on the first turn; resumeCursor carries the provider-native continuation (e.g. a Claude session id).
 export interface SendTurnInput {
+  /** Native global MCP activation overrides, applied only to this MausBot engine process. */
+  openCodeMcp?: Record<string, boolean>;
   threadId: ThreadId;
   /** Drivers namespace process-level resources (broker socket, CLI session) by botId too: threadIds may coincide across bots. */
   botId?: string;
@@ -122,7 +124,6 @@ export interface SendTurnInput {
   /** Per-bot integrations the driver may hand to the agent as tools. */
   integrations?: {
     /** A harness-owned stdio bridge to Composio, so connection requests become trusted chat cards. */
-    composio?: { command: string; args: string[]; env: Record<string, string> };
     /** Stdio connection to a computer MCP server. `scope` is set only for the host desktop, so host-only approval rules never apply elsewhere. */
     localComputer?: {
       command: string;
@@ -190,8 +191,6 @@ export interface ProviderAdapter {
     agentsMcp?: boolean;
     /** The driver mounts isolated computer MCP descriptors. */
     computerMcp?: boolean;
-    /** The driver mounts integrations.composio. */
-    composioMcp?: boolean;
     /** True when the driver can mount the first-party physical-phone MCP. */
     phoneMcp?: boolean;
     /** The driver can mount the built-in browser MCP. */

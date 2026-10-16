@@ -3,28 +3,13 @@ import { createElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CloudAccountState } from "../../electron/cloud-account.mjs";
-import type { CloudOffer } from "../../electron/cloud-home.mjs";
+import type { CloudAccountState } from "../../server/platform/cloud-account.mjs";
+import type { CloudOffer } from "../../server/platform/cloud-home.mjs";
 import { setLocale } from "@/lib/i18n";
 
 vi.mock("@/components/EngineLibrary", () => ({ engineReady: () => true }));
-const ph = vi.hoisted(() => {
-  const ph = {
-    loads: 0,
-    calls: [] as unknown[][],
-    module: () => {
-      ph.loads += 1;
-      return { default: {
-        init: () => {}, has_opted_out_capturing: () => false, opt_in_capturing: () => {}, opt_out_capturing: () => {},
-        register: () => {}, unregister: () => {},
-        capture: (event: string, props?: unknown) => void ph.calls.push(["capture", event, props]),
-        identify: (id: string, props?: unknown) => void ph.calls.push(["identify", id, props]),
-      } };
-    },
-  };
-  return ph;
-});
-vi.mock("posthog-js", () => ph.module());
+
+
 import { CloudProPopup, cloudProPopupView, otherDialogOpen, useOtherDialogOpen, type CloudProPopupView } from "./CloudProPopup";
 
 const DAY = 86_400_000, NOW = Date.UTC(2026, 9, 16);
@@ -54,12 +39,12 @@ describe("what the popup offers, by plan", () => {
 
   it("no plan: the in-app checkout, with the trial, prices, credit and money-back from the live offer", () => {
     const signedOut = cloudProPopupView({ status: "signed-out" }, TRIAL_OFFER) as CloudProPopupView;
-    expect(signedOut).toMatchObject({ primary: { action: "upgrade", via: "checkout", label: "Start free trial" }, plan: "none", signedIn: false, email: null,
+    expect(signedOut).toMatchObject({ primary: { action: "upgrade", via: "checkout", label: "Start free trial" }, plan: "none",
       badge: "Free for 7 days", price: "Then from $29/month + tax. Cancel any time.", moneyBack: "14-day money-back on every plan.", current: null });
     expect(signedOut.points).toContain("$5 of Claude credit to start");
     const costlier = { ...PLAIN_OFFER, plans: PLAIN_OFFER.plans.map(plan => ({ ...plan, amount: plan.amount + 1000 })) };
     expect(cloudProPopupView(free, costlier)).toMatchObject({ primary: { action: "upgrade", via: "checkout", label: "Upgrade to Cloud Pro" },
-      plan: "none", signedIn: true, email: "person@example.test", badge: null, price: "MausBot Cloud plans from $39/month + tax.", moneyBack: null });
+      plan: "none", badge: null, price: "MausBot Cloud plans from $39/month + tax.", moneyBack: null });
     expect((cloudProPopupView(free, costlier) as CloudProPopupView).points).toContain("Cloud computers and voice included");
   });
 
@@ -79,7 +64,6 @@ describe("what the popup offers, by plan", () => {
     for (const [account, plan, label, current] of cases) {
       const view = cloudProPopupView(account, TRIAL_OFFER) as CloudProPopupView;
       expect(view, plan).toMatchObject({ primary: { via: "settings", label, action: "manage" }, seePlans: false, plan, current, badge: null, price: null, moneyBack: null });
-      expect(view.signedIn, plan).toBe(account.status === "connected");
     }
   });
 });
@@ -156,40 +140,5 @@ describe("the popup as a dialog", () => {
       flushSync(() => vi.advanceTimersByTime(1_000));
       expect(seen.at(-1)).toBe(false);
     } finally { vi.useRealTimers(); }
-  });
-});
-
-describe("who clicked, through the app's analytics", () => {
-  async function fresh(enabled: boolean) {
-    const stored = new Map<string, string>(enabled ? [] : [["omb-analytics-opt-out", "1"]]);
-    vi.stubGlobal("localStorage", { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => void stored.set(key, value) });
-    vi.resetModules();
-    vi.doMock("posthog-js", () => ph.module());
-    ph.loads = 0; ph.calls = [];
-    const analytics = await import("@/lib/analytics");
-    await analytics.initAnalytics();
-    const { reportCloudProPopup } = await import("./CloudProPopup");
-    return reportCloudProPopup;
-  }
-  const sent = () => ph.calls.filter(([kind, event]) => kind === "identify" || event === "cloud_pro_popup" || event === "email_submitted");
-  const person = { plan: "none" as const, signedIn: true, email: "person@example.test" };
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("a click by someone signed in is tied to their Cloud account's email first; showing, Not now and close never are", async () => {
-    const report = await fresh(true);
-    for (const action of ["upgrade", "manage", "see_plans"] as const) report(action, person);
-    for (const action of ["shown", "not_now", "close"] as const) report(action, person);
-    report("upgrade", { plan: "none", signedIn: false, email: null });
-    const identify = ["identify", "person@example.test", { email: "person@example.test" }];
-    const event = (action: string, signedIn = true) => ["capture", "cloud_pro_popup", { action, plan: "none", signed_in: signedIn }];
-    expect(sent()).toEqual([identify, event("upgrade"), identify, event("manage"), identify, event("see_plans"),
-      event("shown"), event("not_now"), event("close"), event("upgrade", false)]);
-  });
-
-  it("sends nothing at all with usage analytics off", async () => {
-    const report = await fresh(false);
-    for (const action of ["shown", "upgrade", "manage", "see_plans", "not_now", "close"] as const) report(action, person);
-    expect(ph.loads).toBe(0);
-    expect(ph.calls).toEqual([]);
   });
 });

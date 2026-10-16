@@ -17,7 +17,6 @@ const fixture = vi.hoisted(() => ({
   dispatch: vi.fn(),
   startCall: vi.fn(),
   endCall: vi.fn(),
-  track: vi.fn(),
   dialog: null as Record<string, unknown> | null,
 }));
 vi.mock("react", async (original) => ({
@@ -50,7 +49,6 @@ vi.mock("@/lib/local-voice", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/local-voice")>(),
   localSystemVoiceActive: () => false,
 }));
-vi.mock("@/lib/analytics", () => ({ track: fixture.track }));
 // No exit animation, so the help card shows exactly while it is open.
 vi.mock("./MenuMotion", async (importOriginal) => ({
   ...await importOriginal<typeof import("./MenuMotion")>(),
@@ -120,7 +118,6 @@ beforeEach(() => {
   fixture.dispatch.mockClear();
   fixture.startCall.mockClear();
   fixture.endCall.mockClear();
-  fixture.track.mockClear();
   vi.stubGlobal("window", { ogb: { speechStart: () => {} } });
 });
 afterEach(() => {
@@ -172,7 +169,6 @@ describe("setting up a voice from the call button", () => {
     expect(fixture.dialog!.ready).toBe(true);
 
     (fixture.dialog!.onStartCall as () => void)();
-    expect(fixture.track).toHaveBeenCalledWith("call_started", { driver: "codex", mode: "turns" });
     expect(fixture.startCall).toHaveBeenCalledWith("pepper");
     expect(render().html).not.toContain("data-voice-setup-stub");
   });
@@ -184,7 +180,6 @@ describe("setting up a voice from the call button", () => {
       voices: [undefined, undefined],
       setupBotId: "pepper",
       requireExplicitVoices: true,
-      onStart: () => fixture.track("group_call_started", { memberCount: 2 }),
     };
     fixture.config = { tts: { configured: true, ready: true } };
     const opened = openVoiceSetup(room);
@@ -201,7 +196,6 @@ describe("setting up a voice from the call button", () => {
     render(room);
     expect(fixture.dialog).toMatchObject({ bot: basil, ready: true });
     (fixture.dialog!.onStartCall as () => void)();
-    expect(fixture.track).toHaveBeenCalledWith("group_call_started", { memberCount: 2 });
     expect(fixture.startCall).toHaveBeenCalledWith("room-1");
   });
 
@@ -231,7 +225,6 @@ describe("setting up a voice from the call button", () => {
       voices: ["voice-1", undefined],
       setupBotId: "pepper",
       requireExplicitVoices: true,
-      onStart: () => {},
     };
     click(find(render(room), "data-call-button"));
     click(find(render(room), "data-voice-setup-open"));
@@ -253,7 +246,6 @@ describe("setting up a voice from the call button", () => {
       voices: ["voice-1", undefined],
       setupBotId: "pepper",
       requireExplicitVoices: true,
-      onStart: () => {},
     };
     click(find(render(room), "data-call-button"));
     click(find(render(room), "data-voice-setup-open"));
@@ -270,7 +262,6 @@ describe("setting up a voice from the call button", () => {
     click(find(render(), "data-call-button"));
     expect(getUserMedia).toHaveBeenCalledTimes(1);
     expect(liveMedia()).toMatchObject({ phase: "starting", botId: "pepper", threadId: "t" });
-    expect(fixture.track).toHaveBeenCalledWith("call_started", { driver: "codex", mode: "live" });
     const after = render();
     expect(after.html).not.toContain("Set up voice");
     expect(after.html).not.toContain("Call unavailable");

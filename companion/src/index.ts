@@ -24,7 +24,6 @@ import {
 import { notifyDeviceRevoked } from "./harness-notice.ts";
 import { createProxyHandler } from "./proxy.ts";
 import { companionOriginSocket, listenCompanionOrigin } from "./origin.ts";
-import { normalizedPhoneSecretPublicKey } from "./phone-secret-key.ts";
 
 // Only Electron supplies this port; Electron children fail closed until initialized.
 const parentPort = (process as NodeJS.Process & {
@@ -60,9 +59,6 @@ const CONTROL_PORT = num(process.env.OMB_CONTROL_PORT, 8811);
 const SERVICE_TYPE = "_openmausbot._tcp";
 let hostedUrl = hostedCompanionUrl(process.env.OMB_COMPANION_HOSTED_URL);
 const PRIVATE_ORIGIN = companionOriginSocket(process.env.OMB_COMPANION_INTERNAL_ORIGIN);
-const SECRET_PUBLIC_KEY = normalizedPhoneSecretPublicKey(
-  process.env.OMB_PHONE_SECRET_PUBLIC_KEY ?? "",
-);
 
 /** Checked up front: the collision is a race, and the loser's error surfaces
  * nowhere near here. */
@@ -140,7 +136,6 @@ const control = createControlServer({
   devices,
   controlToken: () => controlToken,
   companionPort: COMPANION_PORT,
-  secretPublicKey: () => SECRET_PUBLIC_KEY,
   hostedUrl: () => hostedUrl,
   setHostedUrl: (next) => {
     hostedUrl = next;

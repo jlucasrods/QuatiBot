@@ -52,15 +52,6 @@ export interface CompanionEndpointSnapshot {
 /** Headers only: an SSE stream deliberately never ends, so the body has no
  * deadline. */
 const HEADERS_TIMEOUT_MS = 30_000;
-// Must outlast the server's 90-second private-save deadline and stay inside
-// the hosted proxy's.
-const PHONE_SECRET_HEADERS_TIMEOUT_MS = 105_000;
-const PHONE_SECRET_PROVIDE_PATH = /^\/api\/bots\/[\w-]+\/secret-cards\/[\w-]+\/provide(?:\?|$)/;
-
-export function proxyHeadersTimeoutMs(url: string, override?: number): number {
-  return override
-    ?? (PHONE_SECRET_PROVIDE_PATH.test(url) ? PHONE_SECRET_HEADERS_TIMEOUT_MS : HEADERS_TIMEOUT_MS);
-}
 
 const MAX_JSON_BODY_BYTES = 32 * 1024 * 1024;
 
@@ -598,7 +589,7 @@ export function createProxyHandler(options: ProxyOptions) {
 
     // `http.request` has no deadline of its own for the headers phase.
     let timedOut = false;
-    const headersTimeoutMs = proxyHeadersTimeoutMs(req.url ?? "", options.headersTimeoutMs);
+    const headersTimeoutMs = options.headersTimeoutMs ?? HEADERS_TIMEOUT_MS;
     const headersDeadline = setTimeout(() => {
       timedOut = true;
       upstream.destroy(new Error("the harness sent no response headers"));

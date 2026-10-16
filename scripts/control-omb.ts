@@ -19,7 +19,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** Outside the bot name pool, so no suite can plan a bot that collides with the
  * starter. */
 export const FIXTURE_STARTER_BOT_NAME = "Fixture Starter";
-const FAKE_CLI = join(ROOT, "server", "testing", "fake-claude-cli.ts");
+const FAKE_CLI = join(ROOT, "server", "testing", "fake-acp-cli.ts");
 
 export class ControlOmbError extends HeadlessError {
   constructor(message: string, hint?: string) {
@@ -152,9 +152,16 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
     OMB_DATA_DIR: dataDir,
     OMB_PORT: String(port),
     OMB_WEBHOOK_PORT: String(port + 1),
-    // A caller's FAKE_CLAUDE_MODE overrides this below to drive failure paths.
-    FAKE_CLAUDE_MODE: parentEnv.FAKE_CLAUDE_MODE || "happy",
-    FAKE_CLAUDE_DUMP: join(dataDir, "fake-claude-dump.json"),
+    FAKE_ACP_MODE: parentEnv.FAKE_ACP_MODE || "happy",
+    FAKE_ACP_MODELS: "fixture/default,fixture/alternate",
+    FAKE_ACP_VARIANTS: JSON.stringify({
+      "fixture/default": { options: [{ value: "default", name: "Default" }, { value: "high", name: "High" }] },
+      "fixture/alternate": { options: [{ value: "default", name: "Default" }, { value: "high", name: "High" }] },
+    }),
+    FAKE_ACP_AGENT_NAME: "OpenCode",
+    FAKE_ACP_AGENT_VERSION: "2.0.31",
+    FAKE_ACP_VERSION: "2.0.31",
+    FAKE_ACP_DUMP: join(dataDir, "fake-acp-dump.json"),
     // POSIX resolves the fake CLI's `#!/usr/bin/env node` shebang through PATH;
     // Windows resolves it through spawnCli without a shell.
     PATH: dirname(process.execPath),
@@ -164,8 +171,8 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
   });
   // The fake engines' knobs are the one thing a caller may script into the child.
   for (const [key, value] of Object.entries(parentEnv)) {
-    // FAKE_CLAUDE_DUMP stays the launcher's: assertions read fixtureDumpPath.
-    if ((key.startsWith("FAKE_CLAUDE_") || key.startsWith("FAKE_CODEX_TEXT_")) && key !== "FAKE_CLAUDE_DUMP" && value) childEnv[key] = value;
+    // The dump remains inside the disposable fixture.
+    if (key.startsWith("FAKE_ACP_") && key !== "FAKE_ACP_DUMP" && value) childEnv[key] = value;
   }
   // Enables POST /api/testing/org-library; the route does not exist without it.
   if (parentEnv.OMB_TEST_ORG_LIBRARY_KEY) childEnv.OMB_TEST_ORG_LIBRARY_KEY = parentEnv.OMB_TEST_ORG_LIBRARY_KEY;
@@ -219,9 +226,9 @@ export async function launchVerificationServer(
   /** A stand-in enterprise layer (the folder shape core loads) and the key
    * it should accept, so a recipe can prove entitled behaviour offline. */
   enterprise?: { dir: string; licenseKey: string },
-  room?: { scripted: boolean },
+  _room?: { scripted: boolean },
   /** Optional repository-owned fake providers for multi-engine setup checks. */
-  extraProviders: Array<"codex" | "cline"> = [],
+  _extraProviders: Array<"codex" | "cline"> = [],
   /** Programmatic tests only: an owned loopback Boat provider, never a live account. */
   boatFixtureApi?: string,
   /** Programmatic web UI qualification against the fixture's static server. */
@@ -249,28 +256,21 @@ export async function launchVerificationServer(
   // their path limit.
   const dataDir = mkdtempSync(join(browser && process.platform !== "win32" ? "/tmp" : tmpdir(), "openmausbot-verify-data-"));
   const fixtureTemp = join(dataDir, "tmp");
-  const fixtureDumpPath = join(dataDir, "fake-claude-dump.json");
+  const fixtureDumpPath = join(dataDir, "fake-acp-dump.json");
   mkdirSync(fixtureTemp, { recursive: true });
+  const discovery = join(dataDir, "providers", "opencode", "discovery");
+  mkdirSync(discovery, { recursive: true });
+  writeFileSync(join(discovery, ".openmaus-project"), "Verification fixture\n");
   const evidenceDir = join(tmpdir(), "openmausbot-verification-evidence");
   mkdirSync(evidenceDir, { recursive: true });
   const logPath = join(evidenceDir, `server-${Date.now()}-${process.pid}.log`);
   writeFileSync(join(dataDir, "config.json"), JSON.stringify({
     ...(boatFixtureApi ? { box: { token: "box_verification_fixture" } } : {}),
     instances: {
-      ...(extraProviders.includes("codex") ? { codex: {
-        driver: "codex", displayName: "Verification Codex", config: { cli: fileURLToPath(new URL("../server/testing/fake-codex-app-server.ts", import.meta.url)) },
-      } } : {}),
-      ...(extraProviders.includes("cline") ? { cline: {
-        driver: "clineAgent", displayName: "Verification Cline",
-        config: { cli: fileURLToPath(new URL("../server/testing/fake-acp-cli.ts", import.meta.url)) },
-        environment: { CLINE_PROVIDER: "openai-compatible", CLINE_MODEL: "fixture-model", CLINE_API_KEY: "fixture-only",
-          FAKE_ACP_DUMP: join(dataDir, "cline-launch.json") },
-      } } : {}),
-      claude: {
-        driver: "claudeAgent",
+      opencodeGo: {
+        driver: "opencodeGo",
         displayName: "Verification fixture",
         config: { cli: FAKE_CLI },
-        ...(room?.scripted ? { environment: { FAKE_CLAUDE_ROOM_PLAN: join(dataDir, "room-plan.json") } } : {}),
       },
     },
   }, null, 2));

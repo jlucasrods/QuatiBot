@@ -9,7 +9,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { freePortBlock } from "./testing/ports.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
-import { readCuaConnection } from "./local-computer.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -20,7 +19,6 @@ describe("surface pin provenance against the real server", () => {
   let stateFile = "";
   let dumpFile = "";
   let finishFile = "";
-  let cuaDescriptor = "";
   let output = "";
   let child: ChildProcess | null = null;
   let base = "";
@@ -111,7 +109,6 @@ describe("surface pin provenance against the real server", () => {
     stateFile = join(home, "vm.json");
     dumpFile = join(home, "dump.json");
     finishFile = join(home, "finish");
-    cuaDescriptor = join(home, "user-data", "cua-connection.json");
     vmState();
     mkdirSync(data);
     mkdirSync(join(ui, "assets"), { recursive: true });
@@ -288,48 +285,6 @@ describe("surface pin provenance against the real server", () => {
     expect(mountedComputer(await dump())).toBeUndefined();
     writeFileSync(finishFile, "finish");
     await idle(bot.id, task.threadId);
-    await apiOk("DELETE", `/api/bots/${bot.id}`);
-    await stop();
-  });
-
-  it("keeps a person's pin when Works on changes under it", async () => {
-    await start();
-    const { bot } = await apiOk("POST", "/api/bots", { name: "Person Pin Bot" });
-    const { task } = await apiOk("POST", `/api/bots/${bot.id}/tasks`, {});
-    await apiOk("PATCH", `/api/bots/${bot.id}/tasks/${task.threadId}`, { surface: "local" });
-    await stop();
-    editSavedBot(bot.id, saved => { saved.computer = "vm"; });
-    await start();
-    expect(output).not.toContain("auto-pinned thread");
-    expect(savedTask(bot.id, task.threadId)).toMatchObject({ surface: "local", surfaceSource: "user" });
-    const place = await apiOk("GET", `/api/bots/${bot.id}/computer?threadId=${task.threadId}`);
-    expect(place.surface).toBe("local");
-    mkdirSync(dirname(cuaDescriptor), { recursive: true });
-    writeFileSync(cuaDescriptor, JSON.stringify({
-      mode: "embedded", status: "ready", socketPath: join(home, "cua.sock"),
-      mcpCommand: "/fixture/cua-driver", mcpArgs: ["mcp"], mcpEnv: {},
-    }), { mode: 0o600 });
-    try {
-      // Validate the fixture on every host before waiting for a provider; Windows cannot emulate the POSIX ownership check.
-      const platforms: NodeJS.Platform[] = process.platform === "win32" ? ["win32"] : ["darwin", "win32"];
-      for (const platform of platforms) {
-        expect(readCuaConnection({ platform, userData: dirname(cuaDescriptor), home }))
-          .toMatchObject({ command: "/fixture/cua-driver", platform, scope: "local-computer" });
-      }
-      // Linux requires a separately validated native runtime descriptor.
-      if (process.platform !== "linux") {
-        resetTurn();
-        await apiOk("POST", `/api/bots/${bot.id}/messages`, { text: "Stay where I pinned you.", threadId: task.threadId });
-        const sent = await dump();
-        expect(sent.systemPrompt).toContain("You can act on the user's computer");
-        expect(mountedComputer(sent).env.OMB_CUA_COMMAND).toBe("/fixture/cua-driver");
-        expect(mountedComputer(sent).args.some((arg: string) => arg.includes("container-mcp"))).toBe(false);
-        writeFileSync(finishFile, "finish");
-        await idle(bot.id, task.threadId);
-      }
-    } finally {
-      rmSync(cuaDescriptor, { force: true });
-    }
     await apiOk("DELETE", `/api/bots/${bot.id}`);
     await stop();
   });

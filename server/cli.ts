@@ -20,7 +20,6 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
-import { phonePairingLink } from "../shared/pairing-link.ts";
 import { parseAllowList } from "./account-signin.ts";
 import { appendAdminAction, flushAdminActivity, sharedSignIn } from "./admin-activity.ts";
 import { bindDecisionRetention, decisionRetentionDays } from "./decision-log.ts";
@@ -35,9 +34,9 @@ import { runFleetCommand, type FleetInput } from "./fleet-cli.ts";
 import { startFleetAgent } from "./fleet-agent.ts";
 import { fleetLayout } from "./fleet.ts";
 import { explainTailscaleFailure, tailscaleServe, tailscaleServeOff, tailscaleStatus, type TailscaleStatus } from "./tailscale.ts";
-import { defaultSetupIo, SetupCancelled, type SetupIo } from "./cli-prompts.ts";
+import { SetupCancelled } from "./cli-prompts.ts";
 import { HEADLESS_VERB_NAMES, USAGE } from "./cli-usage.ts";
-import { normalizePhoneOrigin, phonePairingInstructions, runPhoneSetup } from "./cli-phone-setup.ts";
+import { normalizePublicOrigin } from "./cli-pairing.ts";
 import { browserSignInLines, pairingBlock } from "./cli-pairing.ts";
 import type { AppConfig } from "./config.ts";
 import {
@@ -107,7 +106,6 @@ export interface CliOptions {
   local?: boolean;
   open?: boolean;
   guided?: boolean;
-  phone?: "ios" | "android";
 }
 
 const COMMANDS = ["setup", "start", "serve", "pair", "sessions", "status", "login", "logout", "access", "service", "browser", "fleet", "help", "--help", "-h"];
@@ -151,12 +149,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
       }
       else if (arg === "--tunnel") options.tunnel = true;
       else if (arg === "--client") options.client = true;
-      // Which phone will scan, for runs nobody types into; only Android needs a different QR.
-      else if (arg === "--phone") {
-        const kind = value().toLowerCase();
-        if (kind !== "ios" && kind !== "android") return { error: "--phone takes ios or android" };
-        options.phone = kind;
-      }
+
       else if (arg === "--no-pair") options.pair = false;
       else if (arg === "--no-open") options.open = false;
       else if (arg === "--local") options.local = true;
@@ -294,58 +287,20 @@ export async function openDashboard(port: number, env = process.env): Promise<bo
   });
 }
 
-/** Its public descriptor must identify this exact server; never sends a pairing code or credential. */
-export async function verifyPhoneEndpoint(port: number, origin: string): Promise<boolean> {
-  if (!normalizePhoneOrigin(origin)) return false;
-  try {
-    const local = await api(port, "/.well-known/openmausbot/environment");
-    const remote = await fetch(`${origin}/.well-known/openmausbot/environment`, { signal: AbortSignal.timeout(5000), redirect: "error" });
-    if (local.status !== 200 || !remote.ok) return false;
-    const descriptor = await remote.json() as { environmentId?: unknown };
-    return typeof local.body?.environmentId === "string" && local.body.environmentId.length > 0
-      && descriptor.environmentId === local.body.environmentId;
-  } catch { return false; }
-}
-
 export function applyStartupPreferences(options: CliOptions, saved: AppConfig["cliStartup"]): CliOptions {
-  if (options.local) return { ...options, tunnel: false, tailscale: false, publicUrl: undefined, phone: undefined };
+  if (options.local) return { ...options, tunnel: false, tailscale: false, publicUrl: undefined };
   if (!saved || options.tunnel || options.tailscale || options.publicUrl) return options;
-  if (saved.access === "public-url" && (!saved.publicUrl || !normalizePhoneOrigin(saved.publicUrl))) {
-    throw new Error("The saved phone address is not a valid HTTPS origin. Run openmausbot setup to correct it, or openmausbot --local to start only on this computer.");
+  if (saved.access === "public-url" && (!saved.publicUrl || !normalizePublicOrigin(saved.publicUrl))) {
+    throw new Error("The saved public address is not a valid HTTPS origin. Run openmausbot setup to correct it, or openmausbot --local to start only on this computer.");
   }
   return {
     ...options,
     tunnel: saved.access === "tunnel", tailscale: saved.access === "tailscale",
     publicUrl: saved.access === "public-url" ? saved.publicUrl : undefined,
-    phone: saved.access === "local" ? undefined : saved.phone,
   };
 }
 
-function startupPreferences(options: CliOptions): NonNullable<AppConfig["cliStartup"]> {
-  const access = options.local ? "local" : options.tunnel ? "tunnel" : options.tailscale ? "tailscale" : options.publicUrl ? "public-url" : "local";
-  const publicUrl = access === "public-url" ? normalizePhoneOrigin(options.publicUrl!) : null;
-  if (access === "public-url" && !publicUrl) throw new Error("Use an HTTPS origin without a password, path or query for saved phone access. The address was not saved.");
-  return {
-    access,
-    ...(publicUrl ? { publicUrl } : {}),
-    ...(!options.local && options.phone ? { phone: options.phone } : {}),
-  };
-}
-
-async function showPhonePairing(options: CliOptions, origin: string | undefined, log: (line: string) => void): Promise<boolean> {
-  const ready = !!origin && await verifyPhoneEndpoint(options.port, origin);
-  if (!ready) {
-    log("Phone access is not reachable yet. OpenMausBot is ready on this computer; no phone pairing code was created.");
-    log("Check the HTTPS connection, then run openmausbot pair again with the same --data-dir and --port.");
-    return false;
-  }
-  for (const line of phonePairingInstructions(options.phone ?? "ios", { origin: origin!, ready })) log(line);
-  log(await mintPairing(options.port, { client: true, label: options.label ?? (options.phone === "android" ? "Android" : "iPhone / iPad"), publicUrl: origin, phone: options.phone }));
-  log("Waiting for you to connect on the phone. Keep this terminal and the code private.");
-  return true;
-}
-
-async function mintPairing(port: number, options: { label?: string; client?: boolean; publicUrl?: string; phone?: "ios" | "android"; guided?: boolean }): Promise<string> {
+async function mintPairing(port: number, options: { label?: string; client?: boolean; publicUrl?: string; guided?: boolean }): Promise<string> {
   const request: { label?: string; scopes?: string[] } = {};
   if (options.label) request.label = options.label;
   if (options.client) request.scopes = ["client"];
@@ -353,12 +308,9 @@ async function mintPairing(port: number, options: { label?: string; client?: boo
   if (refusedAsService(status, body)) throw new Error(SERVICE_TRUST_HELP);
   if (status !== 200) throw new Error(`server refused to mint a pairing code: ${typeof body?.error === "string" ? body.error : status}`);
   const url = options.publicUrl ? `${options.publicUrl}/pair#code=${body.code}` : typeof body.url === "string" ? body.url : null;
-  const invite = (options.publicUrl && typeof body.credential === "string"
-    ? phonePairingLink({ address: options.publicUrl, token: body.credential, name: typeof body.serverName === "string" ? body.serverName : undefined })
-    : null) ?? (typeof body.inviteUrl === "string" ? body.inviteUrl : null);
-  const localUrl = options.phone ? null : `http://127.0.0.1:${port}/pair#code=${body.code}`;
+  const localUrl = `http://127.0.0.1:${port}/pair#code=${body.code}`;
   if (options.guided && localUrl) return browserSignInLines(localUrl, body.code, body.expiresAt);
-  return pairingBlock({ code: body.code, url, inviteUrl: invite, localUrl, expiresAt: body.expiresAt, hint: typeof body.hint === "string" ? body.hint : null, phone: options.phone });
+  return pairingBlock({ code: body.code, url, localUrl, expiresAt: body.expiresAt, hint: typeof body.hint === "string" ? body.hint : null });
 }
 
 export async function runPair(options: CliOptions): Promise<number> {
@@ -366,38 +318,7 @@ export async function runPair(options: CliOptions): Promise<number> {
     console.error(`no OpenMausBot server on http://127.0.0.1:${options.port}; start one with \`openmausbot serve\` or set OMB_PORT`);
     return 1;
   }
-  if (process.stdin.isTTY && process.stdout.isTTY && !options.label && !options.client) {
-    const advertised = await api(options.port, "/api/auth/pairing");
-    let launch = options;
-    let origin = options.publicUrl ?? (typeof advertised.body?.publicUrl === "string" ? advertised.body.publicUrl : undefined);
-    if (!origin) {
-      const { readCliStartup } = await import("./cli-setup.ts");
-      launch = applyStartupPreferences(options, readCliStartup(options.dataDir));
-      origin = launch.publicUrl;
-      if (launch.tunnel) origin = describeTunnelAccount(createTunnelAccount({ dataDir: options.dataDir, version: serverVersion() }).credentials.read()).address ?? undefined;
-      if (launch.tailscale) {
-        const status = await tailscaleStatus();
-        if (!("failure" in status) && status.status.dnsName) origin = `https://${status.status.dnsName}`;
-      }
-    }
-    if (!origin || !normalizePhoneOrigin(origin)) {
-      console.log("Your workspace is running only on this computer. A phone cannot use its localhost address.");
-      console.log("Stop the server, run openmausbot setup and choose phone access, then start openmausbot again.");
-      return 1;
-    }
-    const ui = defaultSetupIo();
-    try {
-      const selected = await ui.choose("Which phone are you connecting?", ["iPhone / iPad — app or Safari", "Android — app or browser", "Cancel"], 0);
-      if (selected === 2) return 0;
-      launch = { ...launch, phone: selected === 0 ? "ios" : "android" };
-      return await showPhonePairing(launch, origin, ui.log) ? 0 : 1;
-    } catch (error) {
-      if (!(error instanceof SetupCancelled)) throw error;
-      console.log("Pairing cancelled. Existing devices are unchanged.");
-      return 130;
-    }
-  }
-  console.log(await mintPairing(options.port, { label: options.label, client: options.client, publicUrl: options.publicUrl, phone: options.phone }));
+  console.log(await mintPairing(options.port, { label: options.label, client: options.client, publicUrl: options.publicUrl }));
   if (options.client) console.log("(client scope: chat and approvals only; cannot change settings or pair others)");
   return 0;
 }
@@ -892,29 +813,18 @@ export async function runServe(options: CliOptions, log: (line: string) => void 
       log(`data: ${options.dataDir}`);
       log(describeBrowserEngine(browserEngineStatus({ dataDir: options.dataDir })));
     }
-    if (options.pair && options.phone) {
-      log("");
-      if (tunnel) {
-        // No pairing secret is created or sent to the public address until its identity is verified.
-        log("Preparing the phone connection…");
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        await Promise.race([tunnel.started.catch(() => undefined), childExit,
-          new Promise((done) => { timer = setTimeout(done, 15_000); })]);
-        if (timer) clearTimeout(timer);
-      }
-      if (!stopping && exited === null) await showPhonePairing(options, publicUrl, log).catch((error: unknown) => log(`no pairing code: ${message(error)}`));
-    } else if (options.pair) {
+    if (options.pair) {
       log("");
       try {
         log(await mintPairing(options.port, { label: options.label ? `${options.label} owner` : undefined, client: options.client, publicUrl: publicUrl ?? undefined, guided: options.guided }));
-        if (!options.guided) log("\nanother device later:  openmausbot pair --label \"Kitchen iPad\"");
+        if (!options.guided) log("\nanother device later:  openmausbot pair --label \"Other computer\"");
       } catch (error) {
         log(`no pairing code: ${message(error)}`);
         log("start without one next time:  openmausbot serve --no-pair");
       }
     }
     log(options.guided ? "\nKeep this terminal open while using your bots. Ctrl+C stops the server, not your saved work." : "stop with Ctrl+C");
-    if (options.guided) log("Next time: openmausbot · Change AI or phone setup: openmausbot setup · Pair another phone: openmausbot pair");
+    if (options.guided) log("Next time: openmausbot · Change AI setup: openmausbot setup · Pair another computer: openmausbot pair");
     return await childExit;
   } finally {
     serveOwnerToken = undefined;
@@ -941,7 +851,7 @@ export async function runOnboardingCommand(
   options: CliOptions,
   io: CliIo = defaultIo(),
   startServer: (options: CliOptions) => Promise<number> = serveUntilStopped,
-  flow: { prompts?: SetupIo; phoneSetup?: typeof runPhoneSetup; running?: typeof isWorkspaceRunning; open?: typeof openDashboard } = {},
+  flow: { running?: typeof isWorkspaceRunning; open?: typeof openDashboard } = {},
 ): Promise<number> {
   const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
   if (options.command === "setup" && !interactive) {
@@ -959,8 +869,7 @@ export async function runOnboardingCommand(
     if (interactive && options.open !== false) await (flow.open ?? openDashboard)(options.port);
     return 0;
   }
-  const { runSetup, isSetupComplete, readCliStartup, saveCliStartup } = await import("./cli-setup.ts");
-  const prompts = flow.prompts ?? defaultSetupIo();
+  const { runSetup, isSetupComplete, readCliStartup } = await import("./cli-setup.ts");
   try {
     if (options.command === "setup" || !(await isSetupComplete(options.dataDir))) {
       if (!interactive) {
@@ -974,19 +883,7 @@ export async function runOnboardingCommand(
     }
     const saved = readCliStartup(options.dataDir);
     // Only setup revisits the access choice; normal starts reuse consent and never turn a local session public.
-    let launch = options.command === "setup" ? options : applyStartupPreferences(options, saved);
-    if (interactive && options.pair && !options.local && (options.command === "setup" || !saved)) {
-      io.log("\nOne optional step: connect your phone. You can skip this and start chatting here.");
-      const result = await (flow.phoneSetup ?? runPhoneSetup)(launch, prompts, {
-        accountReady: (value) => !!describeTunnelAccount(createTunnelAccount({ dataDir: value.dataDir, version: serverVersion() }).credentials.read()).email,
-        login: (value, ui) => runLogin(value, {
-          log: ui.log, error: ui.log,
-          ask: (question) => /code/i.test(question) ? ui.secret(question) : ui.ask(question),
-        }),
-      });
-      launch = { ...result.options, phone: result.phone };
-      saveCliStartup(options.dataDir, startupPreferences(launch));
-    }
+    const launch = options.command === "setup" ? options : applyStartupPreferences(options, saved);
     if (options.command === "setup") {
       io.log("\nAll set. Start with: openmausbot (or npx openmausbot without a global install).");
       if (options.dataDir !== join(homedir(), ".openmausbot") || options.port !== 8799) {

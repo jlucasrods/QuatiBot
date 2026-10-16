@@ -2,12 +2,10 @@ import { execFile } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   augmentedPath,
-  findCliCandidates,
-  harnessHome,
   registerPathDir,
   resetPathCache,
   resetPathCacheForTests,
@@ -15,7 +13,6 @@ import {
   userHome,
 } from "./env-path.ts";
 import { resolveCli } from "./procs.ts";
-import { removeTempDir } from "./testing/cleanup.ts";
 
 const posixIt = it.skipIf(process.platform === "win32");
 
@@ -199,272 +196,19 @@ describe("augmentedPath", () => {
     }
   });
 
-  it("finds a Kimi install after launch with an unchanged Windows process PATH", () => {
-    const platform = process.platform;
-    const previousExt = process.env.PATHEXT;
-    const bin = join(homedir(), ".kimi-code", "bin");
-    try {
-      Object.defineProperty(process, "platform", { value: "win32" });
-      process.env.PATHEXT = ".cmd;.exe";
-      resetPathCacheForTests();
-      expect(findCliCandidates("kimi-fixture")).toEqual([]);
-      mkdirSync(bin, { recursive: true });
-      writeFileSync(join(bin, "kimi-fixture.cmd"), "@echo off\n");
-      resetPathCache();
-      expect(findCliCandidates("kimi-fixture")).toContain(join(bin, "kimi-fixture.cmd"));
-    } finally {
-      Object.defineProperty(process, "platform", { value: platform });
-      if (previousExt === undefined) delete process.env.PATHEXT;
-      else process.env.PATHEXT = previousExt;
-      resetPathCacheForTests();
-      rmSync(bin, { recursive: true, force: true });
-    }
-  });
 
-  // Cursor's Windows install script puts cursor-agent.* (and `agent` copies) in %LOCALAPPDATA%\cursor-agent and adds it to the
-  // user PATH, which a running app never sees. Simulated so it runs on every platform.
-  it("finds Cursor installed after launch on Windows", () => {
-    const realPlatform = process.platform;
-    const previous = { LOCALAPPDATA: process.env.LOCALAPPDATA, PATHEXT: process.env.PATHEXT };
-    const localAppData = mkdtempSync(join(tmpdir(), "omb-localappdata-"));
-    try {
-      Object.defineProperty(process, "platform", { value: "win32" });
-      process.env.LOCALAPPDATA = localAppData;
-      // The simulated Windows platform still has the host's case-sensitive filesystem.
-      process.env.PATHEXT = ".com;.exe;.bat;.cmd";
-      const cursorDir = join(localAppData, "cursor-agent");
-      mkdirSync(join(cursorDir, "versions", "2026.09.28-64d2043"), { recursive: true });
-      for (const name of ["cursor-agent.cmd", "cursor-agent.ps1", "agent.cmd", "agent.ps1"]) writeFileSync(join(cursorDir, name), "@echo off\n");
-      resetPathCacheForTests();
-      expect(augmentedPath().split(delimiter)).toContain(cursorDir);
-      expect(findCliCandidates("cursor-agent").map((path) => path.toLowerCase())).toContain(join(cursorDir, "cursor-agent.cmd").toLowerCase());
-    } finally {
-      Object.defineProperty(process, "platform", { value: realPlatform });
-      for (const [name, value] of Object.entries(previous)) {
-        if (value === undefined) delete process.env[name];
-        else process.env[name] = value;
-      }
-      resetPathCacheForTests();
-      rmSync(localAppData, { recursive: true, force: true });
-    }
-  });
 });
 
-describe("userHome / harnessHome", () => {
-  const realPlatform = process.platform;
-  const setPlatform = (value: NodeJS.Platform) => {
-    Object.defineProperty(process, "platform", { value, configurable: true });
-  };
-
-  afterEach(() => {
-    setPlatform(realPlatform);
-  });
-
-  it("prefers HOME off Windows and USERPROFILE on Windows", () => {
-    setPlatform("linux");
-    expect(userHome({ HOME: "/home/alice", USERPROFILE: "C:\\Users\\alice" })).toBe("/home/alice");
-    setPlatform("win32");
-    expect(userHome({ HOME: "/home/alice", USERPROFILE: "C:\\Users\\alice" })).toBe("C:\\Users\\alice");
-  });
-
-  it("falls back through the other variable to homedir", () => {
-    setPlatform("linux");
-    expect(userHome({ USERPROFILE: "/home/alice" })).toBe("/home/alice");
-    setPlatform("win32");
-    expect(userHome({ HOME: "C:\\Users\\alice" })).toBe("C:\\Users\\alice");
+describe("userHome", () => {
+  it("uses HOME and falls back to the operating system home", () => {
+    expect(userHome({ HOME: "/home/alice" })).toBe("/home/alice");
     expect(userHome({})).toBe(homedir());
   });
-
-  it("puts each harness's state directory under the user home", () => {
-    expect(harnessHome("qwen", { HOME: "/home/alice" })).toBe(join("/home/alice", ".qwen"));
-    expect(harnessHome("codex", { HOME: "/home/alice" })).toBe(join("/home/alice", ".codex"));
-  });
 });
-
-// spawn(cli) alone finds nothing on Windows (no PATHEXT in libuv, no #!, and a .cmd throws since Node's CVE-2024-27980 fix).
-// Fixtures are the two real npm shim shapes.
-const winOnly = describe.skipIf(process.platform !== "win32");
-
-// the exact bytes npm writes for a CLI whose bin is a native binary
-const EXE_SHIM = `@ECHO off
-GOTO start
-:find_dp0
-SET dp0=%~dp0
-EXIT /b
-:start
-SETLOCAL
-CALL :find_dp0
-"%dp0%\\node_modules\\pkg\\bin\\ombfake.exe"   %*
-`;
-
-// ...and for one whose bin is a node script (the "_prog" dance)
-const JS_SHIM = `@ECHO off
-GOTO start
-:find_dp0
-SET dp0=%~dp0
-EXIT /b
-:start
-SETLOCAL
-CALL :find_dp0
-
-IF EXIST "%dp0%\\node.exe" (
-  SET "_prog=%dp0%\\node.exe"
-) ELSE (
-  SET "_prog=node"
-  SET PATHEXT=%PATHEXT:;.JS;=;%
-)
-
-endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\pkg\\bin\\ombfake.js" %*
-`;
-
-// ...and npm's own npm.cmd / npx.cmd, which Node's installer puts beside
-// node.exe with CRLF endings: the CLI entry sits in a variable, next to a
-// helper script
-const npmLauncher = (name: "npm" | "npx") => {
-  const upper = name.toUpperCase();
-  return `:: Created by npm, please don't edit manually.
-@ECHO OFF
-
-SETLOCAL
-
-SET "NODE_EXE=%~dp0\\node.exe"
-IF NOT EXIST "%NODE_EXE%" (
-  SET "NODE_EXE=node"
-)
-
-SET "NPM_PREFIX_JS=%~dp0\\node_modules\\npm\\bin\\npm-prefix.js"
-SET "${upper}_CLI_JS=%~dp0\\node_modules\\npm\\bin\\${name}-cli.js"
-FOR /F "delims=" %%F IN ('CALL "%NODE_EXE%" "%NPM_PREFIX_JS%"') DO (
-  SET "NPM_PREFIX_${upper}_CLI_JS=%%F\\node_modules\\npm\\bin\\${name}-cli.js"
-)
-IF EXIST "%NPM_PREFIX_${upper}_CLI_JS%" (
-  SET "${upper}_CLI_JS=%NPM_PREFIX_${upper}_CLI_JS%"
-)
-
-"%NODE_EXE%" "%${upper}_CLI_JS%" %*
-`.replaceAll("\n", "\r\n");
-};
 
 describe("resolveCli", () => {
-  it.skipIf(process.platform === "win32")("is identity off Windows — the kernel already resolves PATH and #!", () => {
-    expect(resolveCli("claude", ["-p", "hi"])).toEqual({ command: "claude", args: ["-p", "hi"] });
-  });
-});
-
-winOnly("resolveCli (Windows)", () => {
-  let dir: string;
-  const onPath = () => {
-    process.env.OMB_EXTRA_PATH = dir;
-    resetPathCacheForTests();
-  };
-  const shimWith = (name: string, body: string, target: string, targetBody: string) => {
-    writeFileSync(join(dir, name), body);
-    mkdirSync(join(dir, "node_modules", "pkg", "bin"), { recursive: true });
-    writeFileSync(join(dir, "node_modules", "pkg", "bin", target), targetBody);
-  };
-
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "omb-shim-"));
-  });
-  afterEach(async () => {
-    delete process.env.OMB_EXTRA_PATH;
-    resetPathCacheForTests();
-    // These tests spawn the shims out of this directory; a just-exited one can
-    // still be holding it for a beat after the call returns.
-    await removeTempDir(dir);
-  });
-
-  it("parses an npm .cmd shim down to the .exe it wraps", () => {
-    shimWith("ombfake.cmd", EXE_SHIM, "ombfake.exe", "MZ-not-really");
-    onPath();
-    expect(resolveCli("ombfake", ["-p", "hi"])).toEqual({
-      command: join(dir, "node_modules", "pkg", "bin", "ombfake.exe"),
-      args: ["-p", "hi"],
-    });
-  });
-
-  it("uses the supplied PATH and PATHEXT without depending on the app environment", () => {
-    shimWith("ombfake.cmd", EXE_SHIM, "ombfake.exe", "MZ-not-really");
-    expect(resolveCli("ombfake", ["acp"], { Path: dir, PATHEXT: ".CMD" })).toEqual({
-      command: join(dir, "node_modules", "pkg", "bin", "ombfake.exe"),
-      args: ["acp"],
-    });
-    onPath();
-    expect(resolveCli("ombfake", [], { PATH: "", PATHEXT: ".CMD" })).toEqual({ command: "ombfake", args: [] });
-  });
-
-  it("parses an npm .cmd shim down to `node <cli.js>`, never the shim's own node.exe", async () => {
-    shimWith("ombfake.cmd", JS_SHIM, "ombfake.js", "console.log('js target ' + process.argv.slice(2).join(','));\n");
-    onPath();
-    const r = resolveCli("ombfake", ["-p", "hi"]);
-    expect(r.args).toEqual([join(dir, "node_modules", "pkg", "bin", "ombfake.js"), "-p", "hi"]);
-    expect(r.command.toLowerCase()).toMatch(/node\.exe$/);
-    const stdout = await new Promise<string>((resolve, reject) =>
-      execFile(r.command, r.args, (err, out) => (err ? reject(err) : resolve(out))),
-    );
-    expect(stdout.trim()).toBe("js target -p,hi");
-  });
-
-  it.each(["npm", "npx"] as const)("parses npm's own %s.cmd down to `node <cli.js>`, not its prefix helper", async (name) => {
-    writeFileSync(join(dir, `${name}.cmd`), npmLauncher(name));
-    const bin = join(dir, "node_modules", "npm", "bin");
-    mkdirSync(bin, { recursive: true });
-    writeFileSync(join(bin, "npm-prefix.js"), "console.log('prefix helper');\n");
-    writeFileSync(join(bin, `${name}-cli.js`), `console.log('${name} entry ' + process.argv.slice(2).join(','));\n`);
-    onPath();
-    const r = resolveCli(name, ["-y", "mcp-remote"]);
-    expect(r.args).toEqual([join(bin, `${name}-cli.js`), "-y", "mcp-remote"]);
-    expect(r.command.toLowerCase()).toMatch(/node\.exe$/);
-    const stdout = await new Promise<string>((resolve, reject) =>
-      execFile(r.command, r.args, (err, out) => (err ? reject(err) : resolve(out))),
-    );
-    expect(stdout.trim()).toBe(`${name} entry -y,mcp-remote`);
-  });
-
-  it("prefers the PATHEXT hit over the extensionless sibling npm installs beside it", () => {
-    shimWith("ombfake.cmd", EXE_SHIM, "ombfake.exe", "MZ-not-really");
-    writeFileSync(join(dir, "ombfake"), "#!/bin/sh\n# the POSIX shim — unrunnable here\n");
-    onPath();
-    expect(resolveCli("ombfake", []).command).toBe(join(dir, "node_modules", "pkg", "bin", "ombfake.exe"));
-  });
-
-  it("runs a #!node script through node — Windows has no shebang support", async () => {
-    const script = join(dir, "ombfake-cli.ts");
-    writeFileSync(script, "#!/usr/bin/env node\nconsole.log('shebang ' + process.argv.slice(2).join(','));\n");
-    const r = resolveCli(script, ["a", "b"]);
-    expect(r.command.toLowerCase()).toMatch(/node(\.exe)?$/);
-    expect(r.args).toEqual([script, "a", "b"]);
-
-    const stdout = await new Promise<string>((resolve, reject) =>
-      execFile(r.command, r.args, (err, out) => (err ? reject(err) : resolve(out))),
-    );
-    expect(stdout.trim()).toBe("shebang a,b");
-  });
-
-  it("never crosses the no-shell boundary for an unparseable shim", () => {
-    const shim = join(dir, "ombfake.cmd");
-    writeFileSync(shim, "@ECHO OFF\ncustom-launcher %*\n");
-    onPath();
-    const payload = JSON.stringify({
-      mcpServers: {
-        ogb: {
-          command: "C:\\Program Files\\nodejs\\node.exe",
-          args: ["a b", "%PATH%", "x&y|z", "q^r", "<in>out"],
-          env: { TOK: 'he said "hi"' },
-        },
-      },
-    });
-    const resolved = resolveCli("ombfake", ["--mcp-config", payload]);
-    expect(resolved.command.toLowerCase()).toBe(shim.toLowerCase());
-    expect(resolved.args).toEqual(["--mcp-config", payload]);
-  });
-
-  it("hands an unknown CLI back untouched so spawn reports its own ENOENT", () => {
-    onPath();
-    expect(resolveCli("definitely-not-installed", ["-p"])).toEqual({
-      command: "definitely-not-installed",
-      args: ["-p"],
-    });
+  it("passes a binary and its arguments directly to the kernel", () => {
+    expect(resolveCli("opencode", ["acp"])).toEqual({command: "opencode", args: ["acp"]});
   });
 });
 

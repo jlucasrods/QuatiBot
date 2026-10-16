@@ -4,7 +4,7 @@ import { MausAvatar } from "@/components/Avatar";
 import { ServiceIcon, type ToolkitCard } from "@/components/PluginsPanel";
 import { cn } from "@/lib/cn";
 import { reducedMotion } from "@/lib/onboarding";
-import { api } from "@/state/store";
+
 import type { SceneProps } from "./types";
 
 const SETUP_MS = 6600;
@@ -26,13 +26,6 @@ const APPS = [
 
 type Phase = "compose" | "sent" | "reply" | "configured";
 
-let catalog: Promise<Map<string, ToolkitCard>> | null = null;
-function loadCatalog(): Promise<Map<string, ToolkitCard>> {
-  catalog ??= api("/api/connectors/catalog")
-    .then((d: { cards?: ToolkitCard[] }) => new Map((d.cards ?? []).map((card) => [card.slug, card])))
-    .catch(() => new Map<string, ToolkitCard>());
-  return catalog;
-}
 
 function Typed({ text, caret, sent = false }: { text: string; caret: boolean; sent?: boolean }) {
   const command = text.slice(0, COMMAND.length);
@@ -104,15 +97,8 @@ export function Setup({ playing, onCue, onEnded, label }: SceneProps) {
   const [phase, setPhase] = useState<Phase>(still ? "configured" : "compose");
   const [steps, setSteps] = useState(still ? 4 : 0);
   const [pressed, setPressed] = useState(false);
-  const [logos, setLogos] = useState<Map<string, ToolkitCard>>(new Map());
+  const logos = new Map<string, ToolkitCard>();
 
-  useEffect(() => {
-    let alive = true;
-    void loadCatalog().then((cards) => alive && setLogos(cards));
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (still) return;

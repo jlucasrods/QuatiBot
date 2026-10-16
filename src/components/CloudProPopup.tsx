@@ -1,16 +1,14 @@
 import { useEffect, useState } from "react";
 import { Check, Crown, X } from "lucide-react";
-import type { CloudAccountState } from "../../electron/cloud-account.mjs";
-import type { CloudOffer } from "../../electron/cloud-home.mjs";
-import { identifyEmail, track } from "@/lib/analytics";
+import type { CloudAccountState } from "../../server/platform/cloud-account.mjs";
+import type { CloudOffer } from "../../server/platform/cloud-home.mjs";
+
 import { buyOfferAllowed, cloudIntroView, cloudPlanLine, cloudPlanView, moneyBackLine, usd, type CloudSource } from "@/lib/cloud-plan";
 import { t } from "@/lib/i18n";
-import { cloudPlanFromAccount, type CloudPlanFacts } from "@/lib/usage-snapshot";
+import { cloudPlanFromAccount, type CloudPlanFacts } from "@/lib/cloud-plan";
 import { NotNowButton } from "./NoticeCard";
 
 export const CLOUD_PRO_POPUP_SOURCE = "update_popup" satisfies CloudSource;
-
-export type CloudProPopupAction = "shown" | "upgrade" | "manage" | "see_plans" | "not_now" | "close";
 
 export interface CloudProPopupView {
   /** Everything stays in the app: buyers go to the Add a Cloud dialog, payers to Settings → MausBot Cloud. */
@@ -18,8 +16,6 @@ export interface CloudProPopupView {
   /** Compare plans, for someone who can buy: the dialog lists every plan. A payer has nothing to compare there yet. */
   seePlans: boolean;
   plan: CloudPlanFacts["plan"] | "trial";
-  signedIn: boolean;
-  email: string | null;
   badge: string | null;
   points: string[];
   price: string | null;
@@ -32,8 +28,7 @@ export function cloudProPopupView(account: CloudAccountState | null, offer: Clou
   if (view.kind === "unknown" || view.kind === "connecting") return "loading";
   if (view.kind === "unverified") return "offline";
   const facts = cloudPlanFromAccount(account);
-  const signedIn = account?.status === "connected";
-  const who = { plan: facts.trial ? "trial" as const : facts.plan, signedIn, email: signedIn ? account?.account?.email ?? null : null };
+  const who = { plan: facts.trial ? "trial" as const : facts.plan };
   const included = [t("cloudIntro.routines"), t("cloudIntro.phone"), t("cloudIntro.included")];
   if (buyOfferAllowed(view)) {
     if (offer === undefined) return "loading";
@@ -61,13 +56,6 @@ export function cloudProPopupView(account: CloudAccountState | null, offer: Clou
     moneyBack: null,
     current: view.kind === "reauth" ? t("pro.reauthShort") : cloudPlanLine(view),
   };
-}
-
-const CLICKS: ReadonlySet<CloudProPopupAction> = new Set(["upgrade", "manage", "see_plans"]);
-
-export function reportCloudProPopup(action: CloudProPopupAction, who: Pick<CloudProPopupView, "plan" | "signedIn" | "email">) {
-  if (who.email && CLICKS.has(action)) identifyEmail(who.email, { submitted: false });
-  track("cloud_pro_popup", { action, plan: who.plan, signed_in: who.signedIn });
 }
 
 const TITLE = "cloud-pro-popup-title";

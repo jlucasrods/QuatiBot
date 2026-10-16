@@ -10,10 +10,9 @@ import { removeTempDir } from "../../testing/cleanup.ts";
 import * as procs from "../../procs.ts";
 import { BACKGROUND_TEXT_TIMEOUT_MS } from "./background-text.ts";
 import { createAcpDriver, type AcpConfig, type AcpSupport } from "./core.ts";
-import { CursorAgentDriver } from "./cursor.ts";
-import { GeminiAgentDriver } from "./gemini.ts";
-import { GrokAgentDriver } from "./grok.ts";
-import { QwenAgentDriver } from "./qwen.ts";
+import { createOpenCodeDriver } from "./opencode-go.ts";
+
+const OpenCodeDriver = createOpenCodeDriver(async () => ({ default: "fixture/model", options: [{ id: "fixture/model", label: "Fixture" }] }));
 
 const FAKE_CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "testing", "fake-acp-cli.ts");
 const ENV_KEYS = ["FAKE_ACP_MODE", "FAKE_ACP_DUMP", "FAKE_ACP_TEXT_REPLY"];
@@ -23,7 +22,7 @@ describe("ACP memory one-shot (generateMemoryText)", () => {
   let scratch: string;
 
   const create = async (driver: ProviderDriver<AcpConfig>) => {
-    instance = await driver.create({ instanceId: "acp-memory-test", displayName: "ACP memory", environment: {}, enabled: true, config: { cli: FAKE_CLI, fullAuto: true } });
+    instance = await driver.create({ instanceId: "acp-memory-test", displayName: "ACP memory", environment: { FAKE_ACP_AGENT_VERSION: "2.0.31" }, enabled: true, config: { cli: FAKE_CLI, fullAuto: true } });
     return instance;
   };
 
@@ -41,10 +40,7 @@ describe("ACP memory one-shot (generateMemoryText)", () => {
   });
 
   it.each([
-    ["grok cli", GrokAgentDriver],
-    ["gemini", GeminiAgentDriver],
-    ["cursor", CursorAgentDriver],
-    ["qwen", QwenAgentDriver],
+    ["OpenCode V2", OpenCodeDriver],
   ])("answers with the engine's own text on %s, in a fresh session with no MCP servers", async (_name, driver) => {
     process.env.FAKE_ACP_TEXT_REPLY = '[{"text":"The person likes jazz","kind":"preference"}]';
     process.env.FAKE_ACP_DUMP = join(scratch, "dump.json");
@@ -63,26 +59,26 @@ describe("ACP memory one-shot (generateMemoryText)", () => {
   it("runs in the interactive mode even on an instance set to full auto", async () => {
     process.env.FAKE_ACP_TEXT_REPLY = "[]";
     process.env.FAKE_ACP_DUMP = join(scratch, "dump.json");
-    await (await create(GrokAgentDriver)).generateMemoryText!("prompt");
+    await (await create(OpenCodeDriver)).generateMemoryText!("prompt");
     const { argv } = JSON.parse(readFileSync(process.env.FAKE_ACP_DUMP, "utf8"));
-    expect(argv.slice(0, 2)).toEqual(["--permission-mode", "default"]);
+    expect(argv).toEqual(["acp"]);
   });
 
   it("fails closed when the agent reaches for a tool", async () => {
-    const engine = await create(GrokAgentDriver);
+    const engine = await create(OpenCodeDriver);
     // the default fake turn streams text and then a tool call
     await expect(engine.generateMemoryText!("prompt")).rejects.toThrow(/tried to use a tool/);
   });
 
   it("refuses a permission request instead of answering it", async () => {
     process.env.FAKE_ACP_MODE = "permission";
-    const engine = await create(GrokAgentDriver);
+    const engine = await create(OpenCodeDriver);
     await expect(engine.generateMemoryText!("prompt")).rejects.toThrow(/may not use|tried to use a tool/);
   });
 
   it("waits as long as the caller's options say", async () => {
     process.env.FAKE_ACP_MODE = "hang";
-    const engine = await create(GrokAgentDriver);
+    const engine = await create(OpenCodeDriver);
     const started = Date.now();
     await expect(engine.generateMemoryText!("prompt", { timeoutMs: 500 })).rejects.toThrow(/timed out/);
     expect(Date.now() - started).toBeLessThan(BACKGROUND_TEXT_TIMEOUT_MS);
@@ -90,7 +86,7 @@ describe("ACP memory one-shot (generateMemoryText)", () => {
 
   it("stops on abort", async () => {
     process.env.FAKE_ACP_MODE = "hang";
-    const engine = await create(GrokAgentDriver);
+    const engine = await create(OpenCodeDriver);
     const controller = new AbortController();
     const pending = engine.generateMemoryText!("prompt", { signal: controller.signal });
     setTimeout(() => controller.abort(), 200);
@@ -99,7 +95,7 @@ describe("ACP memory one-shot (generateMemoryText)", () => {
 
   it.each([false, true])("waits for process shutdown before removing its folder (tool refusal: %s)", async (refused) => {
     if (!refused) process.env.FAKE_ACP_TEXT_REPLY = "[]";
-    const engine = await create(GrokAgentDriver);
+    const engine = await create(OpenCodeDriver);
     const kill = procs.killCliTree;
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });

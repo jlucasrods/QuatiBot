@@ -3,7 +3,7 @@
 // walking up to ./node_modules.
 import { execFile, spawn } from "node:child_process";
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync,  readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -58,6 +58,7 @@ try {
   // A desktop install can live beneath a user's CommonJS package scope.
   writeFileSync(join(staging, "package.json"), '{"type":"commonjs"}\n');
   cpSync(process.env.OMB_SMOKE_DIST ?? join(root, "dist-server"), join(staging, "server"), { recursive: true });
+  cpSync(join(root, "dist"), join(staging, "ui"), { recursive: true });
   if (browserBundle) cpSync(resolve(browserBundle), join(staging, "browser-engine"), { recursive: true });
 } catch (error) {
   for (const directory of [staging, home]) rmSync(directory, { recursive: true, force: true });
@@ -75,6 +76,7 @@ const fixtureEnv = {
   XDG_CACHE_HOME: join(home, ".cache"),
   XDG_DATA_HOME: join(home, ".local", "share"),
   OMB_DATA_DIR: join(home, ".openmausbot"),
+  OMB_STATIC_DIR: join(staging, "ui"),
   OMB_PORT: String(port),
   OMB_WEBHOOK_PORT: String(webhookPort),
   // Not a genuine key: enough to make the server look for its enterprise layer.
@@ -125,6 +127,12 @@ while (Date.now() < deadline) {
 
 let searchReport = null;
 if (listening) {
+  const page = await fetch(`http://127.0.0.1:${port}/`);
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  const script = html.match(/src="([^\"]+\.js)"/)?.[1];
+  assert(script, "The web UI must reference its compiled JavaScript");
+  assert.equal((await fetch(new URL(script, `http://127.0.0.1:${port}`))).status, 200);
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/search?q=packaged-worker-probe`, { signal: AbortSignal.timeout(10_000) });
     searchReport = { status: response.status, body: await response.json() };
@@ -313,72 +321,12 @@ if (listening && process.platform !== "win32") {
   }
 }
 
-// The packaged desktop forks desktop-entry.mjs, which turns on Node's compile
-// cache. Started twice on one cache directory: the first must write the cache
-// while it runs (Windows has no SIGTERM, so a kill skips the exit-time write).
-let desktopEntryReport = null;
-if (listening) {
-  const entryHome = mkdtempSync(join(tmpdir(), "omb-smoke-entry-"));
-  const cacheDir = join(entryHome, "server-compile-cache");
-  const cacheEntries = () => {
-    try {
-      return readdirSync(cacheDir).filter((name) => /^v\d+\.\d+\.\d+-/.test(name))
-        .flatMap((version) => readdirSync(join(cacheDir, version)).map((file) => `${version}/${file}`));
-    } catch { return []; }
-  };
-  desktopEntryReport = { starts: [] };
-  try {
-    for (let round = 0; round < 2; round++) {
-      const [entryPort, entryWebhookPort] = await freePorts(2);
-      const entry = spawn(process.execPath, [join(staging, "server", "desktop-entry.mjs")], {
-        cwd: staging,
-        env: { ...fixtureEnv, HOME: entryHome, USERPROFILE: entryHome, OMB_DATA_DIR: join(entryHome, ".openmausbot"),
-          OMB_PORT: String(entryPort), OMB_WEBHOOK_PORT: String(entryWebhookPort), OMB_SERVER_COMPILE_CACHE: cacheDir },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      let entryOutput = "";
-      entry.stdout.on("data", (chunk) => (entryOutput += chunk));
-      entry.stderr.on("data", (chunk) => (entryOutput += chunk));
-      const exited = new Promise((resolve) => entry.once("exit", (code, signal) => resolve({ code, signal })));
-      let served = false;
-      const until = Date.now() + 45_000;
-      while (Date.now() < until && entry.exitCode === null && !served) {
-        try { served = (await fetch(`http://127.0.0.1:${entryPort}/api/health`, { signal: AbortSignal.timeout(2_000) })).ok; } catch { /* not up yet */ }
-        if (!served) await new Promise((resolve) => setTimeout(resolve, 300));
-      }
-      // The bootstrap writes the cache about 10 s after the server starts.
-      const written = Date.now() + 30_000;
-      while (served && round === 0 && Date.now() < written && entry.exitCode === null && cacheEntries().length === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      }
-      const cached = cacheEntries();
-      entry.kill("SIGTERM");
-      let timer;
-      await Promise.race([exited, new Promise((resolve) => { timer = setTimeout(resolve, 20_000); })]);
-      clearTimeout(timer);
-      if (entry.exitCode === null) entry.kill("SIGKILL");
-      desktopEntryReport.starts.push({ served, cached, output: served ? undefined : entryOutput.slice(-2_000) });
-    }
-  } catch (error) {
-    desktopEntryReport.error = String(error);
-  } finally {
-    try { rmSync(entryHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* the OS will reap it */ }
-  }
-}
-
 cleanup();
 
 if (launcherReport && (launcherReport.error || !launcherReport.serverPid || launcherReport.serverPid === launcherReport.launcherPid ||
   launcherReport.exit?.code !== 0 || launcherReport.stillServing)) {
   console.error("the packaged container launcher did not run the server as its child and stop it cleanly:");
   console.error(JSON.stringify(launcherReport, null, 2));
-  process.exit(1);
-}
-
-if (desktopEntryReport && (desktopEntryReport.error || desktopEntryReport.starts.length !== 2 ||
-  !desktopEntryReport.starts.every((start) => start.served) || desktopEntryReport.starts[0].cached.length === 0)) {
-  console.error("the packaged desktop entry did not start the server twice on a compile cache it wrote:");
-  console.error(JSON.stringify(desktopEntryReport, null, 2));
   process.exit(1);
 }
 
@@ -447,6 +395,5 @@ console.log("packaged MCP stdio server reached the API and flushed its final fra
 console.log("packaged openmausbot doctor and bots answered from the bundle ✓");
 console.log("packaged backup worker exported an encrypted archive ✓");
 if (launcherReport) console.log("packaged container launcher ran the server as its child and stopped it cleanly ✓");
-if (desktopEntryReport) console.log(`packaged desktop entry started the server twice on its compile cache (${desktopEntryReport.starts[0].cached.length} entries) ✓`);
 if (layerShipped) console.log("packaged server found its enterprise layer inside the server dir ✓");
 if (browserBundle) console.log(`packaged browser discovered without installation; access on by default ✓ ${JSON.stringify(browserReport)}`);

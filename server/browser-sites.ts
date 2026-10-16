@@ -1,7 +1,9 @@
 // agent-browser keeps a session's cookies and storage in the running Chrome and in the restore file it autosaves
 // (`<restore key>-<session>.json.enc`, cli/src/native/state.rs: AES-256-GCM under SHA-256 of the key text, 12-byte nonce
 // first, 16-byte tag last); signing out clears both. The key stays in this server process; no bot or page ever sees it.
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { decryptBrowserState, encryptBrowserState } from "./encrypted-state.ts";
+export { decryptBrowserState, encryptBrowserState } from "./encrypted-state.ts";
 import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,24 +51,6 @@ const EMPTY_STATE: SavedState = { cookies: [], origins: [] };
 // Everything an origin keeps but its cookies (deleted one by one) and its
 // tabs' sessionStorage (cleared in the open pages).
 const ORIGIN_STORAGE = "local_storage,indexeddb,websql,cache_storage,service_workers,file_systems";
-
-function stateKey(key: string): Buffer {
-  return createHash("sha256").update(key).digest();
-}
-
-export function decryptBrowserState(data: Buffer, key: string): string {
-  if (data.length < 29) throw new Error("Saved browser state is too short.");
-  const decipher = createDecipheriv("aes-256-gcm", stateKey(key), data.subarray(0, 12));
-  decipher.setAuthTag(data.subarray(data.length - 16));
-  return Buffer.concat([decipher.update(data.subarray(12, data.length - 16)), decipher.final()]).toString("utf8");
-}
-
-export function encryptBrowserState(text: string, key: string): Buffer {
-  const nonce = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", stateKey(key), nonce);
-  const body = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
-  return Buffer.concat([nonce, body, cipher.getAuthTag()]);
-}
 
 function isCookie(value: unknown): value is Cookie {
   const cookie = value as Partial<Cookie> | null;

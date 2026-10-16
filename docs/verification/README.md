@@ -21,7 +21,7 @@ It gives the child a temporary data directory and home, chooses a free
 harness/webhook port pair, installs only the repository's fake engine, prints
 the URL, PID, data directory, and persistent log path, then stays attached to
 that exact child. The parent shell and the user's OpenMausBot data are
-untouched. Only `FAKE_CLAUDE_*` variables cross from the launcher's
+untouched. Only `FAKE_ACP_*` variables cross from the launcher's
 environment into that child, so a recipe can script the fake engine's mode,
 replies and tool calls without writing a wrapper CLI. Live calls add one
 exception: `OMB_OPENAI_LIVE_URL` crosses when it is a loopback
@@ -43,6 +43,10 @@ recipe from sending messages to the user's running app by accident.
 ## Drive
 
 Use only mapped, tested commands:
+
+This fork's engine fixture is OpenCode V2 over ACP. Start with the
+[OpenCode V2 smoke check](../opencode-v2.md#isolated-smoke-check). Upstream recipes
+specific to removed engines are not applicable to this fork.
 
 - [The headless command line](headless-cli.md)
 - [Chat turns](chat-turns.md)

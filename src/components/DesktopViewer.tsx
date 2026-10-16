@@ -34,6 +34,7 @@ export function DesktopViewer() {
   const params = new URLSearchParams(hash.slice(1));
   const target = params.get("target");
   const threadId = params.get("threadId");
+  const readonly = params.get("readonly") === "1";
 
   useEffect(() => {
     setClipboard("");
@@ -50,16 +51,9 @@ export function DesktopViewer() {
     setConnection("connecting");
     const connect = async () => {
       try {
-        if (!target || !/^(local\/(shared|bot-[a-f0-9]{64}|pool-\d+)|vps\/[\w-]+)$/.test(target)) return setConnection("invalid");
+        if (!target || !/^(local\/(shared|bot-[a-f0-9]{64}|pool-\d+))$/.test(target)) return setConnection("invalid");
         const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]);
-        if (target.startsWith("vps/")) {
-          const query = threadId ? `?${new URLSearchParams({ threadId })}` : "";
-          const joined = await fetch(`/api/bots/${target.slice(4)}/computer/join${query}`, {
-            method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal,
-          });
-          if (!joined.ok) throw new Error("join failed");
-          if (controller.signal.aborted) return;
-        }
+
         const path = `/api/desktop-viewer/${target}`;
         const response = await fetch(path, {
           signal,
@@ -74,6 +68,7 @@ export function DesktopViewer() {
           credentials: { password: config.password ?? "", username: "", target: "" },
         });
         rfb.current = client;
+        client.viewOnly = readonly;
         client.scaleViewport = true;
         client.background = "var(--color-inset)";
         client.focusOnClick = panelRef.current === null;
@@ -112,7 +107,7 @@ export function DesktopViewer() {
       window.removeEventListener("pageshow", restore);
       document.title = oldTitle;
     };
-  }, [target, threadId, attempt]);
+  }, [target, threadId, attempt, readonly]);
 
   useEffect(() => {
     if (rfb.current) {

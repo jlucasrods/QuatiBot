@@ -1,4 +1,4 @@
-import type { CloudMoveState } from "../../electron/cloud-move.mjs";
+import type { CloudMoveState } from "../../server/platform/cloud-move.mjs";
 import { hintSeen, type OnboardingStatus, type WelcomeViewer } from "@/lib/onboarding";
 
 export const CLOUD_SETUP_HIDDEN = "cloud-setup-hidden";

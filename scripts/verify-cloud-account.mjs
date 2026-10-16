@@ -12,7 +12,7 @@ const root = fileURLToPath(new URL("..", import.meta.url)), flag = "--omb-cloud-
 if (process.versions.electron && process.argv.includes(flag)) {
   const { app, BrowserWindow, ipcMain, session } = await import("electron");
   const { createServer } = await import("node:http");
-  const { createCloudAccountClient } = await import("../electron/cloud-account.mjs");
+  const { createCloudAccountClient } = await import("../server/platform/cloud-account.mjs");
   const local = createRequire(import.meta.url)("../electron/local-origin.cjs");
   const [preview, output] = process.argv.slice(process.argv.indexOf(flag) + 1), previewOrigin = new URL(preview).origin;
   app.setPath("userData", join(output, "user-data")); app.setPath("sessionData", join(output, "user-data"));

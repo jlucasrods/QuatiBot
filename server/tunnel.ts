@@ -13,22 +13,22 @@ import {
   resolveCompanionControlPlaneURL,
   type CompanionAccountService,
   type CredentialDocument,
-} from "../electron/companion-account-service.mjs";
+} from "./platform/companion-account-service.mjs";
 import {
   cleanupCompanionOriginEndpoint,
   createCompanionOriginEndpoint,
   MANAGED_COMPANION_ORIGIN_PORT,
   type CompanionOriginEndpoint,
-} from "../electron/companion-origin-gateway.mjs";
-import { ControlPlaneError, createControlPlaneClient } from "../electron/control-plane-client.mjs";
+} from "./platform/companion-origin-gateway.mjs";
+import { ControlPlaneError, createControlPlaneClient } from "./platform/control-plane-client.mjs";
 import {
   createManagedCompanionTunnel,
   managedCompanionTunnelAccess,
   resolveCloudflaredBinary,
   type ManagedTunnelAccess,
   type ManagedTunnelState,
-} from "../electron/managed-companion-tunnel.mjs";
-import { createSecureCredentialState } from "../electron/secure-credential-state.mjs";
+} from "./platform/managed-companion-tunnel.mjs";
+import { createSecureCredentialState } from "./platform/secure-credential-state.mjs";
 import { writeFileAtomic } from "./atomic.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

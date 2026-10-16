@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PRO_PLAN_MESSAGE, proPlanEnvironment, proPlanMessage } from "../electron/pro-plan.mjs";
+import { PRO_PLAN_MESSAGE, proPlanEnvironment, proPlanMessage } from "./platform/pro-plan.mjs";
 import { ProPlan } from "./pro-plan.ts";
 
 describe("ProPlan", () => {

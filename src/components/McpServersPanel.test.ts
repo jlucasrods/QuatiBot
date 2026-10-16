@@ -1,104 +1,90 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { Children, createElement, isValidElement, type ReactElement, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, expect, it, vi } from "vitest";
+import { McpServersPanel } from "./McpServersPanel";
+import { Switch } from "./SettingsPrimitives";
 
-import { parseMcpArguments, parseMcpEnvironment, parseMcpHeaders, parseMcpOAuthClient } from "./McpServersPanel";
-import { parseMcpResultBudget, withResultBudget } from "./McpResultBudgetField";
-import { setLocale, t } from "@/lib/i18n";
+const fixture = vi.hoisted(() => ({ values: [] as unknown[], index: 0, effects: [] as Array<() => unknown>, api: vi.fn() }));
+vi.mock("react", async (original) => ({
+  ...await original<typeof import("react")>(),
+  useState: (initial: unknown) => {
+    const index = fixture.index++;
+    if (!(index in fixture.values)) fixture.values[index] = initial;
+    return [fixture.values[index], (next: unknown) => {
+      fixture.values[index] = typeof next === "function" ? next(fixture.values[index]) : next;
+    }];
+  },
+  useEffect: (effect: () => unknown) => { fixture.effects.push(effect); },
+}));
+vi.mock("@/state/store", () => ({ api: fixture.api }));
 
-afterEach(() => setLocale("en"));
-
-describe("MCP server form", () => {
-  it("reads the result size limit: blank is the default, 0 never trims, grouping is fine", () => {
-    expect(parseMcpResultBudget("")).toEqual({ ok: true, value: undefined });
-    expect(parseMcpResultBudget("  ")).toEqual({ ok: true, value: undefined });
-    expect(parseMcpResultBudget("0")).toEqual({ ok: true, value: 0 });
-    expect(parseMcpResultBudget("40000")).toEqual({ ok: true, value: 40_000 });
-    expect(parseMcpResultBudget("40,000")).toEqual({ ok: true, value: 40_000 });
-    expect(parseMcpResultBudget("40 000")).toEqual({ ok: true, value: 40_000 });
-    expect(parseMcpResultBudget("40.000")).toEqual({ ok: true, value: 40_000 });
-    expect(parseMcpResultBudget("1.234.567")).toEqual({ ok: true, value: 1_234_567 });
-    expect(parseMcpResultBudget("40_000")).toEqual({ ok: true, value: 40_000 });
-    // a decimal is refused, never read as a number ten times larger
-    for (const bad of ["-1", "12.5k", "lots", "3000000", "12.5", "1,5", "1.5", "40,00", "1,234.567", "40,0000", ",000"]) {
-      expect(parseMcpResultBudget(bad)).toEqual({ ok: false, error: { key: "mcp.err.resultBudget" } });
-    }
-    expect(t("mcp.resultBudgetHint")).toContain("8,000");
+type Node = ReactElement<{ children?: ReactNode; [key: string]: unknown }>;
+function nodes(value: ReactNode): Node[] {
+  return Children.toArray(value).flatMap((child) => {
+    if (!isValidElement(child)) return [];
+    const node = child as Node;
+    return [node, ...nodes(node.props.children)];
   });
+}
 
-  it("checks the limit before the rest of the form and adds it last, only when set", () => {
-    const body = { ok: true as const, body: { command: "notes-mcp" } };
-    expect(withResultBudget("40,000", () => body)).toEqual({ ok: true, body: { command: "notes-mcp", resultBudget: 40_000 } });
-    expect(withResultBudget("0", () => body)).toEqual({ ok: true, body: { command: "notes-mcp", resultBudget: 0 } });
-    expect(withResultBudget("", () => body)).toEqual(body);
-    const nameMissing = { ok: false as const, error: { key: "mcp.err.nameAndCommand" as const } };
-    expect(withResultBudget("lots", () => nameMissing)).toEqual({ ok: false, error: { key: "mcp.err.resultBudget" } });
-    expect(withResultBudget("40000", () => nameMissing)).toEqual(nameMissing);
+function render() {
+  let tree: ReactNode = null;
+  function Capture() {
+    fixture.index = 0;
+    fixture.effects = [];
+    tree = McpServersPanel();
+    return tree;
+  }
+  const html = renderToStaticMarkup(createElement(Capture));
+  return { html, nodes: nodes(tree) };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  fixture.values = [];
+  fixture.index = 0;
+  fixture.effects = [];
+  fixture.api.mockResolvedValue({
+    servers: [{ name: "notes", type: "local", status: "configured", enabled: true }],
+    plugins: [{ name: "opencode-dcp" }], skills: [{ id: "review", name: "Review" }],
   });
+});
 
-  it("uses one explicit argument per line", () => {
-    expect(parseMcpArguments("-y\n  @scope/server  \n\n--read-only")).toEqual([
-      "-y",
-      "@scope/server",
-      "--read-only",
-    ]);
-  });
+it("loads global extensions and switches an MCP only for MausBot", async () => {
+  render();
+  for (const effect of fixture.effects) effect();
+  await Promise.resolve();
+  expect(fixture.api).toHaveBeenCalledWith("/api/opencode/extensions", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  const loaded = render();
+  expect(loaded.html).toContain("notes");
+  const toggle = loaded.nodes.find((node) => node.type === Switch)!;
+  expect(toggle.props.checked).toBe(true);
+  await (toggle.props.onClick as () => Promise<void>)();
+  await Promise.resolve();
+  expect(fixture.api).toHaveBeenLastCalledWith("/api/mcp/servers/notes", { method: "PATCH", body: JSON.stringify({ enabled: false }) });
+  expect(render().nodes.find((node) => node.type === Switch)!.props.checked).toBe(false);
+});
 
-  it("preserves write-only saved values without putting them back in the form", () => {
-    expect(parseMcpEnvironment("TOKEN=\nMODE=read-only", ["TOKEN"])).toEqual({
-      ok: true,
-      env: { TOKEN: true, MODE: "read-only" },
-    });
-  });
+it.each(["plugins", "skills"])("shows %s without configuration controls", async (tab) => {
+  render();
+  for (const effect of fixture.effects) effect();
+  await Promise.resolve();
+  const button = render().nodes.find((node) => node.props.id === `extension-tab-${tab}`)!;
+  (button.props.onClick as () => void)();
+  const selected = render();
+  expect(selected.html).toContain(tab === "plugins" ? "opencode-dcp" : "Review");
+  expect(selected.nodes.some((node) => node.type === Switch)).toBe(false);
+});
 
-  it("rejects malformed and duplicate environment names", () => {
-    expect(parseMcpEnvironment("NOT A KEY=value")).toEqual({
-      ok: false,
-      error: { key: "mcp.env.invalidName", params: { key: "NOT A KEY" } },
-    });
-    expect(parseMcpEnvironment("TOKEN=one\nTOKEN=two")).toEqual({
-      ok: false,
-      error: { key: "mcp.env.duplicate", params: { key: "TOKEN" } },
-    });
-  });
-
-  it("reads headers as Name: value lines, keeping saved values behind blanks", () => {
-    expect(parseMcpHeaders("Authorization: Bearer abc:def\nX-Org:acme\n\nCookie: ", ["Cookie"])).toEqual({
-      ok: true,
-      headers: { Authorization: "Bearer abc:def", "X-Org": "acme", Cookie: true },
-    });
-    expect(parseMcpHeaders("Authorization Bearer x")).toEqual({
-      ok: false,
-      error: { key: "mcp.headers.useColon", params: { line: "Authorization Bearer x" } },
-    });
-    expect(parseMcpHeaders("Bad Header: x")).toEqual({
-      ok: false,
-      error: { key: "mcp.headers.invalidName", params: { key: "Bad Header" } },
-    });
-    expect(parseMcpHeaders("X-A: 1\nX-A: 2")).toEqual({
-      ok: false,
-      error: { key: "mcp.headers.duplicate", params: { key: "X-A" } },
-    });
-  });
-
-  it("sends a sign-in app only with a client id, keeping a saved secret behind a blank", () => {
-    const blank = { clientId: "", clientSecret: "", scopes: "", forgetSecret: false };
-    expect(parseMcpOAuthClient(blank)).toBeUndefined();
-    expect(parseMcpOAuthClient({ ...blank, clientId: "  corp-app ", scopes: "offline_access, api://x/read  " })).toEqual({
-      clientId: "corp-app",
-      scopes: ["offline_access", "api://x/read"],
-    });
-    expect(parseMcpOAuthClient({ ...blank, clientId: "corp-app" }, { clientSecretConfigured: true })).toEqual({ clientId: "corp-app", clientSecret: true });
-    expect(parseMcpOAuthClient({ ...blank, clientId: "corp-app", forgetSecret: true }, { clientSecretConfigured: true })).toEqual({ clientId: "corp-app" });
-    expect(parseMcpOAuthClient({ ...blank, clientId: "corp-app", clientSecret: "new" }, { clientSecretConfigured: true })).toEqual({ clientId: "corp-app", clientSecret: "new" });
-  });
-
-  it("retains the offending input while an existing error changes language", () => {
-    setLocale("de");
-    const result = parseMcpEnvironment("TOKEN_WITHOUT_EQUALS");
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("Expected an environment error");
-
-    expect(t(result.error.key, result.error.params)).toContain("TOKEN_WITHOUT_EQUALS");
-    setLocale("en");
-    expect(t(result.error.key, result.error.params)).toBe('Use KEY=value for “TOKEN_WITHOUT_EQUALS”.');
-  });
+it("keeps the previous activation visible when saving fails", async () => {
+  render();
+  for (const effect of fixture.effects) effect();
+  await Promise.resolve();
+  fixture.api.mockRejectedValueOnce(new Error("unavailable"));
+  const toggle = render().nodes.find((node) => node.type === Switch)!;
+  await (toggle.props.onClick as () => Promise<void>)();
+  await Promise.resolve();
+  const failed = render();
+  expect(failed.nodes.find((node) => node.type === Switch)!.props.checked).toBe(true);
+  expect(failed.html).toContain('role="alert"');
 });

@@ -12,13 +12,7 @@ import type { ProviderDriver } from "../../contracts.ts";
 import { removeTempDir } from "../../testing/cleanup.ts";
 import { recordEvents } from "../../testing/events.ts";
 import type { AcpConfig } from "./core.ts";
-import { CustomAcpDriver } from "./custom.ts";
-import { DroidAgentDriver } from "./droid.ts";
-import { GeminiAgentDriver } from "./gemini.ts";
-import { HermesAgentDriver } from "./hermes.ts";
-import { KimiAgentDriver } from "./kimi.ts";
-import { createOpenCodeDriver, openCodeOwnedDirectories } from "./opencode-go.ts";
-import { QwenAgentDriver } from "./qwen.ts";
+import { createOpenCodeDriver } from "./opencode-go.ts";
 
 const FAKE_CLI = join(dirname(fileURLToPath(import.meta.url)), "../../testing/fake-acp-cli.ts");
 const OpenCodeDriver = createOpenCodeDriver(async () => ({
@@ -34,12 +28,6 @@ describe("remaining ACP approval mappings", () => {
     native?: Partial<Record<ApprovalMode, string[]>>;
   }[] = [
     { driver: OpenCodeDriver, argv: ["acp"] },
-    { driver: GeminiAgentDriver, argv: ["--acp"], native: { full: ["--yolo"] } },
-    { driver: QwenAgentDriver, argv: ["--acp"], native: { full: ["--yolo"], auto: ["--approval-mode", "auto"] } },
-    { driver: KimiAgentDriver, argv: ["acp"] },
-    { driver: HermesAgentDriver, argv: ["acp"] },
-    { driver: DroidAgentDriver, argv: ["exec", "-o", "acp"] },
-    { driver: CustomAcpDriver, argv: [] },
   ];
   it.each(cases)("$driver.driverKind preserves residual requests across Full → Auto → Ask", async ({ driver, argv, native }) => {
     ensureDirs();
@@ -53,14 +41,14 @@ describe("remaining ACP approval mappings", () => {
       environment: {
         HOME: scratch,
         USERPROFILE: scratch,
-        HERMES_HOME: join(scratch, ".hermes"),
-        KIMI_CODE_HOME: join(scratch, ".kimi"),
+        FAKE_ACP_AGENT_NAME: "OpenCode",
+        FAKE_ACP_AGENT_VERSION: "2.0.31",
         OPENMAUSBOT_PROBE_LOCAL_INJECT: "0",
         FAKE_ACP_MODE: "permission",
         FAKE_ACP_DUMP: dump,
         FAKE_ACP_RPC_DUMP: rpcDump,
         OPENCODE_API_KEY: "fixture-only",
-        OPENCODE_PERMISSION: '{"external_directory":"ask"}',
+        OPENCODE_CONFIG_CONTENT: '{"permissions":[{"action":"external_directory","resource":"*","effect":"ask"}]}',
       },
       config: { cli: FAKE_CLI, fullAuto: true },
     });
@@ -84,14 +72,11 @@ describe("remaining ACP approval mappings", () => {
         // A pooled child never rewrites its spawn dump: argv and env are evidence only for a real spawn.
         if (respawned) {
           expect(JSON.parse(readFileSync(dump, "utf8")).argv).toEqual([...argv, ...(native?.[approvalMode] ?? [])]);
-          if (driver === OpenCodeDriver) {
-            const permission = JSON.parse(JSON.parse(readFileSync(dump, "utf8")).env.OPENCODE_PERMISSION);
-            if (approvalMode === "full") expect(permission).toMatchObject({ "*": "allow", external_directory: "allow", read: "allow", bash: "allow", edit: "allow" });
-            else expect(permission).toEqual({ external_directory: {
-              "*": "ask",
-              ...Object.fromEntries(openCodeOwnedDirectories().flatMap((directory) => [[directory, "allow"], [join(directory, "*"), "allow"]])),
-            } });
-          }
+          const permissions = JSON.parse(JSON.parse(readFileSync(dump, "utf8")).env.OPENCODE_CONFIG_CONTENT).permissions;
+          expect(permissions).toEqual([
+            { action: "external_directory", resource: "*", effect: "ask" },
+            ...(approvalMode === "full" ? [{ action: "*", resource: "*", effect: "allow" }] : []),
+          ]);
         }
         // A respawn rewrites the rpc dump and a reuse appends to it, so only methods past the baseline are this turn's.
         const methods = JSON.parse(readFileSync(rpcDump, "utf8")) as string[];
@@ -102,13 +87,6 @@ describe("remaining ACP approval mappings", () => {
           expect(turnMethods).toContain("session/prompt");
           expect(turnMethods).not.toContain("session/new");
           expect(turnMethods).not.toContain("session/load");
-        }
-        if (driver === DroidAgentDriver) {
-          const settings = JSON.parse(readFileSync(`${dump}.config.json`, "utf8"));
-          expect(settings[0]).toEqual({
-            method: "session/set_mode",
-            params: { sessionId: "fake-acp-session", modeId: approvalMode === "full" ? "auto-high" : "normal" },
-          });
         }
         expect(await instance.adapter.respondToRequest("approval-matrix-thread", opened.requestId!, { behavior: "deny" }))
           .toBe("rejected");

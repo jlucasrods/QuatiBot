@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServerSupervisor } from "../electron/server-supervisor.mjs";
 import { pollServerIdentity } from "../electron/server-boot-probe.mjs";
-import { acquireDataDirLease } from "../electron/data-dir-lease.mjs";
+import { acquireDataDirLease } from "../server/platform/data-dir-lease.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const flag = "--omb-server-recovery-fixture";

@@ -5,7 +5,7 @@ import { useShowThreads } from "@/lib/thread-preferences";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { teamMapStatus, type TeamMapSection } from "@/lib/team-map";
-import { COMPUTER_DRAG_TYPE, fitTeams, layoutTeams, orderBots, parseBotOrders, parsePositions, reorderBot, zoomAt, type Point, type View } from "@/lib/team-canvas";
+import { fitTeams, layoutTeams, orderBots, parseBotOrders, parsePositions, reorderBot, zoomAt, type Point, type View } from "@/lib/team-canvas";
 import { BotAvatar } from "./Avatar";
 import { InstanceProviderMark, ProviderMark } from "./ProviderIcons";
 
@@ -72,7 +72,7 @@ function BotCard({ bot, selected, moving, connected, onComputer, onArrange }: {
   </article>;
 }
 
-export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemory, onEditTeam, onDeleteTeam, onComputer, onComputerDrop, onTeamComputer, teamComputers = {}, connectedBotIds = [] }: {
+export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemory, onEditTeam, onDeleteTeam, onComputer, connectedBotIds = [] }: {
   sections: TeamMapSection<Bot>[];
   canManage: boolean;
   onMove: (bot: Bot, destination: string) => Promise<boolean | void>;
@@ -82,9 +82,6 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
   onDeleteTeam: (section: string) => void;
   isEmpty: (section: string) => boolean;
   onComputer?: (bot: Bot) => void;
-  onComputerDrop?: (resourceId: string, sectionKey: string) => void;
-  onTeamComputer?: (sectionKey: string) => void;
-  teamComputers?: Record<string, { name: string; state?: string }>;
   connectedBotIds?: string[];
 }) {
   const { state } = useStore();
@@ -98,7 +95,6 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
   const [view, setView] = useState<View>({ x: 40, y: 40, scale: 1 });
   const [dragged, setDragged] = useState<{ bot: Bot; point: Point } | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
-  const [computerDropKey, setComputerDropKey] = useState<string | null>(null);
   const [insertion, setInsertion] = useState<{ botId: string; after: boolean } | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -294,8 +290,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
     if (bounds) setView(zoomAt(view, Math.max(0.3, Math.min(1.5, view.scale * factor)), { x: bounds.width / 2, y: bounds.height / 2 }));
   };
   const dropSection = sections.find((section) => section.key === dropKey);
-  const dropHint = computerDropKey !== null ? t("canvas.assignComputer", { team: sections.find((section) => section.key === computerDropKey)?.name ?? computerDropKey })
-    : dragged && dropSection ? (dragged.bot.section?.trim() ?? "") === dropSection.key
+  const dropHint = dragged && dropSection ? (dragged.bot.section?.trim() ?? "") === dropSection.key
       ? t("canvas.arrangeBot", { name: dragged.bot.name, team: dropSection.name }) : t("canvas.moveBot", { name: dragged.bot.name, team: dropSection.name })
       : null;
 
@@ -303,27 +298,6 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
     className="relative min-h-0 flex-1 touch-none overflow-clip outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40"
     style={{ backgroundImage: "radial-gradient(circle, color-mix(in srgb, var(--color-ink-secondary) 18%, transparent) 1px, transparent 1px)", backgroundSize: `${24 * view.scale}px ${24 * view.scale}px`, backgroundPosition: `${view.x}px ${view.y}px` }}
     onPointerDown={start} onPointerMove={move} onPointerUp={(event) => finish(event)} onPointerCancel={(event) => finish(event, true)}
-    onDragOver={(event) => {
-      if (!canManage || !onComputerDrop || !event.dataTransfer.types.includes(COMPUTER_DRAG_TYPE)) return;
-      const target = (event.target as HTMLElement).closest<HTMLElement>("[data-team-key]");
-      const key = target && event.currentTarget.contains(target) ? target.dataset.teamKey ?? null : null;
-      setComputerDropKey(key);
-      if (key !== null) { event.preventDefault(); event.dataTransfer.dropEffect = "link"; }
-    }}
-    onDragLeave={(event) => {
-      if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setComputerDropKey(null);
-    }}
-    onDrop={(event) => {
-      setComputerDropKey(null);
-      if (!canManage || !onComputerDrop || !event.dataTransfer.types.includes(COMPUTER_DRAG_TYPE)) return;
-      const target = (event.target as HTMLElement).closest<HTMLElement>("[data-team-key]");
-      const key = target && event.currentTarget.contains(target) ? target.dataset.teamKey : undefined;
-      const resourceId = event.dataTransfer.getData(COMPUTER_DRAG_TYPE);
-      if (key === undefined || !sections.some((section) => section.key === key) || !resourceId) return;
-      event.preventDefault();
-      onComputerDrop(resourceId, key);
-    }}
-    onDragEnd={() => setComputerDropKey(null)}
     onPointerDownCapture={(event) => {
       keyboardFocus.current = false;
       if (!(event.target as HTMLElement).closest("details")) event.currentTarget.querySelectorAll("details[open]").forEach((element) => element.removeAttribute("open"));
@@ -356,8 +330,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
       {sections.map((section, index) => {
         const tile = tiles[index];
         const hierarchy = section.chiefs.length > 0 && section.members.length > 0;
-        const dropping = computerDropKey === section.key || (dragged && dropKey === section.key && (dragged.bot.section?.trim() ?? "") !== section.key);
-        const computer = Object.hasOwn(teamComputers, section.key) ? teamComputers[section.key] : undefined;
+        const dropping = (dragged && dropKey === section.key && (dragged.bot.section?.trim() ?? "") !== section.key);
         const renderBot = (bot: Bot) => <div key={bot.id} className="relative">
           {insertion?.botId === bot.id && <div className={cn("pointer-events-none absolute inset-x-1 h-0.5 rounded bg-accent", insertion.after ? "-bottom-[9px]" : "-top-[9px]")} />}
           <BotCard bot={bot} selected={state.selectedId === bot.id && state.settingsOpen} moving={dragged?.bot.id === bot.id || moving === bot.id}
@@ -378,11 +351,6 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
               }}>
               <h2 className="truncate text-[13px] font-semibold tracking-tight">{section.name}</h2>
             </button>
-            {computer && <button aria-label={t("canvas.teamComputer", { team: section.name, name: computer.name })} title={`${computer.name}${computer.state ? ` · ${computer.state}` : ""}`}
-              disabled={!onTeamComputer} onClick={() => onTeamComputer?.(section.key)}
-              className="flex min-w-0 max-w-[120px] shrink items-center gap-1.5 rounded-md px-1.5 py-2 text-[10px] text-ink-secondary hover:bg-control hover:text-ink focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none">
-              <Monitor size={12} className="shrink-0" /><span className="truncate">{computer.name}</span>
-            </button>}
             <span className="text-[11px] tabular-nums text-ink-secondary">{section.chiefs.length + section.members.length}</span>
             {canManage && <details className="relative" onToggle={(event) => {
               if (event.currentTarget.open) {

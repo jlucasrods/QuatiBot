@@ -15,7 +15,7 @@ vi.mock("@/lib/sidebar-preferences", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/sidebar-preferences")>(),
   useSidebarToolsLayout: () => fixture.toolsLayout,
 }));
-import { SidebarAppsButton, SidebarFooterNav } from "./SidebarFooterNav";
+import { SidebarFooterNav } from "./SidebarFooterNav";
 
 type Props = { children?: ReactNode; [key: string]: unknown };
 function nodes(value: ReactNode): ReactElement<Props>[] {
@@ -43,7 +43,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("sidebar footer places", () => {
-  it.each(["comfortable", "compact"] as const)("shows Routines and Triggers as direct rows in Advanced mode, with Apps beside the profile instead (%s)", (density) => {
+  it.each(["comfortable", "compact"] as const)("shows Routines and Triggers as direct rows in Advanced mode (%s)", (density) => {
     fixture.advanced = true;
     const { html } = render(density);
     const order = ["routines", "triggers", "team-map"].map((id) => html.indexOf(`data-sidebar-nav="${id}"`));
@@ -56,13 +56,6 @@ describe("sidebar footer places", () => {
   it.each(["comfortable", "compact"] as const)("draws no place rows at all in Simple mode (%s)", (density) => {
     const { html } = render(density);
     expect(html).toBe("");
-  });
-
-  it("keeps Simple mode's Apps on the avatars-only rail, without Routines or Triggers", () => {
-    const { html } = render("icons");
-    expect(html).toContain('aria-label="Apps" title="Apps"');
-    expect(html).not.toContain('data-sidebar-nav="routines"');
-    expect(html).not.toContain('data-sidebar-nav="triggers"');
   });
 
   it("opens each place through the store", () => {
@@ -164,19 +157,6 @@ describe("Tools header", () => {
     fixture.advanced = true;
     expect(render("comfortable").html).toContain('data-tour="tools"');
     expect(render("comfortable", { collapsed: true }).html).toContain('data-tour="tools"');
-  });
-});
-
-describe("Apps beside the profile", () => {
-  it.each([false, true])("is one icon button that opens Apps and carries the tour's Apps anchor (advanced: %s)", (advanced) => {
-    fixture.advanced = advanced;
-    let tree!: ReturnType<typeof SidebarAppsButton>;
-    function Capture() { tree = SidebarAppsButton(); return tree; }
-    const html = renderToStaticMarkup(createElement(Capture));
-    expect(html).toMatch(/data-tour="nav-apps" data-sidebar-nav="apps"/);
-    expect(html).toContain('aria-label="Apps"');
-    (tree.props.onClick as () => void)();
-    expect(fixture.dispatch).toHaveBeenLastCalledWith({ type: "togglePlugins", open: true });
   });
 });
 

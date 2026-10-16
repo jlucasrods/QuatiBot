@@ -1,8 +1,21 @@
-import type { CloudAccountState, CloudPlanSnapshot } from "../../electron/cloud-account.mjs";
-import type { CloudCredit, CloudOffer, CloudOfferPlan, CloudSetupStep, CloudTrial, CloudTrialState } from "../../electron/cloud-home.mjs";
+import type { CloudAccountState, CloudPlanSnapshot } from "../../server/platform/cloud-account.mjs";
+import type { CloudCredit, CloudOffer, CloudOfferPlan, CloudSetupStep, CloudTrial, CloudTrialState } from "../../server/platform/cloud-home.mjs";
 import { activeLocale, t } from "@/lib/i18n";
 
 const PLAN_LABEL: Record<string, string> = { personal: "Personal", pro: "Pro", max: "Max" };
+
+export type CloudPlanFacts = { plan: "personal" | "pro" | "max" | "other" | "none" | "unknown"; trial?: boolean };
+
+export function cloudPlanFromAccount(account: CloudAccountState | null | undefined): CloudPlanFacts {
+  if (account?.status === "signed-out" && account.message !== "restoring") return { plan: "none" };
+  if (account?.status !== "connected") return { plan: "unknown" };
+
+  const paid = account.entitlement?.plan === "pro" && account.entitlement.status === "active";
+  const tier = account.entitlement?.tier;
+  const plan = tier === undefined ? "pro" : tier === "personal" || tier === "pro" || tier === "max" ? tier : "other";
+  return { plan: paid ? plan : "none", trial: trialRunning(account.trial) };
+}
+
 export function cloudPlanLabel(tier?: string): string {
   return tier === undefined ? "Pro" : Object.hasOwn(PLAN_LABEL, tier) ? PLAN_LABEL[tier] : "Cloud";
 }

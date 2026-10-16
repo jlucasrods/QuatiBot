@@ -1,5 +1,5 @@
 // The desktop app hands this server only the plan answer (OMB_PRO_PLAN, then its private parent port), never the account.
-import { liveCallsAllowed, proPlanFromEnvironment, proPlanFromMessage } from "../electron/pro-plan.mjs";
+import { liveCallsAllowed, proPlanFromEnvironment, proPlanFromMessage } from "./platform/pro-plan.mjs";
 
 export class ProPlan {
   private known: boolean;

@@ -1,6 +1,3 @@
-// Windows differences for agent CLIs: CreateProcess cannot exec .cmd/.bat shims or shebang scripts (env-path
-// resolves them without a shell), there is no process-group kill (taskkill /T), GUI-spawned consoles flash without
-// windowsHide, and the command line is capped at 32,767 characters (prompts go on stdin or in files).
 import {
   spawn,
   execFile,
@@ -16,29 +13,6 @@ import { resolveCliSpawn, type ResolvedSpawn } from "./env-path.ts";
 
 export function resolveCli(cli: string, args: string[] = [], env?: NodeJS.ProcessEnv): ResolvedSpawn {
   return resolveCliSpawn(cli, args, env);
-}
-
-/** Headroom below CreateProcess' 32,767 UTF-16 code-unit limit for libuv's quoting and executable expansion. */
-export const WINDOWS_SAFE_COMMAND_LINE_CHARS = 30_000;
-
-export function estimatedWindowsCommandLineChars(resolved: ResolvedSpawn): number {
-  return [resolved.command, ...resolved.args].reduce(
-    (total, value) => total + JSON.stringify(value).length + 1,
-    0,
-  );
-}
-
-export function assertSafeCliArgv(
-  resolved: ResolvedSpawn,
-  platform: NodeJS.Platform = process.platform,
-): void {
-  if (platform !== "win32") return;
-  if (estimatedWindowsCommandLineChars(resolved) <= WINDOWS_SAFE_COMMAND_LINE_CHARS) return;
-  const error = new Error(
-    "agent CLI launch arguments exceed Windows' safe command-line limit; pass large prompts through stdin or a file",
-  ) as NodeJS.ErrnoException;
-  error.code = "ENAMETOOLONG";
-  throw error;
 }
 
 // Only spawnCli makes a private POSIX group; a plain child may share ours, so never signal its group.
@@ -76,16 +50,14 @@ export function spawnCli(
   owner: CliOwner = "openmausbot",
 ): ChildProcessByStdio<Writable, Readable, Readable> {
   const resolved = resolveCli(cli, args);
-  assertSafeCliArgv(resolved);
   const child = spawn(resolved.command, resolved.args, {
     ...opts,
-    // POSIX: own group so kill(-pid) reaps child MCP servers; Windows: taskkill /T does it.
-    ...(process.platform === "win32" ? { windowsHide: true } : { detached: true }),
+    detached: true,
   }) as ChildProcessByStdio<Writable, Readable, Readable>;
-  if (process.platform !== "win32") cliGroups.add(child);
-  if (process.platform !== "win32" && owner === "bot") rememberEngineSession(child);
+  cliGroups.add(child);
+  if (owner === "bot") rememberEngineSession(child);
 
-  // On Windows a stdin write between taskkill and pipe close errors asynchronously; unlistened, that crashes the harness.
+  // A process can close stdin before the final buffered write completes.
   child.stdin?.on("error", () => {});
   return child;
 }
@@ -97,13 +69,7 @@ export function execCli(
   cb: (err: Error | null, stdout: string, stderr?: string) => void,
 ): void {
   const resolved = resolveCli(cli, args);
-  try {
-    assertSafeCliArgv(resolved);
-  } catch (error) {
-    queueMicrotask(() => cb(error instanceof Error ? error : new Error(String(error)), "", ""));
-    return;
-  }
-  execFile(resolved.command, resolved.args, { ...opts, windowsHide: true, encoding: "utf8" }, (err, stdout, stderr) =>
+  execFile(resolved.command, resolved.args, { ...opts, encoding: "utf8" }, (err, stdout, stderr) =>
     cb(err, stdout, stderr),
   );
 }
@@ -119,11 +85,6 @@ export function describeSpawnFailure(err: NodeJS.ErrnoException, cli: string, cw
   }
   if (err.code === "EACCES" || err.code === "EPERM")
     return { message: `\`${cli}\` isn't executable — check its file permissions`, setup: true };
-  if (err.code === "ENAMETOOLONG")
-    return {
-      message: `\`${cli}\` received too much launch data for Windows; update this provider or pass its prompt through stdin/a file`,
-      setup: false,
-    };
   return { message: `spawn failed: ${err.message}`, setup: false };
 }
 
@@ -144,7 +105,7 @@ export function killCliTree(child: ChildProcess, timeoutMs = 5_000): Promise<boo
 
 async function stopCliTree(child: ChildProcess, pid: number, timeoutMs: number): Promise<boolean> {
   const exited = () => child.exitCode !== null || child.signalCode !== null;
-  if (process.platform !== "win32") {
+
     const group = cliGroups.has(child);
     const settled = () => {
       if (!exited()) return false;
@@ -182,42 +143,7 @@ async function stopCliTree(child: ChildProcess, pid: number, timeoutMs: number):
     signal("SIGTERM");
     if (await wait(timeoutMs)) return true;
     signal("SIGKILL");
-    return wait(1_000);
-  }
-
-  if (exited()) return true;
-
-  return new Promise((resolve) => {
-    let timer: NodeJS.Timeout;
-    let finished = false;
-    const done = (stopped: boolean) => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timer);
-      child.off("close", closed);
-      child.off("exit", closed);
-      resolve(stopped);
-    };
-    const closed = () => done(true);
-    child.once("close", closed);
-    timer = setTimeout(() => done(false), timeoutMs);
-    timer.unref?.();
-
-    execFile("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }, (err) => {
-      if (finished) return;
-      if (!err) {
-        // taskkill can finish before Node sees the exit, and callers may rename the executable at once: wait for both, not for inherited pipes.
-        if (exited()) done(true);
-        else child.once("exit", closed);
-        return;
-      }
-      try {
-        child.kill();
-      } catch {
-      }
-    });
-  });
-}
+    return wait(1_000);}
 
 function exitOrDelay(child: ChildProcess, ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -242,8 +168,5 @@ export async function waitForExit(child: ChildProcess, ms: number): Promise<bool
 
 /** Unix socket on POSIX, named pipe on Windows (Node cannot listen on a filesystem socket path there: EACCES). */
 export function brokerSocketPath(dataDir: string, tag: string): string {
-  return process.platform === "win32"
-    // Named pipes share a global namespace that DATA_DIR cannot isolate.
-    ? `\\\\.\\pipe\\openmausbot-perm-${process.pid}-${tag}`
-    : join(dataDir, `perm-${tag}.sock`);
+  return join(dataDir, `perm-${tag}.sock`);
 }

@@ -20,7 +20,6 @@ export interface ControlOptions {
   companionPort: number;
   /** HPKE recipient public key shown in pairing QRs; the private key never
    * leaves Electron's encrypted store. */
-  secretPublicKey?: () => string | null;
   hostedUrl?: () => string | null;
   /** Electron publishes a route after its connector health check succeeds
    * and withdraws it on connector loss. */
@@ -156,7 +155,6 @@ export function companionState(options: Omit<ControlOptions, "controlToken">) {
   const publicNetwork = pairing && lead && (options.publicNetworks ?? publicNetworks)().has(lead.name)
     ? lead.name
     : null;
-  const secretPublicKey = options.secretPublicKey?.() ?? null;
   return {
     // Lets a parent tell this sidecar from an unrelated process on the control port.
     pid: process.pid,
@@ -174,7 +172,6 @@ export function companionState(options: Omit<ControlOptions, "controlToken">) {
       name,
       currentHostedUrl(options),
     ),
-    ...(secretPublicKey ? { secretPublicKey } : {}),
     pairing: pairing ? { code: pairing.code, token: pairing.token, expiresAt: pairing.expiresAt } : null,
     devices: options.devices.list(),
     // An empty list from an unreadable file must not read as "nothing paired".

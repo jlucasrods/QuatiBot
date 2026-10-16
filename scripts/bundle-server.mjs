@@ -35,14 +35,10 @@ const ENTRY_POINTS = [
   // Imported directly by the packaged smoke probes. An explicit root sibling,
   // because tsc may emit its own copy under dist-server/server/.
   "proxy-paths.ts",
-  "local-computer.ts",
-  "local-computer-proxy.ts",
   // the hook helper Claude Code runs at PostToolUse/PreCompact/SessionStart/Stop
   "hooks/omb-hook.ts",
   "container-mcp.ts",
-  "vps-container-mcp.ts",
   "permission-proxy.ts",
-  "connector-proxy.ts",
   "mcp-gate.ts",
   "mcp-remote-proxy.ts",
   "harness-mcp-proxy.ts",
@@ -55,7 +51,7 @@ await build({
   entryPoints: ENTRY_POINTS.map((entry) => join(server, entry)),
   bundle: true,
   platform: "node",
-  target: "node20",
+  target: "node24",
   format: "esm",
   outbase: server,
   outdir: join(root, "dist-server"),
@@ -81,7 +77,7 @@ await build({
 // `openmausbot serve --tunnel` spawns the connector guardian as its own
 // process, so it must exist as a file beside the server.
 await build({
-  entryPoints: [join(root, "electron", "managed-companion-guardian-main.mjs")],
+  entryPoints: [join(server, "platform", "managed-companion-guardian-main.mjs")],
   bundle: true,
   platform: "node",
   target: "node20",
@@ -121,9 +117,6 @@ if (existsSync(join(root, "enterprise", "server", "index.ts"))) {
   copyFileSync(join(root, "enterprise", "LICENSE"), join(root, "dist-server", "enterprise", "LICENSE"));
 }
 
-// The packaged desktop forks this bootstrap to turn on Node's compile cache.
-// Copied, not bundled: esbuild would inline index.js into it.
-copyFileSync(join(root, "scripts", "desktop-server-entry.mjs"), join(root, "dist-server", "desktop-entry.mjs"));
 
 // The model catalog snapshot (server/model-catalog/catalog.ts) is read from
 // disk, not inlined: 1.5 MB of JSON has no place in index.js. The bundle looks
@@ -132,15 +125,4 @@ const catalogSnapshot = join(root, "dist-server", "model-catalog", "models-dev.s
 mkdirSync(dirname(catalogSnapshot), { recursive: true });
 copyFileSync(join(server, "model-catalog", "models-dev.snapshot.json"), catalogSnapshot);
 
-// Pi loads this through its own jiti and supplies TypeBox. Inline our local
-// policy module so the extension also works without the source checkout;
-// keep the Pi-owned dependency external and retain the .ts loading contract.
-const piMcpExtSrc = join(server, "drivers", "pi-mcp-extension.ts");
-const piMcpExtDest = join(root, "dist-server", "drivers", "pi-mcp-extension.ts");
-mkdirSync(dirname(piMcpExtDest), { recursive: true });
-await build({ entryPoints: [piMcpExtSrc], outfile: piMcpExtDest, bundle: true,
-  platform: "node", target: "node24", format: "esm", external: ["typebox"], });
-
-// Desktop resources live outside app.asar, so its package.json cannot mark
-// these .js bundles as ESM. Do not inherit a user's CommonJS package scope.
 writeFileSync(join(root, "dist-server", "package.json"), '{"type":"module"}\n');

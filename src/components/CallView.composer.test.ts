@@ -43,7 +43,7 @@ vi.mock("@/lib/local-voice", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/local-voice")>(),
   localSystemVoiceActive: () => false,
 }));
-vi.mock("@/lib/analytics", () => ({ track: fixture.track }));
+
 // Stands in for the open state a click would set; SSR cannot click.
 vi.mock("./MenuMotion", async (importOriginal) => ({
   ...await importOriginal<typeof import("./MenuMotion")>(),

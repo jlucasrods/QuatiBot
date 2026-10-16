@@ -26,7 +26,7 @@ vi.mock("@/lib/interface-mode", () => ({
   useAdvancedMode: () => fixture.advancedMode,
   setAdvancedMode: vi.fn(),
 }));
-vi.mock("@/lib/analytics", () => ({ analyticsEnabled: () => false, setAnalyticsEnabled: vi.fn() }));
+
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => fixture.ownerOrAdmin }));
 vi.mock("./SettingsPrimitives", async (importOriginal) => {
   const original = await importOriginal<typeof import("./SettingsPrimitives")>();
@@ -53,8 +53,6 @@ vi.mock("./ApiKeys", () => ({
 }));
 vi.mock("./RemoteComputerSection", () => ({ RemoteComputerSection: marker("companion") }));
 vi.mock("./CustomDomainSettings", () => ({ CustomDomainSettings: () => null }));
-vi.mock("./CompanionSection", () => ({ CompanionSection: () => null }));
-vi.mock("./ServerPairingCard", () => ({ ServerPairingCard: () => null }));
 vi.mock("./ConnectedWorkspacesSettings", () => ({ ConnectedWorkspacesSettings: marker("desktopWorkspaces") }));
 vi.mock("./LocalComputerSection", () => ({ LocalComputerSection: marker("computer") }));
 vi.mock("./CloudAccountSettings", () => ({ CloudAccountSettings: marker("cloudAccount") }));
@@ -120,15 +118,14 @@ describe("Settings in Simple mode", () => {
     expect(blocks(html)).toEqual(["general"]);
   });
 
-  it("stacks Model providers, API keys and Decision model on AI, each under its heading", () => {
+  it("stacks Model providers and Decision model on AI, each under its heading", () => {
     fixture.section = "engines";
     const html = render();
     expect(currentPage(html)).toBe("ai");
-    expect(blocks(html)).toEqual(["engines", "connections", "decisionModel"]);
+    expect(blocks(html)).toEqual(["engines", "decisionModel"]);
     const headings = [...html.matchAll(/<h3[^>]*>([^<]+)<\/h3>/g)].map((match) => match[1]);
-    expect(headings).toEqual(["Model providers", "API keys", "Decision model"]);
+    expect(headings).toEqual(["Model providers", "Decision model"]);
     expect(markers(html).filter((name) => name === "engines" || name === "decisionModel")).toEqual(["engines", "decisionModel"]);
-    expect(html).toContain("More providers for OpenCode bots");
   });
 
   it("stacks Remote access, Servers, Local VM, the built-in browser and Logins on Computers", () => {
@@ -189,7 +186,7 @@ describe("Settings in Simple mode", () => {
     fixture.section = section;
     const html = render();
     expect(currentPage(html)).toBe(page);
-    expect(blocks(html)).toContain(section === "remote" ? "companion" : section);
+    expect(blocks(html)).toContain(section === "remote" ? "companion" : section === "connections" ? "engines" : section);
   });
 
   it.each<[AppSettingsSection, string]>([
@@ -209,8 +206,8 @@ describe("Settings in Simple mode", () => {
     const scrollIntoView = vi.fn();
     const querySelector = vi.fn(() => ({ scrollIntoView }));
     const scroller = { scrollTop: 320, querySelector };
-    revealSettingsBlock(scroller, "connections", 1);
-    expect(querySelector).toHaveBeenCalledWith('[data-settings-block="connections"]');
+    revealSettingsBlock(scroller, "decisionModel", 1);
+    expect(querySelector).toHaveBeenCalledWith('[data-settings-block="decisionModel"]');
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
     revealSettingsBlock(scroller, "engines", 0);
     expect(scroller.scrollTop).toBe(0);

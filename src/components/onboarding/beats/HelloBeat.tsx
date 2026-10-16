@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { identifyEmail, track } from "@/lib/analytics";
+
 import { t } from "@/lib/i18n";
 import { api, useStore } from "@/state/store";
 import { inputClass, PrimaryButton, QuietButton, staggerIndex, type BeatProps } from "./shared";
@@ -26,7 +26,7 @@ export function HelloBeat({ onNext, onSkip, hosted = false }: BeatProps & { host
         signal: AbortSignal.timeout(10_000),
       });
       dispatch({ type: "configStatus", config });
-      identifyEmail(trimmedEmail);
+
       onNext();
     } catch {
       setFailed(true);
@@ -80,7 +80,7 @@ export function HelloBeat({ onNext, onSkip, hosted = false }: BeatProps & { host
       </PrimaryButton>
       <QuietButton
         onClick={() => {
-          track("email_skipped");
+
           onSkip();
         }}
         className="animate-rise mt-3"

@@ -195,6 +195,8 @@ export interface AcpSupport {
   modelVariants?: boolean;
   /** Default CLI binary name if the instance config doesn't override it. */
   defaultCli: string;
+  /** Required major release of the native CLI and ACP agent. */
+  minimumMajorVersion?: number;
   /** Optional live model catalog; a failed lookup keeps the last usable one. `config` lets a
    *  support ask the binary it will spawn, not whatever is on PATH. */
   resolveModels?(
@@ -278,8 +280,8 @@ export interface AcpSupport {
   /** Mutate the child env once the turn model is known; catalog refresh and snapshot see only `transformEnv`. */
   applyTurnEnv?(
     env: Record<string, string | undefined>,
-    ctx: { model?: string; requestedModel?: string; fullAuto: boolean; botId?: string; cwd: string; toolScope?: SendTurnInput["toolScope"]; threadId: string; mcpServers: Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }> },
-  ): void;
+    ctx: { cli: string; openCodeMcp?: Record<string, boolean>; model?: string; requestedModel?: string; fullAuto: boolean; botId?: string; cwd: string; toolScope?: SendTurnInput["toolScope"]; threadId: string; mcpServers: Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }> },
+  ): void | Promise<void>;
   /** The authenticate methodId from initialize's authMethods; null skips authenticate. */
   pickAuthMethod(authMethods: Array<{ id?: string }>, env: Record<string, string | undefined>): string | null;
   /** "fail": abort if auth is missing/errors (subscription CLIs).
@@ -1300,7 +1302,8 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         }
         const resolvedModel = support.resolveTurnModel?.(turn.model, env);
         const mcpServers = acpMcpServers(turn);
-        support.applyTurnEnv?.(env, {
+        await support.applyTurnEnv?.(env, {
+          cli: turnConfig.cli, openCodeMcp: turn.openCodeMcp,
           model: resolvedModel, requestedModel: turn.model, fullAuto: turnConfig.fullAuto === true, botId: turn.botId, cwd, toolScope: turn.toolScope,
           threadId, mcpServers,
         });
@@ -1497,6 +1500,11 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                   },
                   INIT_TIMEOUT,
                 );
+              }
+              if (support.minimumMajorVersion !== undefined) {
+                const version = session.initResult?.agentInfo?.version;
+                const major = typeof version === "string" ? Number(version.match(/(?:^|v)(\d+)\./u)?.[1]) : NaN;
+                if (major !== support.minimumMajorVersion) throw new Error(`${support.displayName} requires version ${support.minimumMajorVersion}.x.`);
               }
               if (!skipSubscriptionAuthForLocalInject(turn.model) && !session.authenticated) {
                 const methods: Array<{ id?: string }> = Array.isArray(session.initResult?.authMethods)
@@ -1895,6 +1903,9 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           });
         });
         if (!probe.version) return { state: "unavailable", reason: probe.reason };
+        if (support.minimumMajorVersion !== undefined && Number(probe.version.match(/(?:^|v|\s)(\d+)\./u)?.[1]) !== support.minimumMajorVersion) {
+          return { state: "unavailable", reason: `${support.displayName} requires version ${support.minimumMajorVersion}.x.` };
+        }
         return { state: "available", version: probe.version, authenticated: await support.isAuthenticated(env, config, instanceId) };
       };
 
@@ -1910,7 +1921,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         const cwd = mkdtempSync(join(tmpdir(), "omb-acp-memory-"));
         try {
           const turn = { threadId: `memory-text-${newId()}`, text: prompt, approvalMode: "ask", cwd } as SendTurnInput;
-          support.applyTurnEnv?.(env, { fullAuto: false, cwd, threadId: turn.threadId, mcpServers: [] });
+          await support.applyTurnEnv?.(env, { cli: config.cli, fullAuto: false, cwd, threadId: turn.threadId, mcpServers: [] });
           const launch = support.resolveCommand ? await support.resolveCommand(env, turnConfig, instanceId) : { command: turnConfig.cli };
           const spawnEnv = launch.env ?? env;
           return await runAcpOneShot({
@@ -1968,11 +1979,9 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           capabilities: {
             sessionModelSwitch: "unsupported",
             agentsMcp: true,
-        customMcp: true,
             computerMcp: true,
-            composioMcp: true,
             browserMcp: true,
-            dataMcp: true, highlevelMcp: true,
+            dataMcp: true,
             images: support.images !== false,
             nativeImageInput: support.images === true,
             effortLevels: support.effortLevels,

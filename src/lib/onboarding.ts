@@ -71,7 +71,7 @@ export function hintSeenPatch(
 }
 
 
-export type BeatId = "hello" | "reel" | "engines" | "permissions" | "phone" | "bot";
+export type BeatId = "hello" | "reel" | "engines" | "permissions" | "bot";
 
 export interface BeatOptions {
   dictation: boolean;
@@ -85,7 +85,7 @@ export function beatsFor(options: BeatOptions): BeatId[] {
   if (options.reel) beats.push("reel");
   beats.push("engines");
   if (options.dictation) beats.push("permissions");
-  beats.push("phone", "bot");
+  beats.push("bot");
   return beats;
 }
 
@@ -105,8 +105,6 @@ export function beatWidth(beat: BeatId): number {
   switch (beat) {
     case "engines":
       return 680;
-    case "phone":
-      return 620;
     case "reel":
       return 720;
     case "bot":

@@ -2,7 +2,6 @@
 import { soulSystemPrompt } from "./bot-folder.ts";
 import { agentsToolBridged } from "./drivers/agents-bridge.ts";
 import { teammateAvailabilityPrompt, type RosterMember } from "./peer-roster.ts";
-import type { ConnectorToolGrant } from "../shared/wire.ts";
 import { loginLabel, type LoginPlace } from "../shared/logins.ts";
 import { isConversational, type ReplyStyle } from "../shared/reply-style.ts";
 
@@ -132,26 +131,6 @@ function syncedFoldersPrompt(synced: ReadonlyArray<{ computerName: string; pcPat
   const shown = synced.slice(0, 20).map((folder) => `${clean(folder.pcPath, 300)} on ${clean(folder.computerName, 80)} → ${clean(folder.cloudPath, 300)}`).join("; ");
   return ` Folders the person shares from their computer, as read-only copies kept up to date here: ${shown}${synced.length > 20 ? `; and ${synced.length - 20} more` : ""}.`
     + " A path on that computer inside one of these means its copy here. Read from these copies, never change or delete files in them: save your work in your own working folder; the person gets it on their computer in Documents › MausBot.";
-}
-
-export const COMPOSIO_PROMPT =
-  " The user's connected apps (Gmail, Calendar, Slack, Notion, and the rest) are reachable through the composio tools — find the right one with COMPOSIO_SEARCH_TOOLS, read its arguments with COMPOSIO_GET_TOOL_SCHEMAS, then run it with COMPOSIO_MULTI_EXECUTE_TOOL. Reach for them before telling the user you have no access to a service.";
-
-export function composioSystemPrompt(grants: Record<string, ConnectorToolGrant> | undefined): string {
-  if (grants === undefined) return COMPOSIO_PROMPT;
-  const services = Object.keys(grants);
-  if (services.length === 0) {
-    return " No connected apps are assigned to this bot. If a task needs one, or an app's sign-in has expired, call COMPOSIO_MANAGE_CONNECTIONS to show the user a card that connects it, and ask them to allow that app for this bot in OpenMausBot.";
-  }
-  const named = services.map(connectorServiceLabel).join(", ");
-  return ` The user's connected apps assigned to this bot (${named}) are reachable through the composio tools — find the right one with COMPOSIO_SEARCH_TOOLS, read its arguments with COMPOSIO_GET_TOOL_SCHEMAS, then run it with COMPOSIO_MULTI_EXECUTE_TOOL. Only the tools this bot was granted will run; when a needed tool is refused, tell the user and ask them to grant it in OpenMausBot. Reach for the granted services before telling the user you have no access.`;
-}
-
-function connectorServiceLabel(slug: string): string {
-  return slug
-    .split(/[-_]+/)
-    .map((part) => (part ? part[0]!.toUpperCase() + part.slice(1) : part))
-    .join(" ");
 }
 
 export function customMcpPrompt(names: string[]): string {

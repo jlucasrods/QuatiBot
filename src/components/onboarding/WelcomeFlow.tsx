@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { MausAvatar } from "@/components/Avatar";
 import { useDesktopCapabilities } from "@/components/DesktopCapabilities";
-import { setEmailGateDone, track } from "@/lib/analytics";
+import { setEmailGateDone } from "@/lib/onboarding-status";
 import { brand } from "@/lib/brand";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -20,7 +20,6 @@ import { EnginesBeat } from "./beats/EnginesBeat";
 import { HelloBeat } from "./beats/HelloBeat";
 import { MeetYourBotBeat } from "./beats/MeetYourBotBeat";
 import { PermissionsBeat } from "./beats/PermissionsBeat";
-import { PhoneBeat } from "./beats/PhoneBeat";
 import { QuietButton } from "./beats/shared";
 import { withViewTransition } from "./view-transition";
 import { ProgressDots } from "./ProgressDots";
@@ -31,7 +30,6 @@ const MASCOT_FOR_BEAT: Record<BeatId, MausState> = {
   reel: "curious",
   engines: "searching",
   permissions: "listening",
-  phone: "sending",
   bot: "celebrate",
 };
 
@@ -47,8 +45,6 @@ function beatTitle(beat: BeatId): string | null {
       return t("onboarding.bot.title");
     case "reel":
       return t("onboarding.reel.title");
-    case "phone":
-      return t("onboarding.phone.title");
   }
 }
 
@@ -96,7 +92,7 @@ export function WelcomeFlow({
   }, []);
 
   useEffect(() => {
-    track("onboarding_step", { step: beat, replay });
+
   }, [beat, replay]);
 
   const go = useCallback(
@@ -111,10 +107,10 @@ export function WelcomeFlow({
   );
 
   const finish = useCallback(
-    async (reason: "completed" | "skipped") => {
+    async () => {
       if (finishing.current) return;
       finishing.current = true;
-      track("onboarding_completed", { reason, at: beat, replay });
+
       setEmailGateDone("submitted");
       onDone();
       try {
@@ -130,13 +126,13 @@ export function WelcomeFlow({
   const previous = previousBeat(beats, beat);
   const advance = useCallback(() => {
     if (next) go(next);
-    else void finish("completed");
+    else void finish();
   }, [next, go, finish]);
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      void finish("skipped");
+      void finish();
       return;
     }
     if (event.key !== "Tab" || !cardRef.current) return;
@@ -190,7 +186,7 @@ export function WelcomeFlow({
         className="welcome-card relative flex max-h-full w-full flex-col overflow-y-auto rounded-2xl border border-hairline/40 bg-panel p-5 sm:p-8 shadow-[0_30px_80px_-28px_rgba(0,0,0,0.45),0_8px_24px_-12px_rgba(0,0,0,0.25)] outline-none"
         style={{ maxWidth: beatWidth(beat) }}
       >
-        <QuietButton onClick={() => void finish("skipped")} className="absolute right-4 top-4">
+        <QuietButton onClick={() => void finish()} className="absolute right-4 top-4">
           {t("onboarding.skipTour")}
         </QuietButton>
 
@@ -221,11 +217,10 @@ export function WelcomeFlow({
           {beat === "reel" && <FeatureReel {...beatProps} />}
           {beat === "engines" && <EnginesBeat {...beatProps} hosted={hosted} onOpenOrganisation={onOpenOrganisation} />}
           {beat === "permissions" && <PermissionsBeat {...beatProps} />}
-          {beat === "phone" && <PhoneBeat {...beatProps} />}
           {beat === "bot" && (
             <MeetYourBotBeat
               bot={bot}
-              onFinish={() => void finish("completed")}
+              onFinish={() => void finish()}
               setMascot={setMascot}
               bump={bump}
             />

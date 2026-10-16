@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { createCloudMove, mintOwnerCode } from "../electron/cloud-move.mjs";
+import { createCloudMove, mintOwnerCode } from "./platform/cloud-move.mjs";
 import { cloudPairingSignature } from "./cloud-home.ts";
 import { RESTART_EXIT_CODE } from "./restart.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";

@@ -6,7 +6,6 @@ import type { ModelSelection, ProviderInstance } from "../contracts.ts";
 import type { Coordinator } from "../coordinator.ts";
 import type { Handoffs } from "../delta-context.ts";
 import type { hostedModelPolicy } from "../hosted-models.ts";
-import type { PhoneSecretSubmissionRegistry } from "../phone-secret.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { RoutineManager } from "../routines.ts";
 import type { SkillReview } from "../skill-review.ts";
@@ -38,7 +37,6 @@ export interface TaskRouteDeps {
   handoffs: Pick<Handoffs, "forget">;
   skillReview: Pick<SkillReview, "dropThread">;
   threadStarters: Pick<ThreadStarters, "set">;
-  phoneSecretSubmissions: Pick<PhoneSecretSubmissionRegistry, "hasBot" | "hasThread">;
   titleRegenerations: Pick<Set<string>, "has" | "add" | "delete">;
   directTurnGenerationByThread: ReadonlyMap<string, string>;
   actorKey(auth: RequestAuth & { kind: "session" }): string;
@@ -69,7 +67,7 @@ export interface TaskRouteDeps {
 
 export function createTaskRoutes(deps: TaskRouteDeps): RouteHandler {
   const {
-    store, hostedModels, coordinator, handoffs, skillReview, threadStarters, phoneSecretSubmissions, titleRegenerations,
+    store, hostedModels, coordinator, handoffs, skillReview, threadStarters, titleRegenerations,
     directTurnGenerationByThread, actorKey, cloudOwnerSession, cloudThreadRefusal, sharedWorkspaceFullAccessEnabled,
     supportsApprovalMode, threadBusy, publicBot, wireBot, wireTask, pageSize, messagePage, checkedModelSelection,
     checkedTaskModelSwitch, threadTitleGate, generateThreadTitle, settleDirectFollowup, clearTurnDigestState,
@@ -83,9 +81,6 @@ export function createTaskRoutes(deps: TaskRouteDeps): RouteHandler {
     if (!store.taskByThread(botId, threadId)) return { status: 404, error: "no such task" };
     const notYours = cloudThreadRefusal(auth, threadId);
     if (notYours) return { status: 403, error: notYours };
-    if (phoneSecretSubmissions.hasThread(threadId)) {
-      return { status: 409, error: "this task is securely saving a credential — try again when it finishes" };
-    }
     if (threadBusy(botId, threadId) || deps.routines()!.isActiveThread(threadId)) {
       return { status: 409, error: "this task is running — stop it first" };
     }
@@ -179,9 +174,6 @@ export function createTaskRoutes(deps: TaskRouteDeps): RouteHandler {
         }
         if (bot.approvalGrant) return json(res, 409, { error: "the bot's approval mode is still being confirmed" });
       }
-      if (phoneSecretSubmissions.hasBot(bot.id)) {
-        return json(res, 409, { error: "this bot is securely saving a credential — try again when it finishes" });
-      }
       if (body.projectId !== undefined && (typeof body.projectId !== "string" || !store.project(bot.id, body.projectId))) {
         return json(res, 400, { error: "projectId must belong to this bot" });
       }
@@ -213,9 +205,6 @@ export function createTaskRoutes(deps: TaskRouteDeps): RouteHandler {
     if (m && method === "POST") {
       const bot = store.bot(m[1]);
       if (!bot) return json(res, 404, { error: "no such bot" });
-      if (phoneSecretSubmissions.hasBot(bot.id)) {
-        return json(res, 409, { error: "this bot is securely saving a credential — try again when it finishes" });
-      }
       // Navigation only: execution owns its thread, never this selected id.
       const requestedMessages = url.searchParams.get("messages");
       const switchLimit = pageSize(requestedMessages);
