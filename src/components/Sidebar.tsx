@@ -19,7 +19,6 @@ import { BulkSelectFilters, ThreadListFooter, deleteThreadsInBulk, useBulkSelect
 import { StackedMauses } from "./StackedMauses";
 import { WorkingDots } from "./WorkingIndicator";
 import { nextRename } from "@/lib/rename";
-import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { MIN_QUERY, SearchResults } from "./SearchResults";
 import { TeamLibraryPanel } from "./TeamLibraryPanel";
 import { SidebarNewChatPanel } from "./SidebarNewChatPanel";
@@ -56,8 +55,6 @@ import { usePopoverDismiss } from "@/hooks/use-popover-dismiss";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { PinnedBotRoster, PinnedCircleThreadSection } from "./PinnedCircleThreads";
 export { PinnedBotCircle, PinnedCircleThreadPanel, PinnedCircleThreadSection } from "./PinnedCircleThreads";
-/** Coupled to electron/window-chrome.mjs: trafficLightPosition.y = 16 and 14px-tall buttons. */
-export const MAC_TRAFFIC_LIGHT_CENTER_Y = 23;
 const SECTION_LABEL_KEYS: Record<string, LocaleKey> = {
     [PINNED_SECTION_ID]: "sidebar.section.pinned",
     [CHANNELS_SECTION_ID]: "sidebar.section.channels",
@@ -1209,7 +1206,6 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
     const { state, dispatch } = useStore();
     const now = useRelativeNow();
     const showThreads = useShowThreads();
-    const { capabilities } = useDesktopCapabilities();
     const importReturnRef = useRef<HTMLButtonElement>(null);
     const sidebarRef = useRef<HTMLElement>(null);
     const [confirm, setConfirm] = useState<{
@@ -1414,18 +1410,6 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
             setTeamFeedback({ error: true, text: cause instanceof Error ? cause.message : String(cause) });
         }
     };
-    const macInset = capabilities.windowChrome === "mac-inset";
-    const browser = capabilities.host.label === "Browser";
-    const draggableChrome = macInset || capabilities.windowChrome === "win-caption";
-    // SAFETY: Electron's -webkit-app-region is not in React's CSSProperties type; the renderer accepts it as an inline
-    // style.
-    const windowDragStyle = draggableChrome
-        ? ({ WebkitAppRegion: "drag" } as React.CSSProperties)
-        : undefined;
-    // SAFETY: interactive buttons must opt out of the draggable title-bar region.
-    const windowNoDragStyle = draggableChrome
-        ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties)
-        : undefined;
     const q = query.trim().toLowerCase();
     const matchingBots = state.bots
         .filter((b) => !b.hidden)
@@ -1539,21 +1523,9 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
         "max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40", "max-md:transition-transform max-md:duration-200", open ? "max-md:translate-x-0" : "max-md:-translate-x-full")}>
       <GlassScrollFrame className="flex-1">
       <GlassBar edge="top">
-      <div data-sidebar-top-row className={cn("flex items-center", density === "icons" ? "flex-col gap-1 px-2 pt-3.5 pb-1" : "relative pl-4 pr-2", density !== "icons" && !macInset && "h-12")} style={density !== "icons" && macInset ? { ...windowDragStyle, height: MAC_TRAFFIC_LIGHT_CENTER_Y * 2 } : windowDragStyle}>
-        {macInset ? (
-        // The macOS 26 traffic lights span 16-76px; nothing clickable starts before 88px.
-        <div aria-hidden="true" data-traffic-light-space className={density === "icons" ? "h-5 w-full" : "w-[72px] shrink-0"}/>) : browser ? (<div className={cn("flex shrink-0 items-center gap-2", density !== "icons" && "mr-3")}>
-            <span className="size-3 rounded-full bg-[#ff5f57]"/>
-            <span className="size-3 rounded-full bg-[#febc2e]"/>
-            <span className="size-3 rounded-full bg-[#28c840]"/>
-          </div>) : null}
-        {density !== "icons" && (<div data-sidebar-top-slot className="@container/sidebar-top flex min-w-0 flex-1 items-center">
-            <div data-sidebar-top-spacer className="min-w-0 flex-1 @min-[96px]/sidebar-top:min-w-6"/>
-            <div data-sidebar-top-switcher className="flex min-w-0 max-w-[140px] items-center">
-              {null}
-            </div>
-          </div>)}
-        <div data-sidebar-top-buttons className={cn("relative flex shrink-0 items-center", density === "icons" ? "flex-col gap-1" : "ml-0.5 gap-0.5")} style={windowNoDragStyle}>
+      <div data-sidebar-top-row className={cn("flex items-center", density === "icons" ? "flex-col gap-1 px-2 pt-3.5 pb-1" : "relative h-12 pl-4 pr-2")}>
+        {density !== "icons" && <div data-sidebar-top-spacer className="min-w-0 flex-1"/>}
+        <div data-sidebar-top-buttons className={cn("relative flex shrink-0 items-center", density === "icons" ? "flex-col gap-1" : "ml-0.5 gap-0.5")}>
           {!collapseToIcons && (advanced || density === "icons") && <button type="button" onClick={toggleCollapsed} aria-label={density === "icons" ? t("sidebar.density.expand") : t("sidebar.density.collapseAria")} className={cn("flex items-center justify-center text-ink-secondary hover:bg-raised hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus", density === "icons" ? "size-[46px] shrink-0 rounded-xl" : "size-8 rounded-md")} title={density === "icons" ? t("sidebar.density.expand") : t("sidebar.density.collapse")}>
             {density === "icons" ? <PanelLeftOpen size={20}/> : <PanelLeftClose size={17}/>}
           </button>}
@@ -1653,7 +1625,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
       {density !== "icons" && (<SidebarPinnedThreadsPanel entries={pinnedThreads} density={density} now={now} onJump={(entry) => dispatch(attentionJumpAction(entry))} onUnpin={(entry) => dispatch(attentionUnpinAction(entry))} collapsed={sectionCollapsed(PINNED_THREADS_SECTION_ID)} onToggle={layoutInteractive ? () => toggleSection(PINNED_THREADS_SECTION_ID) : undefined}/>)}
       </GlassBar>
 
-      {density !== "icons" && <div role="separator" aria-label={t("sidebar.resize")} aria-orientation="vertical" aria-valuemin={240} aria-valuemax={maxSidebarWidth} aria-valuenow={Math.min(sidebarWidth ?? defaultWidth, maxSidebarWidth)} tabIndex={0} data-sidebar-resize className="absolute inset-y-0 -right-1 z-20 hidden w-2 cursor-col-resize touch-none hover:bg-accent/20 focus-visible:bg-accent/30 md:block" style={windowNoDragStyle} onPointerDown={(event) => {
+      {density !== "icons" && <div role="separator" aria-label={t("sidebar.resize")} aria-orientation="vertical" aria-valuemin={240} aria-valuemax={maxSidebarWidth} aria-valuenow={Math.min(sidebarWidth ?? defaultWidth, maxSidebarWidth)} tabIndex={0} data-sidebar-resize className="absolute inset-y-0 -right-1 z-20 hidden w-2 cursor-col-resize touch-none hover:bg-accent/20 focus-visible:bg-accent/30 md:block" onPointerDown={(event) => {
                 if (event.button !== 0)
                     return;
                 event.preventDefault();
@@ -1837,7 +1809,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
         }}/>
       {newRoom && <NewRoomPanel onClose={() => setNewRoom(false)}/>}
       {/* Portaled: below md the sidebar's translate makes it the containing block for fixed children. */}
-      {newChatOpen && createPortal(<SidebarNewChatPanel anchor={sidebarRef.current} style={windowNoDragStyle} onClose={() => setNewChatOpen(false)} onNewBot={() => { setNewChatOpen(false); dispatch({ type: "toggleNewBot", open: true }); }} onNewGroup={() => { setNewChatOpen(false); setNewRoom(true); }}/>, document.body)}
+      {newChatOpen && createPortal(<SidebarNewChatPanel anchor={sidebarRef.current} onClose={() => setNewChatOpen(false)} onNewBot={() => { setNewChatOpen(false); dispatch({ type: "toggleNewBot", open: true }); }} onNewGroup={() => { setNewChatOpen(false); setNewRoom(true); }}/>, document.body)}
       {archivedBotsOpen && (<ArchivedBotsPanel bots={archivedBots} onClose={() => setArchivedBotsOpen(false)} onRestored={(message) => setTeamFeedback({ error: false, text: message })}/>)}
       {teamLibraryOpen && (<TeamLibraryPanel returnFocusRef={importReturnRef} initialUrl={teamInstallUrl ?? undefined} onClose={() => {
                 setTeamLibraryOpen(false);
