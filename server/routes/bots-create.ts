@@ -5,7 +5,6 @@ import { parseVisibility } from "../bot-visibility.ts";
 import type { createCloudRoutineAuthors } from "../cloud-lending.ts";
 import type { AppConfig } from "../config.ts";
 import type { ModelSelection } from "../contracts.ts";
-import type { hostedModelPolicy } from "../hosted-models.ts";
 import { MAX_MCP_SERVERS, mcpServerNameError } from "../mcp-registry.ts";
 import { journalMemoryWrite } from "../memory-journal.ts";
 import { resolveBotCreationDefaults } from "../new-bot-defaults.ts";
@@ -30,7 +29,6 @@ export interface BotCreateRouteDeps {
   desktopManaged: boolean;
   maxWorkspaceBots: number;
   cloudOwnerKey: string | null;
-  hostedModels: ReturnType<typeof hostedModelPolicy>;
   cloudRoutineAuthors: ReturnType<typeof createCloudRoutineAuthors> | null;
   routines(): RoutineManager | null;
   storedAvatarExists(avatarUrl: string): boolean;
@@ -44,8 +42,7 @@ export function createBotCreateRoutes(deps: BotCreateRouteDeps): RouteHandler {
   const {
     store, cfg, presetStore, orgInstallStatuses,
     hostedWorkspace: HOSTED_WORKSPACE, hostedFullAccessRefusal: HOSTED_FULL_ACCESS_REFUSAL, desktopManaged: DESKTOP_MANAGED,
-    maxWorkspaceBots: MAX_WORKSPACE_BOTS, cloudOwnerKey: CLOUD_OWNER_KEY,
-    hostedModels, cloudRoutineAuthors,
+    maxWorkspaceBots: MAX_WORKSPACE_BOTS, cloudOwnerKey: CLOUD_OWNER_KEY, cloudRoutineAuthors,
     storedAvatarExists, defaultSelection, checkedModelSelection, cloudOwnerSession, wireBot,
   } = deps;
   return async ({ req, res, path, method, auth, json, readBody }) => {
@@ -124,7 +121,6 @@ export function createBotCreateRoutes(deps: BotCreateRouteDeps): RouteHandler {
         if (!checked.ok) return json(res, checked.status, { error: checked.error });
         selection = checked.selection;
       }
-      if (hostedModels && !hostedModels.allows(selection)) return json(res, 400, { error: hostedModels.error() });
       // The capacity check sits beside the synchronous write, after every await.
       if (store.bots.length >= MAX_WORKSPACE_BOTS) {
         return json(res, 409, { error: `this workspace is limited to ${MAX_WORKSPACE_BOTS} bots` });

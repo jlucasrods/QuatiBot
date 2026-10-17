@@ -18,7 +18,6 @@ export interface InstanceRouteDeps {
   registry: Pick<ProviderRegistry, "get" | "refreshModels" | "installRuntime" | "cliTarget">;
   sessions: Pick<SessionRegistry, "isLive">;
   providerAuthSessions: Pick<ProviderAuthSessions, "status" | "start" | "revokeOwner" | "signOut" | "complete" | "cancel">;
-  hostedModels: boolean;
   providerConfigBusy: BusyFlag;
   providerInstancesChanging: Pick<Set<string>, "add" | "delete">;
   describeInstances(): Promise<unknown>;

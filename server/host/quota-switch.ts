@@ -2,7 +2,6 @@ import type { ResolvedSender } from "../../shared/wire.ts";
 import type { InstanceConfigMap } from "../contracts.ts";
 import type { DataContext } from "../data-context.ts";
 import type { ProviderRegistry } from "../harness/registry.ts";
-import type { hostedModelPolicy } from "../hosted-models.ts";
 import { resolvePeerComms, type ApprovalBus } from "../peer-approval.ts";
 import { createQuotaSwitch, type QuotaRequest, type QuotaSwitchDeps } from "../quota-switch.ts";
 import type { BotRecord, Message } from "../store.ts";
@@ -11,7 +10,6 @@ import type { UsageTrigger } from "../usage-ledger.ts";
 export interface QuotaSwitchHostDeps extends Pick<QuotaSwitchDeps, "store" | "coordinator" | "turnStops"> {
   registry: Pick<ProviderRegistry, "instances" | "access">;
   approvalBus: ApprovalBus;
-  hostedModels: ReturnType<typeof hostedModelPolicy>;
   providerConfigs(): InstanceConfigMap;
   policyModelRefusal(instance: { instanceId: string; driverKind: string }): string | undefined;
   checkedTaskModelSwitch(
@@ -27,7 +25,7 @@ export interface QuotaSwitchHostDeps extends Pick<QuotaSwitchDeps, "store" | "co
 
 export function createQuotaSwitchHost(deps: QuotaSwitchHostDeps) {
   const {
-    store, coordinator, registry, turnStops, approvalBus, hostedModels, providerConfigs, policyModelRefusal,
+    store, coordinator, registry, turnStops, approvalBus, providerConfigs, policyModelRefusal,
     checkedTaskModelSwitch, threadBusy, directRequestOwners, startOrQueueDirectMessage,
   } = deps;
 
@@ -36,7 +34,6 @@ export function createQuotaSwitchHost(deps: QuotaSwitchHostDeps) {
     access: instanceId => providerConfigs()[instanceId]?.access ?? registry.access(instanceId),
     refusal: policyModelRefusal,
     gate: (thread, selection) => checkedTaskModelSwitch(thread, selection, false, false, true),
-    reset: (from, to) => hostedModels?.resetTask(from, to),
     busy: threadBusy,
     request: threadId => directRequestOwners.get(threadId),
     resend: (botId, threadId, message, replyTo, spoken) => startOrQueueDirectMessage(botId, threadId, message.text ?? "", replyTo, undefined, message.sender, undefined, spoken.via, spoken.callId, message.dataContext),
