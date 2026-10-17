@@ -1,21 +1,15 @@
-// Stage the Data engine's native modules outside ASAR, one tree per platform
-// and CPU (dist-native/duckdb/<platform>-<arch>/node_modules/): DuckDB, resvg,
-// and the 1Password SDK, which reads its WebAssembly core from beside itself so
-// cannot be bundled either. Each tree holds exactly the pinned DuckDB version: a
-// binding and its libduckdb must come from the same release. Each single-arch
-// mac app keeps only its slice of the universal libduckdb.dylib and re-signs it.
+// Native DuckDB and resvg binaries and 1Password's WebAssembly core must remain
+// outside the JavaScript bundle, beside their matching package versions.
 import { execFile } from "node:child_process";
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { resolveCuaMacArches } from "./cua-mac-arches.mjs";
-import { LIPO_ARCH, isMachO, machOArchs, writeThinMachO } from "./mac-thin.mjs";
 
 const run = promisify(execFile);
 const SCOPE = "@duckdb";
 export const DUCKDB_PACKAGES = ["node-api", "node-bindings"];
-export const LIBRARY_FILE = { darwin: "libduckdb.dylib", linux: "libduckdb.so", win32: "duckdb.dll" };
+export const LIBRARY_FILE = { linux: "libduckdb.so" };
 
 /** The 1Password SDK and the core it requires, pinned together. */
 export const ONEPASSWORD_SCOPE = "@1password";
@@ -34,11 +28,10 @@ export function platformPackage(platform, arch) {
   return `node-bindings-${platform}-${arch}`;
 }
 
-/** resvg (napi-rs) names its platform packages by target triple, not by
- *  platform-arch; the Electron targets map to these. */
+/** resvg names its Linux packages by target triple. */
 export const RESVG_SCOPE = "@resvg";
 export const RESVG_PACKAGE = "resvg-js";
-const RESVG_TARGETS = { "darwin-arm64": "darwin-arm64", "darwin-x64": "darwin-x64", "win32-x64": "win32-x64-msvc", "linux-x64": "linux-x64-gnu", "linux-arm64": "linux-arm64-gnu" };
+const RESVG_TARGETS = { "linux-x64": "linux-x64-gnu", "linux-arm64": "linux-arm64-gnu" };
 export function resvgPlatformPackage(platform, arch) {
   const target = RESVG_TARGETS[`${platform}-${arch}`];
   if (!target) throw new Error(`No resvg build for ${platform}-${arch}`);
@@ -93,27 +86,23 @@ export function installedPackage(nodeModules, name, scope = SCOPE, anchors = ["n
   return null;
 }
 
-/** Fetch the exact platform package the host never installs (the other mac
- *  arch) into the cache, once per version. */
+/** Fetch the exact native package for a cross-architecture Linux build. */
 export async function packedPackage(name, version, cache, scope = SCOPE) {
   const directory = join(cache, `${name}-${version}`);
   if (existsSync(join(directory, "package.json")) && packageVersion(directory) === version) return directory;
   rmSync(directory, { recursive: true, force: true });
   mkdirSync(directory, { recursive: true });
   console.log(`Fetching ${scope}/${name}@${version} with npm pack…`);
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  const { stdout } = await run(npm, ["pack", `${scope}/${name}@${version}`, "--pack-destination", directory, "--silent"], { cwd: directory, timeout: 600_000, shell: process.platform === "win32" });
+  const { stdout } = await run("npm", ["pack", `${scope}/${name}@${version}`, "--pack-destination", directory, "--silent"], { cwd: directory, timeout: 600_000 });
   const tarball = join(directory, stdout.trim().split(/\r?\n/).pop());
   await run("tar", ["-xzf", tarball, "-C", directory, "--strip-components=1"]);
   rmSync(tarball, { force: true });
   return directory;
 }
 
-/** The trees to stage on this host: both mac arches on macOS (each app is
- *  single-arch), x64 elsewhere, matching electron-builder.yml. */
-export function targetsFor(platform = process.platform, env = process.env) {
-  if (platform === "darwin") return resolveCuaMacArches(env).map((arch) => ({ platform, arch }));
-  return [{ platform, arch: "x64" }];
+export function targetsFor(platform = process.platform, arch = process.arch) {
+  if (platform !== "linux" || !["x64", "arm64"].includes(arch)) throw new Error(`Unsupported target: ${platform}-${arch}`);
+  return [{ platform, arch }];
 }
 
 function requireRegularFile(file) {
@@ -171,15 +160,6 @@ export async function verifyDuckdbTree(directory, platform, arch, version, resvg
   if (wanted && packageVersion(join(onePassword, "sdk-core")) !== wanted) {
     throw new Error(`${ONEPASSWORD_SCOPE}/sdk-core in ${directory} is ${packageVersion(join(onePassword, "sdk-core"))}; ${ONEPASSWORD_SCOPE}/sdk needs ${wanted}`);
   }
-  if (platform === "darwin") {
-    const wanted = LIPO_ARCH[arch];
-    if (!wanted) throw new Error(`Unsupported macOS architecture for DuckDB: ${arch}`);
-    for (const file of [binary, shared, resvgBinary]) {
-      if (!(await isMachO(file))) throw new Error(`${file} is not a Mach-O file`);
-      const archs = await machOArchs(file);
-      if (archs.join(" ") !== wanted) throw new Error(`${file} is [${archs.join(" ")}], must be exactly ${wanted}`);
-    }
-  }
 }
 
 export async function stageDuckdb({
@@ -189,7 +169,6 @@ export async function stageDuckdb({
   targets = targetsFor(),
   cache = join(nodeModules, ".cache", "quatibot", "duckdb"),
   pack = packedPackage,
-  sign = process.platform === "darwin",
   log = console.log,
 }) {
   const version = pinnedDuckdbVersion(root);
@@ -230,18 +209,6 @@ export async function stageDuckdb({
       const source = installedPackage(nodeModules, name, ONEPASSWORD_SCOPE, ["sdk"]);
       if (!source) throw new Error(`${ONEPASSWORD_SCOPE}/${name} is not installed; run pnpm install`);
       cpSync(source, join(onePasswordScope, name), { recursive: true, dereference: true });
-    }
-    if (platform === "darwin") {
-      const native = join(scope, platformPackage(platform, arch));
-      for (const file of ["duckdb.node", LIBRARY_FILE.darwin]) {
-        const path = join(native, file);
-        await writeThinMachO(path, path, LIPO_ARCH[arch]);
-        // Apple's signature covered the universal file; the slice needs its
-        // own or dlopen refuses it. electron-builder re-signs with the app's identity.
-        if (sign) await run("/usr/bin/codesign", ["--force", "--sign", "-", path]);
-      }
-      // resvg ships one single-arch binary per package; only the signature is ours to add.
-      if (sign) await run("/usr/bin/codesign", ["--force", "--sign", "-", join(resvgScope, resvgNative.name, resvgNative.binary)]);
     }
     await verifyDuckdbTree(destination, platform, arch, version, resvgVersion, onePasswordVersion);
     staged.push(destination);

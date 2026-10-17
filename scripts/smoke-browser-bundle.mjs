@@ -8,21 +8,18 @@ import { once } from "node:events";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
 import { inflateSync } from "node:zlib";
 import { browserBundlePaths, browserBundleSpec } from "../server/browser-bundle-release.ts";
-import { executableTarget } from "./executable-target.mjs";
-import { WINDOWS_VENDOR_VERSION, verifyVendorCandidate, verifyVendorPatch } from "./build-windows-browser-vendor.mjs";
 
 const { values } = parseArgs({ options: {
   resources: { type: "string" }, target: { type: "string" },
-  "engine-candidate": { type: "string" },
   "check-only": { type: "boolean", default: false }, help: { type: "boolean" },
 } });
 if (values.help) {
-  console.log("Usage: node scripts/smoke-browser-bundle.mjs --resources /absolute/app/resources [--target darwin-arm64] [--check-only] [--engine-candidate /absolute/vendor/agent-browser-win32-x64.exe]");
+  console.log("Usage: node scripts/smoke-browser-bundle.mjs --resources /absolute/app/resources [--target linux-x64] [--check-only]");
   process.exit(0);
 }
 assert(values.resources && isAbsolute(values.resources), "--resources must be an absolute packaged Resources/resources directory");
@@ -42,26 +39,6 @@ assert((await stat(join(paths.directory, spec.chrome.license))).size > 0, "Missi
 assert((await stat(join(paths.directory, spec.chrome.about))).size > 0, "Missing Chromium notice");
 let enginePath = paths.engine;
 let engineVersionExpected = spec.engine.version;
-if (values["engine-candidate"] !== undefined) {
-  // Only the artifact-only vendor workflow uses this explicit mode. Standard
-  // app release calls still discover and execute the bundled, pinned engine.
-  assert.equal(process.platform, "win32", "Windows vendor candidates require a native Windows runner");
-  assert.equal(target, "win32-x64");
-  assert(!values["check-only"], "A candidate must execute the native browser checks");
-  assert(isAbsolute(values["engine-candidate"]), "--engine-candidate must be absolute");
-  enginePath = resolve(values["engine-candidate"]);
-  const candidateDirectory = dirname(enginePath);
-  const candidateBytes = await readFile(enginePath);
-  verifyVendorCandidate(JSON.parse(await readFile(join(candidateDirectory, "provenance.json"), "utf8")), candidateBytes);
-  verifyVendorPatch(await readFile(join(candidateDirectory, "agent-browser-windows-stdio.patch")));
-  assert.equal(executableTarget(candidateBytes), "win32-x64");
-  for (const license of ["agent-browser-LICENSE.txt", "LICENSE-axe-core.txt", "LICENSE-axe-core-THIRD-PARTY.txt"]) {
-    assert.deepEqual(await readFile(join(candidateDirectory, license)), await readFile(join(paths.licenses, license)), `Candidate changed upstream notice ${license}`);
-  }
-  engineVersionExpected = WINDOWS_VENDOR_VERSION;
-}
-// Signing changes Mach-O bytes. Source-archive digests are checked before signing;
-// this gate checks the final layout, versions, and real browser behavior instead.
 if (values["check-only"]) {
   console.log(JSON.stringify({ ok: true, target, check: "structure-only", browserExecuted: false }));
   process.exit(0);
@@ -89,14 +66,13 @@ if (process.platform === "linux") {
 const fixture = await mkdtemp(join(tmpdir(), "quati-browser-smoke-"));
 const fixtureHome = join(fixture, "home");
 const env = {
-  PATH: process.platform === "win32" ? join(process.env.SystemRoot ?? "C:\\Windows", "System32") : "/usr/bin:/bin",
+  PATH: "/usr/bin:/bin",
   HOME: fixtureHome, USERPROFILE: fixtureHome,
   APPDATA: join(fixtureHome, "AppData", "Roaming"), LOCALAPPDATA: join(fixtureHome, "AppData", "Local"),
   XDG_CONFIG_HOME: join(fixture, "config"), XDG_CACHE_HOME: join(fixture, "cache"),
   XDG_DATA_HOME: join(fixture, "data"), XDG_RUNTIME_DIR: join(fixture, "run"),
   TMPDIR: join(fixture, "tmp"), TMP: join(fixture, "tmp"), TEMP: join(fixture, "tmp"),
   QUATI_DATA_DIR: join(fixture, "quati"), QUATI_RESOURCES_PATH: resolve(values.resources),
-  ...(values["engine-candidate"] ? { QUATI_AGENT_BROWSER_PATH: enginePath, AGENT_BROWSER_EXECUTABLE_PATH: paths.chrome } : {}),
   // macOS's per-user temp directory is long; keep Unix socket paths <104 bytes.
   AGENT_BROWSER_SOCKET_DIR: join(fixture, "s"),
   AGENT_BROWSER_DEFAULT_TIMEOUT: "15000", LANG: "en_US.UTF-8", NO_COLOR: "1",

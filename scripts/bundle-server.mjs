@@ -2,13 +2,14 @@
 // packaged app ships no node_modules. Entry points keep their exact relative
 // paths under dist-server, where the server locates each proxy by path.
 import { build } from "esbuild";
-import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const server = join(root, "server");
 rmSync(join(root, "dist-server", "enterprise"), { recursive: true, force: true });
+rmSync(join(root, "dist-server", "model-catalog"), { recursive: true, force: true });
 
 // yaml's Node export is CommonJS with dynamic requires that cannot run once
 // inlined into ESM; its browser export is the same parser without them.
@@ -74,12 +75,5 @@ await build({
   allowOverwrite: true,
   logLevel: "info",
 });
-
-// The model catalog snapshot (server/model-catalog/catalog.ts) is read from
-// disk, not inlined: 1.5 MB of JSON has no place in index.js. The bundle looks
-// for it under model-catalog/ beside itself. Its MIT notice is inside the file.
-const catalogSnapshot = join(root, "dist-server", "model-catalog", "models-dev.snapshot.json");
-mkdirSync(dirname(catalogSnapshot), { recursive: true });
-copyFileSync(join(server, "model-catalog", "models-dev.snapshot.json"), catalogSnapshot);
 
 writeFileSync(join(root, "dist-server", "package.json"), '{"type":"module"}\n');

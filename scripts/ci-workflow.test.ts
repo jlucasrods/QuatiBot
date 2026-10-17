@@ -147,4 +147,10 @@ describe("CI concurrency", () => {
         }
     });
 
+    it("builds the web UI before exercising the bundled server", () => {
+        const runs = workflow.jobs["packaged-server"].steps.map((step: { run?: string }) => step.run).filter(Boolean);
+        expect(runs.indexOf("pnpm build")).toBeGreaterThanOrEqual(0);
+        expect(runs.indexOf("pnpm build")).toBeLessThan(runs.indexOf("pnpm test:packaged-server"));
+    });
+
 });
