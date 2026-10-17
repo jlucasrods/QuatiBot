@@ -10,33 +10,23 @@ export interface SelectableInstance {
   enabled?: boolean;
 }
 
-export interface DefaultSelectionContext {
-  company?: (instanceId: string) => boolean;
-  refusal?: (instance: SelectableInstance) => string | undefined;
-}
-
-const claudeFirst = (instances: readonly SelectableInstance[]) =>
-  instances.find((instance) => instance.driverKind === "claudeAgent") ?? instances[0];
-
-/** A custom endpoint brings its own credential, so its sign-in state does not count. */
 export function signedOut(instance: SelectableInstance): boolean {
-  return instance.snapshot.state === "available" && instance.access !== "custom" && instance.snapshot.authenticated === false;
+  return instance.snapshot.state === "available" && instance.snapshot.authenticated === false;
 }
 
-export function readyToRun(instance: SelectableInstance, context: DefaultSelectionContext = {}): boolean {
-  return instance.enabled !== false && instance.snapshot.state === "available" && context.refusal?.(instance) === undefined && !signedOut(instance);
+export function readyToRun(instance: SelectableInstance): boolean {
+  return instance.enabled !== false && instance.snapshot.state === "available" && !signedOut(instance);
 }
 
-const defaultModel = (instance: SelectableInstance) => instance.models.default.trim()
-  ? instance.models.default
-  : instance.models.options.find((model) => model.id.trim())?.id ?? "";
+function defaultModel(instance: SelectableInstance): string {
+  return instance.models.default.trim()
+    ? instance.models.default
+    : instance.models.options.find((model) => model.id.trim())?.id ?? "";
+}
 
-/** A saved choice is intentional: an unavailable provider sends new bots to setup, never silently to another provider. On
- * an enrolled desktop a working personal engine beats a Company one, so billing stays the person's choice. */
 export function selectDefaultModelSelection(
   instances: readonly SelectableInstance[],
   preferred?: ModelSelection,
-  context: DefaultSelectionContext = {},
 ): ModelSelection {
   if (preferred && (preferred.instanceId || preferred.model)) {
     const instance = instances.find((candidate) => candidate.instanceId === preferred.instanceId);
@@ -45,25 +35,17 @@ export function selectDefaultModelSelection(
       instance.enabled === false ||
       signedOut(instance) ||
       !preferred.model.trim() ||
-      // A disallowed saved engine is unusable like an unavailable one: setup, never another provider.
-      context.refusal?.(instance) !== undefined ||
       (preferred.variant !== undefined && !instance.capabilities?.modelVariants) ||
       !(instance.models.default === preferred.model || instance.models.options.some((model) => model.id === preferred.model))
     ) {
       return { instanceId: "", model: "" };
     }
     const selection = { ...preferred };
-    // A saved effort can outlive driver support: keep the model, let the provider use its default effort.
     if (selection.effort && !instance.capabilities?.effortLevels?.includes(selection.effort)) delete selection.effort;
     return selection;
   }
-  const available = instances.filter((instance) => instance.enabled !== false && instance.snapshot.state === "available" && context.refusal?.(instance) === undefined && defaultModel(instance));
-  const ready = available.filter((instance) => readyToRun(instance, context));
-  const company = context.company;
-  const personal = company && instances.some((instance) => company(instance.instanceId))
-    ? claudeFirst(ready.filter((instance) => !company(instance.instanceId)))
-    : undefined;
-  const pick = personal ?? claudeFirst(ready) ?? claudeFirst(available);
+  const available = instances.filter((instance) => instance.enabled !== false && instance.snapshot.state === "available" && defaultModel(instance));
+  const pick = available.find(readyToRun) ?? available[0];
   return { instanceId: pick?.instanceId ?? "", model: pick ? defaultModel(pick) : "" };
 }
 

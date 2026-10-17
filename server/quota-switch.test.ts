@@ -204,17 +204,9 @@ describe("quota-switch card", () => {
         engine("off", "codex", "Switched off", { enabled: false }),
         engine("broken", "codex", "Broken", { snapshot: async () => { throw new Error("probe failed"); } }),
         engine("empty", "codex", "No model", { models: { default: "", options: [] } }),
-        engine("barred", "codex", "Barred"),
         engine("codex", "codex", "Codex"),
       ];
-      deps.refusal = (candidate) => candidate.instanceId === "barred" ? "Your organisation does not allow this engine." : undefined;
       expect((await failed())!.card!.options).toEqual(["Codex", NOT_NOW]);
-    });
-
-    it("offers a custom endpoint whatever its sign-in state says: it brings its own credential", async () => {
-      engines = [engines[0]!, engine("local", "codex", "Local model", { snapshot: async () => ({ state: "available", authenticated: false }) })];
-      deps.access = (instanceId) => instanceId === "local" ? "custom" : "subscription";
-      expect((await failed())!.card!.options).toEqual(["Local model", NOT_NOW]);
     });
 
     it("builds the card without an engine that does not say how it is in time", async () => {

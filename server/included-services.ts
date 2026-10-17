@@ -1,9 +1,3 @@
-// One relay URL + token pair per included service:
-//   QUATI_CLOUD_VOICE_URL   + QUATI_CLOUD_VOICE_TOKEN    the ElevenLabs relay, ending in /v1
-//   QUATI_CLOUD_DECIDER_URL + QUATI_CLOUD_DECIDER_TOKEN  the Jev relay, a Jev base URL
-//   QUATI_CLOUD_AI_URL      + QUATI_CLOUD_AI_TOKEN       the trial's Claude credit, an OpenAI-compatible base URL
-// The person's own key always wins and is resolved per request; an included token goes only to its relay and is never
-// written to config.json or reported to a client.
 import { JEV_DEFAULT_BASE_URL } from "./decider/jev.ts";
 export const ELEVENLABS_API_DEFAULT = "https://api.elevenlabs.io/v1";
 /** Must also be on WORKSPACE_CREDENTIAL_ENV. */
@@ -19,7 +13,6 @@ export interface ServiceCredential {
 interface Included {
   voice: ServiceCredential | null;
   decider: ServiceCredential | null;
-  ai: ServiceCredential | null;
 }
 
 function includedService(url: string | undefined, token: string | undefined): ServiceCredential | null {
@@ -31,21 +24,7 @@ function includedService(url: string | undefined, token: string | undefined): Se
 const includedFrom = (env: NodeJS.ProcessEnv): Included => ({
   voice: includedService(env.QUATI_CLOUD_VOICE_URL, env.QUATI_CLOUD_VOICE_TOKEN),
   decider: includedService(env.QUATI_CLOUD_DECIDER_URL, env.QUATI_CLOUD_DECIDER_TOKEN),
-  ai: trialCreditService(env.QUATI_CLOUD_AI_URL, env.QUATI_CLOUD_AI_TOKEN),
 });
-
-/** The token is a key the chat engine sends here, so the address must be HTTPS (loopback for tests) and the token the Admin's shape. */
-function trialCreditService(url: string | undefined, token: string | undefined): ServiceCredential | null {
-  const credential = includedService(url, token);
-  if (!credential || !/^quati_ai_[A-Za-z0-9_-]{43}$/.test(credential.token)) return null;
-  try {
-    const parsed = new URL(credential.api);
-    const loopback = parsed.protocol === "http:" && ["127.0.0.1", "[::1]"].includes(parsed.hostname);
-    return (parsed.protocol === "https:" || loopback) && !parsed.username && !parsed.password && !parsed.search && !parsed.hash ? credential : null;
-  } catch {
-    return null;
-  }
-}
 
 let held: Included | null = null;
 
@@ -68,10 +47,6 @@ export const elevenLabsProviderApi = (env: NodeJS.ProcessEnv = process.env): str
 
 export function voiceCredential(own: string | undefined, env: NodeJS.ProcessEnv = process.env): ServiceCredential | null {
   return resolve(own, elevenLabsProviderApi(env), (held ?? includedFrom(env)).voice);
-}
-
-export function trialCreditCredential(env: NodeJS.ProcessEnv = process.env): ServiceCredential | null {
-  return (held ?? includedFrom(env)).ai;
 }
 
 export function deciderCredential(

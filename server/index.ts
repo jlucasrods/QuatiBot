@@ -210,9 +210,7 @@ import {
 } from "./send-idempotency.ts";
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
-import { ManagedDesktopProviders } from "./managed-desktop.ts";
 import { mainThread, wasOldestThread } from "./main-thread.ts";
-import { computerKindForResource, ManagedDesktopPolicy, type ComputerKind } from "./managed-policy.ts";
 import { CLOUD_HOME_SECRET_KEYS, CLOUD_IGNORED_KEYS, cloudHomeConfiguration, cloudHomeOffersPlace, cloudHomePlaceRefusal, firstCloudTurnPatch } from "./cloud-home.ts";
 import { createCloudHealth } from "./cloud-health.ts";
 import { createCloudSignedRoutes } from "./routes/cloud-signed.ts";
@@ -220,9 +218,9 @@ import { noteSyncBotTurn } from "./routes/cloud-sync.ts";
 import { CLOUD_PERSONAL_REFUSAL, settleCloudOwnership, type CloudOwnership } from "./cloud-owner.ts";
 import { createCloudMoveRoutes, workspaceShared } from "./cloud-move-http.ts";
 import { RESTART_EXIT_CODE } from "./restart.ts";
-import { holdIncludedServices, trialCreditCredential } from "./included-services.ts";
-import { CloudCreditProvider } from "./cloud-credit-provider.ts";
-import { TRIAL_CREDIT_OWN_AI } from "./trial-credit.ts";
+import { holdIncludedServices } from "./included-services.ts";
+
+
 import type { ProviderInstance } from "./contracts.ts";
 import { readyToRun, selectDefaultModelSelection, withNewBotEffort, type SelectableInstance } from "./default-model-selection.ts";
 import { threadModelFallback, type ThreadEngine } from "./thread-model.ts";
@@ -1439,11 +1437,9 @@ function queuedTurnTrigger(item: { trigger?: UsageTrigger; sender?: ResolvedSend
 }
 const providerAuthSessions = new ProviderAuthSessions();
 // OpenCode reads provider keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, …) from its environment. Wired before the first catalog probe below.
-let openCodeOrganisationManaged = (): boolean => false;
 const openCodeKeysAllowed = (): boolean => openCodeProviderKeysAllowed({
   cloudHome: Boolean(CLOUD_HOME),
   hostedWorkspace: HOSTED_WORKSPACE,
-  organisationManaged: openCodeOrganisationManaged(),
   sharedSignIn: sharedSignIn(signInAllowList()),
 });
 setOpenCodeProviderKeyPolicy(openCodeKeysAllowed);
@@ -1551,67 +1547,11 @@ utilityParentPort?.on("message", (event) => {
 
 const bus = new EventBus();
 bus.attach(registry.instances());
-let companyRuntimeReady!: () => void;
-const companyRuntimeStarted = new Promise<void>(resolve => { companyRuntimeReady = resolve; });
-const managedPolicy = new ManagedDesktopPolicy({ onChange: () => {
-  broadcast({ kind: "config", ...configStatus() });
-  resyncOpenCodeProviderKeys();
-} });
 onKeyRejectionChange(() => broadcast({ kind: "config", ...configStatus() }));
-function computerPlaceRefusal(kind: ComputerKind): { message: string; code: "cloud_home" | "managed_policy" } | undefined {
+function computerPlaceRefusal(kind: "thisComputer" | "localVm" | "box" | "vps"): { message: string; code: "cloud_home" } | undefined {
   const cloudHome = CLOUD_HOME ? cloudHomePlaceRefusal(kind === "thisComputer" ? "local" : kind === "localVm" ? "vm" : "cloud") : undefined;
   if (cloudHome) return { message: cloudHome, code: "cloud_home" };
-  const managed = managedPolicy.computerRefusal(kind);
-  return managed ? { message: managed, code: "managed_policy" } : undefined;
 }
-function policyModelRefusal(instance: { instanceId: string; driverKind: string }): string | undefined {
-  const engine = BUILT_IN_DRIVERS.find(driver => driver.driverKind === instance.driverKind)?.metadata.displayName;
-  return managedPolicy.modelRefusal({ driverKind: instance.driverKind, displayName: engine }, managedDesktop.owns(instance.instanceId));
-}
-const managedDesktop = new ManagedDesktopProviders({
-  registry,
-  dataDirectory: DATA_DIR,
-  beforeReplace: stopCompanyInstances,
-  migrate: aliases => { store.renameInstances(new Map(aliases.map(({ from, to }) => [from, to]))); },
-  onAvailability: () => {
-    broadcast({ kind: "config", ...configStatus() });
-    resyncOpenCodeProviderKeys();
-  },
-  afterReplace: ids => {
-    for (const id of providerInstancesChanging) if (managedDesktop.owns(id)) providerInstancesChanging.delete(id);
-    bus.attach(ids.flatMap(id => { const instance = registry.get(id); return instance ? [instance] : []; }));
-    broadcast({ kind: "config", ...configStatus() });
-    resyncOpenCodeProviderKeys();
-  },
-});
-const cloudCredit = CLOUD_HOME ? new CloudCreditProvider({
-  registry, dataDirectory: DATA_DIR, credential: trialCreditCredential(),
-  onChange: ids => {
-    bus.attach(ids.flatMap(id => { const instance = registry.get(id); return instance ? [instance] : []; }));
-    void companyRuntimeStarted.then(() => broadcast({ kind: "config", ...configStatus() }));
-  },
-  log: line => console.warn(line),
-}) : null;
-const cloudCreditStarted = (cloudCredit?.start() ?? Promise.resolve()).catch((error) => {
-  console.warn(`[trial credit] could not start: ${error instanceof Error ? error.message : String(error)}`);
-});
-openCodeOrganisationManaged = () => managedPolicy.current() !== null || managedDesktop.enrolled();
-utilityParentPort?.on("message", event => {
-  const message = event.data as { type?: unknown; requestId?: unknown; identity?: unknown } | undefined;
-  if (message?.type !== "quatibot:managed-desktop-identity") return;
-  const requestId = typeof message.requestId === "string" && message.requestId.length <= 100 ? message.requestId : undefined;
-  void companyRuntimeStarted.then(() => managedDesktop.migrateIdentity(message.identity)).then(() => true, () => false).then(ok => {
-    utilityParentPort.postMessage({ type: "quatibot:managed-desktop-result", requestId, ok });
-  });
-});
-utilityParentPort?.on("message", event => {
-  const message = event.data as { type?: unknown; requestId?: unknown; policy?: unknown } | undefined;
-  if (message?.type !== "quatibot:managed-desktop-policy") return;
-  const requestId = typeof message.requestId === "string" && message.requestId.length <= 100 ? message.requestId : undefined;
-  let ok = true;
-  try { managedPolicy.apply(message.policy); } catch { ok = false; }
-  utilityParentPort.postMessage({ type: "quatibot:managed-desktop-result", requestId, ok });
-});
 // A relay that arrives before the library exists waits for it; the acknowledgement does not.
 let orgLibrary: OrgLibrary | null = null;
 let pendingOrgLibraryRelay: { library: unknown } | null = null;
@@ -1623,17 +1563,6 @@ utilityParentPort?.on("message", event => {
   if (orgLibrary) ok = orgLibrary.applyRelay(message.library ?? null).ok;
   else pendingOrgLibraryRelay = { library: message.library ?? null };
   utilityParentPort.postMessage({ type: "quatibot:managed-desktop-result", requestId, ok });
-});
-// Deliberately no HTTP equivalent: only Electron sets the organization identity, endpoint and model capability.
-utilityParentPort?.on("message", event => {
-  const message = event.data as { type?: unknown; requestId?: unknown; connection?: unknown } | undefined;
-  if (message?.type !== "quatibot:managed-desktop") return;
-  const requestId = typeof message.requestId === "string" && message.requestId.length <= 100 ? message.requestId : undefined;
-  void companyRuntimeStarted.then(() => managedDesktop.apply(message.connection)).then(() => {
-    utilityParentPort.postMessage({ type: "quatibot:managed-desktop-result", requestId, ok: true });
-  }, () => {
-    utilityParentPort.postMessage({ type: "quatibot:managed-desktop-result", requestId, ok: false, error: "Company connection could not be applied. Reconnect from desktop Settings." });
-  });
 });
 
 // Identity, source thread, depth and route family come from this server-side record; caller fields are assertions, never authority.
@@ -2163,7 +2092,7 @@ function releaseTurnComputer(owner: TurnOwner): void {
 
 async function bindTurnComputer(owner: TurnOwner, resource: string, exclusive = false): Promise<void> {
   // Every computer claim passes here, so a disallowed kind is refused whichever path selected it.
-  const kind = computerKindForResource(resource), refusal = kind && computerPlaceRefusal(kind);
+  const refusal = resource.startsWith("computer:vm:") ? computerPlaceRefusal("localVm") : undefined;
   if (refusal) throw Object.assign(new Error(refusal.message), { code: refusal.code });
   const active = () => activeInternalGenerationByThread.get(owner.threadId) === owner.generation &&
     turnResourceOwners.get(owner.threadId)?.generation === owner.generation;
@@ -2584,56 +2513,17 @@ function selectableInstances<T extends SelectableInstance>(instances: readonly T
 }
 
 async function defaultSelection(saved: ModelSelection | null = cfg.defaultModelSelection ?? null, instances?: readonly SelectableInstance[]) {
-  return selectDefaultModelSelection(selectableInstances(instances ?? await registry.describe()), saved ?? undefined, {
-    company: (instanceId) => managedDesktop.owns(instanceId) || cloudCredit?.owns(instanceId) === true,
-    refusal: (instance) => policyModelRefusal(instance),
-  });
+  return selectDefaultModelSelection(selectableInstances(instances ?? await registry.describe()), saved ?? undefined);
 }
-const selectionContext = {
-  company: (instanceId: string) => managedDesktop.owns(instanceId) || cloudCredit?.owns(instanceId) === true,
-  refusal: (instance: SelectableInstance) => policyModelRefusal(instance),
-};
 
 async function refreshUnsetModelSelections(instances?: readonly SelectableInstance[]): Promise<void> {
   const selectable = selectableInstances(instances ?? await registry.describe());
-  bootSelection = await defaultSelection(undefined, selectable.filter(instance => readyToRun(instance, selectionContext)));
+  bootSelection = await defaultSelection(undefined, selectable.filter(instance => readyToRun(instance)));
   if (!bootSelection.instanceId || !bootSelection.model) return;
   const selection = withNewBotEffort(bootSelection, cfg.newBots?.effort,
     registry.get(bootSelection.instanceId)?.adapter.capabilities.effortLevels);
   for (const bot of store.bots) {
     if (!bot.modelSelection.instanceId && !bot.modelSelection.model) store.applyModelDefault(bot.id, selection);
-  }
-}
-
-function moveOffTrialCredit(instances: readonly SelectableInstance[]): void {
-  if (!cloudCredit) return;
-  const onCredit = (selection?: { instanceId: string }) => Boolean(selection && cloudCredit.owns(selection.instanceId));
-  const defaults = onCredit(cfg.defaultModelSelection) || onCredit(cfg.newBotDefaults?.profile.modelSelection);
-  if (!defaults && !onCredit(bootSelection) && !store.bots.some(bot => onCredit(bot.modelSelection) || store.tasks(bot.id).some(task => onCredit(task.modelSelection)))) return;
-  const own = instances.filter(instance => !selectionContext.company(instance.instanceId) && readyToRun(instance, selectionContext));
-  const replacement = own.length ? selectDefaultModelSelection(own, undefined, selectionContext) : null;
-  if (!replacement?.instanceId) return;
-  if (defaults) {
-    const newBotDefaults = cfg.newBotDefaults && newBotDefaultsSchema.parse({
-      ...cfg.newBotDefaults, profile: { ...cfg.newBotDefaults.profile, modelSelection: replacement },
-    });
-    saveConfig(newBotDefaults ? { newBotDefaults } : { defaultModelSelection: replacement });
-    cfg.defaultModelSelection = replacement;
-    if (newBotDefaults) cfg.newBotDefaults = newBotDefaults;
-  }
-  if (onCredit(bootSelection)) bootSelection = replacement;
-  const engine = registry.get(replacement.instanceId)?.displayName ?? replacement.instanceId;
-  const line = (threadId: string) => store.appendMessage(threadId, { role: "bot", kind: "activity",
-    tool: { name: `notice: ${engine} is connected, so this conversation uses it now instead of the trial Claude credit.`, ok: true } });
-  for (const bot of store.bots) {
-    const tasks = store.tasks(bot.id);
-    const moving = tasks.filter(task => onCredit(task.modelSelection ?? bot.modelSelection));
-    if (!moving.length && !onCredit(bot.modelSelection)) continue;
-    if (moving.some(task => threadBusy(bot.id, task.threadId))) continue;
-    if (onCredit(bot.modelSelection)) store.applyModelDefault(bot.id, replacement);
-    const own = moving.filter(task => task.modelSelection !== undefined).map(task => task.threadId);
-    if (own.length) store.followBotModel(bot.id, own);
-    for (const task of moving) line(task.threadId);
   }
 }
 
@@ -2805,9 +2695,7 @@ function threadModelGivingWay(botId: string, threadId: string): ModelSelection |
   const bot = store.bot(botId);
   const own = store.taskByThread(botId, threadId)?.modelSelection;
   if (!bot || !own) return null;
-  return threadModelFallback(own, bot.modelSelection, threadEngine, {
-    refusal: policyModelRefusal,
-  }) ? own : null;
+  return threadModelFallback(own, bot.modelSelection, threadEngine) ? own : null;
 }
 
 function turnSelection(botId: string, threadId: string): ModelSelection | undefined {
@@ -2942,7 +2830,6 @@ let followupsReady = false;
 const sendSequencer = new SendSequencer();
 // Before the new-bot default is read: a saved default may name the engine.
 await retryComputerEngineMove();
-if (store.needsSeed()) await Promise.race([cloudCreditStarted, new Promise(resolve => setTimeout(resolve, 15_000).unref())]);
 if (store.needsSeed()) await refreshUnsetModelSelections();
 else enginesRead = refreshUnsetModelSelections().catch(
   (error) => console.warn(`[engines] reading the engines at start failed: ${error instanceof Error ? error.message : String(error)}`),
@@ -5400,7 +5287,6 @@ bus.subscribe((event: RuntimeEvent) => {
 const sideJobs = createSideJobs({
   bot: (botId) => store.bot(botId),
   instance: (instanceId) => registry.get(instanceId),
-  refusal: (instance) => policyModelRefusal(instance),
   helper: cacheUntilConfigChanges((config) => helperSelection(config)),
   assertWithinBudget: () => assertWithinBudget(cfg, DATA_DIR),
   book: bookTurnUsage,
@@ -5948,9 +5834,6 @@ async function selectableComputers(bot: BotRecord) {
         reason = "The built-in browser is disabled, not installed, or unsupported by this model.";
       }
     } catch (error) { reason = error instanceof Error ? error.message : String(error); }
-    const kind = surface === "vm" ? "localVm" : undefined;
-    const managed = kind && managedPolicy.computerRefusal(kind);
-    if (managed) return { surface, label: surfaceLabel(surface), available: false, ready: false, canStart: false, canCreate: false, reason: managed };
     const available = ready || canStart || canCreate;
     return { surface, label: surfaceLabel(surface), available, ready, canStart, canCreate, ...(!available ? { reason } : {}) };
   }));
@@ -7486,8 +7369,6 @@ function threadTitleGate(bot: Pick<BotRecord, "modelSelection">): { ok: true; in
   if (!llmThreadTitlesEnabled(cfg)) return { ok: false, refusal: "generated thread titles are turned off on this server" };
   const instance = registry.get(bot.modelSelection.instanceId);
   if (!instance?.generateText) return { ok: false, refusal: "this bot's model can't generate a title — rename the thread instead" };
-  const refusal = policyModelRefusal(instance);
-  if (refusal) return { ok: false, refusal };
   try {
     assertWithinBudget(cfg, DATA_DIR);
   } catch (error) {
@@ -7581,8 +7462,6 @@ async function startTurn(
       { status: 409 },
     );
   }
-  const policyRefusal = policyModelRefusal(instance);
-  if (policyRefusal) throw Object.assign(new Error(policyRefusal), { status: 409, code: "managed_policy" });
   const toolScope = toolScopeForTurn(bot.id);
   guestDrivenTurns.delete(threadId);
   const guestConfined = cloudGuestDriven(threadId) || cloudGuestDrivenHandoff(opts?.coordination?.id);
@@ -8377,7 +8256,7 @@ async function startTurn(
         const target = checked.ok ? registry.get(checked.selection.instanceId) : null;
         const refusal = !checked.ok ? checked.error : !target || !target.enabled ? "The backup engine is unavailable."
           : !store.taskByThread(bot.id, threadId)?.cwd ? "This older thread has no pinned working folder. Choose its backup manually."
-          : policyModelRefusal(target) ?? recoveryCapabilityError(
+          : recoveryCapabilityError(
             { driverKind: instance.driverKind, capabilities: instance.adapter.capabilities },
             { driverKind: target.driverKind, capabilities: target.adapter.capabilities });
         if (!refusal && checked.ok && target) {
@@ -9531,7 +9410,7 @@ const approvalBus: ApprovalBus = { store, broadcast, notify, autoApply: fullAcce
   onPeerApprovalPending: (from, target, action, sourceThreadId, message) => void reportEscalation({
     kind: "peer-approval", bot: from, threadId: sourceThreadId, gate: peerApprovalGate(action, target.name), reason: message, alreadyNotified: true }) };
 
-const { quotaSwitch, harnessCardOutcome } = createQuotaSwitchHost({ store, coordinator, registry, turnStops, approvalBus, providerConfigs, policyModelRefusal, checkedTaskModelSwitch, threadBusy, directRequestOwners, startOrQueueDirectMessage });
+const { quotaSwitch, harnessCardOutcome } = createQuotaSwitchHost({ store, coordinator, registry, turnStops, approvalBus, checkedTaskModelSwitch, threadBusy, directRequestOwners, startOrQueueDirectMessage });
 
 // Peer approvals live only in memory: settle every peer card still open on disk, or it locks the composer forever.
 {
@@ -9613,12 +9492,11 @@ async function runClaimedGroupMemberTurn(
     onDispatchError?.(`${bot.name}'s provider account is being updated — try again shortly`);
     return true;
   }
-  const roomPolicyRefusal = instance ? policyModelRefusal(instance) : undefined;
   if (!groupSpeakers.has(threadId)) guestDrivenTurns.delete(threadId);
   const roomGuestConfined = cloudGuestDriven(threadId) || cloudGuestDrivenHandoff(orchestration?.roomHandoffId);
   const roomGuestRefusal = roomGuestConfined && instance?.adapter.capabilities.guestTurns !== "confined" ? guestEngineRefusal(threadId) : undefined;
-  if (!instance || roomPolicyRefusal || roomGuestRefusal) {
-    const message = roomPolicyRefusal ?? roomGuestRefusal ?? `${bot.name}'s model is unavailable`;
+  if (!instance || roomGuestRefusal) {
+    const message = roomGuestRefusal ?? `${bot.name}'s model is unavailable`;
     store.appendMessage(threadId, {
       role: "bot",
       kind: "activity",
@@ -10898,7 +10776,7 @@ function startGroupTurn(
   const startTitle = (titleBot: (typeof members)[number]) => {
     const titleInstance = registry.get(titleBot.modelSelection.instanceId);
     // An engine the organisation disallows never receives the text, even for a title.
-    if (titled && snippet && titleText.trim() && llmThreadTitlesEnabled(cfg) && titleInstance?.generateText && !policyModelRefusal(titleInstance)) {
+    if (titled && snippet && titleText.trim() && llmThreadTitlesEnabled(cfg) && titleInstance?.generateText) {
       void generateThreadTitle(titleInstance, titleText)
         .then((title) => {
           if (title) store.retitleGroupTask(group.id, threadId, snippet, title);
@@ -11919,7 +11797,6 @@ function configStatus() {
     imageGen: avatarImageStatus(cfg),
     live: liveSettingsFor(cfg),
     profile: { name: cfg.profile?.name ?? "", email: cfg.profile?.email ?? "", aboutMe: cfg.profile?.aboutMe ?? "" },
-    managedPolicy: managedPolicy.summary(),
     ...(CLOUD_HOME ? { cloudHome: true } : {}),
     language: cfg.language ?? "",
     rooms: { turnTimeoutMinutes: roomTurnTimeoutMinutes(cfg) },
@@ -11983,8 +11860,6 @@ async function describeInstances() {
   void retryComputerEngineMove();
   const engines = selectableInstances(await registry.describe());
   await refreshUnsetModelSelections(engines);
-  moveOffTrialCredit(engines);
-  const ownReady = cloudCredit !== null && engines.some(instance => !selectionContext.company(instance.instanceId) && readyToRun(instance, selectionContext));
   return engines.map((instance) => {
     const entry = configs[instance.instanceId];
     const described = {
@@ -11992,72 +11867,8 @@ async function describeInstances() {
       ...(entry?.icon ? { icon: entry.icon } : {}),
       ...(entry?.access ? { access: entry.access } : {}),
     };
-    if (cloudCredit?.owns(instance.instanceId)) return { ...described, readOnly: true, trialCredit: cloudCredit.status(),
-      install: undefined, authentication: undefined, cli: undefined, cliCandidates: [],
-      ...(ownReady && described.snapshot.state === "available" ? { snapshot: { state: "unavailable" as const, reason: TRIAL_CREDIT_OWN_AI } } : {}),
-    };
-    const policyReason = policyModelRefusal(instance);
-    const policy = policyReason ? { policy: { organizationName: managedPolicy.current()!.organizationName, reason: policyReason } } : {};
-    if (managedDesktop.owns(instance.instanceId)) return {
-      ...described, ...policy, readOnly: true, managed: managedDesktop.info(instance.instanceId),
-      install: undefined, authentication: undefined, cli: undefined, cliCandidates: [],
-    };
-    return { ...described, ...policy };
+    return described;
   });
-}
-
-let companyShutdown = false;
-async function stopCompanyInstances(ids: string[]) {
-  if (!ids.length) return;
-  if (companyShutdown) {
-    for (const id of ids) { providerAuthSessions.clearInstance(id); bus.detach(id); }
-    return;
-  }
-  const cause = "turn interrupted — the Company connection changed";
-  const selected = new Set(ids);
-  for (const id of ids) providerInstancesChanging.add(id);
-  const direct = store.bots.flatMap(bot => store.tasks(bot.id)
-    .filter(task => threadBusy(bot.id, task.threadId) && selected.has(botForThread(bot.id, task.threadId)!.modelSelection.instanceId))
-    .map(task => ({ botId: bot.id, threadId: task.threadId, owner: turnResourceOwners.get(task.threadId), generation: directTurnGenerationByThread.get(task.threadId) })));
-  // Mark stopping first: a turn's own end can settle its requester before the loop below.
-  for (const { threadId } of direct) turnStops.stopping(threadId, liveTurnByThread.get(threadId), cause);
-  await Promise.all(direct.map(task => interruptDirectThread(task.botId, task.threadId)));
-  for (const { botId, threadId, owner, generation } of direct) {
-    const interrupted = stoppedTurnText(threadId, liveTurnByThread.get(threadId), cause);
-    releaseTurnResources(owner);
-    settleDirectFollowup(owner?.generation, { ok: false, text: interrupted });
-      // A completed thread may already have started a new turn: never clear that owner.
-    if (directTurnGenerationByThread.get(threadId) !== generation) continue;
-    stopScreenPoller(botId, threadId); releaseLocalVmThread(threadId);
-    watchdog.settle(threadId); closeOpenApprovals(threadId); directTurnBots.delete(threadId);
-    routines?.failThread(threadId, "Company connection changed while this thread was running");
-    if (store.taskByThread(botId, threadId)) {
-      store.appendMessage(threadId, { role: "bot", kind: "activity", tool: { name: "Company connection changed — choose whether to reconnect or use a personal model", ok: false } });
-      store.setTaskActivity(botId, threadId, "idle");
-    }
-  }
-  // Freeze this cancellation batch across interruptTurn's asynchronous yield.
-  // oxlint-disable-next-line unicorn/no-useless-spread
-  for (const [threadId, speaker] of [...groupSpeakers]) {
-    if (groupSpeakers.get(threadId) !== speaker) continue;
-    const bot = store.bot(speaker.botId);
-    if (!bot || !selected.has(bot.modelSelection.instanceId)) continue;
-    const group = store.groupByThread(threadId);
-    const owner = turnResourceOwners.get(threadId);
-    if (group) cancelGroupTurnOperations(group.id, threadId, { status: "stopped", detail: stoppedTurnOutcome({ reason: cause, activities: [] }), byHarness: true });
-    revokeInternalCapabilitiesForThread(threadId);
-    await runningTurnInstance(bot, threadId)?.adapter.interruptTurn(threadId);
-    const stillOwned = groupSpeakers.get(threadId) === speaker &&
-      turnResourceOwners.get(threadId)?.generation === owner?.generation;
-    releaseTurnResources(owner);
-    if (!stillOwned) continue;
-    releaseLocalVmThread(threadId);
-    watchdog.settle(threadId); closeOpenApprovals(threadId);
-    groupSpeakers.delete(threadId);
-    if (group) store.patchGroup(group.id, { busyBotId: activeGroupSpeaker(group.id)?.botId ?? null });
-    store.setActivity(bot.id, "idle");
-  }
-  for (const id of ids) { providerAuthSessions.clearInstance(id); bus.detach(id); }
 }
 
 async function persistProviderInstance(instanceId: string, instances: NonNullable<AppConfig["instances"]>) {
@@ -12254,7 +12065,7 @@ ROUTES.push(createBotMessageRoutes({
   acceptDirectSend, directSendRefusal, startTurn, usageTriggerFor, messageSender, cloudGuestSendRefusal, cloudThreadRefusal,
   cloudOwnerSession, cardAnswerRefusal, commandRememberRefusal, requestBehavior, requestedTaskBot, botForThread, threadBusy,
   botAtThreadCapacity, parksBehindCoordination, activeGroupTurnForBot, runningTurnInstance, engineSteersImages, resolveReplyTarget,
-  turnSelection, policyModelRefusal, clearUnattended, drainQueuedSends, answeringCardAs, resolveAndSendTrust, resolveAndSendTeamSetup,
+  turnSelection, clearUnattended, drainQueuedSends, answeringCardAs, resolveAndSendTrust, resolveAndSendTeamSetup,
   resolveAndSendRoutine, resolveAndSendProfile, resolveAndSendModel, resolveSkillRequest, sendSkillResolution, answerRequest,
   deliverLateQuestionAnswer, interruptDirectThread, cancelDirectTurnDispatch, revokeInternalCapabilitiesForThread,
   cancelGroupTurnOperations, closeOpenApprovals, harnessCardOutcome,
@@ -12481,7 +12292,7 @@ ROUTES.push(createConfigRoutes({
   localVmImageBusy: { get: () => localVmImageBusy },
   localVmModeChangeBusy: { set: (busy) => { localVmModeChangeBusy = busy; } },
   providerConfigBusy: { get: () => providerConfigBusy, set: (busy) => { providerConfigBusy = busy; } }, perBotLocalVmCountForModeChange,
-  checkedModelSelection, policyModelRefusal, browserSessionSpec, configStatus, configForAccess,
+  checkedModelSelection, browserSessionSpec, configStatus, configForAccess,
   resyncOpenCodeProviderKeys, revokeEngineCapabilities, reloadProviders, broadcast, drainQueuedSends,
 }));
 ROUTES.push(createInstanceRoutes({
@@ -12664,10 +12475,6 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       } else if (path.startsWith("/api/auth/hosted/") || path === "/pair" || (path === "/" && (!isLoopbackHost(req.headers.host) || isProxied(req)))) {
         return json(res, 503, { error: "Workspace sign-in is unavailable." });
       }
-    }
-    if (method === "POST" && ["/api/auth/pair", "/api/pair", "/api/auth/pairing"].includes(path)) {
-      const refusal = managedPolicy.remoteAccessRefusal();
-      if (refusal) return json(res, 403, { error: refusal, code: "managed_policy" });
     }
     // Two public routes come first; everything else needs the loopback owner or a paired session with the right scope.
     if (method === "GET" && !path.startsWith("/api/") && !path.startsWith("/.well-known/") && serveStatic(res, path)) return;
@@ -12873,8 +12680,6 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       if (body.action === "release") sharedComputerControl.release(body.id);
       else if (body.action === "renew") sharedComputerControl.renew(body.id);
       else {
-        const refusal = managedPolicy.computerRefusal("thisComputer");
-        if (refusal) return json(res, 403, { error: refusal, code: "managed_policy" });
         sharedComputerControl.acquire(body.id);
       }
       return json(res, 200, { ok: true });
@@ -15400,8 +15205,8 @@ restoreChannelMessages();
   if (movedAutoPins) console.log(`Works on: moved ${movedAutoPins} auto-pinned thread(s) to their bot's current Works on`);
 }
 
+let serverStopping = false;
 server.listen(PORT, "127.0.0.1", async () => {
-  companyRuntimeReady();
   console.log(`quatibot server on http://127.0.0.1:${PORT}`);
   browserSweep.start();
   if (builtInBrowserEnabled(cfg)) chromeLauncher.start();
@@ -15410,7 +15215,7 @@ server.listen(PORT, "127.0.0.1", async () => {
   drainQueuedChannelSends();
   if (enginesRead) {
     await enginesRead;
-    if (companyShutdown) return;
+    if (serverStopping) return;
   }
   // Only once every registry is initialized and the endpoint listens: earlier dispatch can hit uninitialized bindings.
   routines!.start();
@@ -15443,8 +15248,8 @@ function runtimeHoldsRoot(threadId: string): boolean {
 const gracefulShutdown = createGracefulShutdown({
   cleanup: [
     () => {
+      serverStopping = true;
       followupsReady = false;
-      companyShutdown = true;
       // Before any provider is torn down, so what the teardown fails stays cut for the next start.
       coordinator.close();
       noteTurnsCutByShutdown();
@@ -15463,7 +15268,7 @@ const gracefulShutdown = createGracefulShutdown({
       skillReview.stop();
       webhookIngress?.server.close();
     },
-    async () => { await managedDesktop.close(); await registry.disposeAll(); },
+    async () => { await registry.disposeAll(); },
     async () => { await dataEngine.closeAll().catch((error) => console.warn("data: close failed", error)); },
     async () => {
       const temporaries = [...temporaryBrowserSessions.keys()].map((botId) => forgetTemporaryBrowser(botId));

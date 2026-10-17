@@ -55,10 +55,7 @@ export interface SideJobText {
 export interface SideJobsDeps {
   bot: (botId: string) => SideJobBot | null | undefined;
   instance: (instanceId: string) => SideJobInstance | null | undefined;
-  refusal: (instance: SideJobInstance) => string | undefined;
   helper: () => { instanceId: string; model?: string } | null;
-  /** Hosted workspaces only. */
-  modelAllowed?: (selection: { instanceId: string; model: string }) => boolean;
   assertWithinBudget: () => void;
   book: (row: Omit<UsageRow, "at" | "costSource">, tokensReported: boolean, notificationThreadId: string) => void;
   log?: (line: string) => void;
@@ -136,11 +133,6 @@ export function createSideJobs(deps: SideJobsDeps): SideJobs {
     if (!instance) return unused(`the helper instance ${name} is not connected`);
     if (!instance.enabled) return unused(`the helper instance ${name} is switched off`);
     if (!instance.generateText) return unused(`the helper instance ${name} cannot make a one-off text call`);
-    const refusal = deps.refusal(instance);
-    if (refusal) return unused(`the helper instance ${name} is not used (${refusal})`);
-    if (helper.model && deps.modelAllowed && !deps.modelAllowed({ instanceId: helper.instanceId, model: helper.model })) {
-      return unused(`the helper model ${JSON.stringify(helper.model)} is not assigned to this workspace`);
-    }
     say(`small writing jobs for bots whose engine has no one-off text call are written by ${name}${helper.model ? ` (${helper.model})` : ""}`);
     return { instance, call: instance.generateText.bind(instance), ...(helper.model ? { model: helper.model } : {}) };
   }
@@ -149,7 +141,7 @@ export function createSideJobs(deps: SideJobsDeps): SideJobs {
     text(job, botId, at = {}) {
       const bot = deps.bot(botId);
       const own = at.instance ?? (bot ? deps.instance(bot.modelSelection.instanceId) : null);
-      if (!bot || !own || deps.refusal(own)) return null;
+      if (!bot || !own) return null;
       // The review's changes are written with the bot's own skill tools, whoever read the conversation.
       if (job === "skill-review" && own.adapter.capabilities.agentsMcp !== true) return null;
       const call = ownCall(job, own);

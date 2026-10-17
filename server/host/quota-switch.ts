@@ -1,5 +1,4 @@
 import type { ResolvedSender } from "../../shared/wire.ts";
-import type { InstanceConfigMap } from "../contracts.ts";
 import type { DataContext } from "../data-context.ts";
 import type { ProviderRegistry } from "../harness/registry.ts";
 import { resolvePeerComms, type ApprovalBus } from "../peer-approval.ts";
@@ -8,10 +7,8 @@ import type { BotRecord, Message } from "../store.ts";
 import type { UsageTrigger } from "../usage-ledger.ts";
 
 export interface QuotaSwitchHostDeps extends Pick<QuotaSwitchDeps, "store" | "coordinator" | "turnStops"> {
-  registry: Pick<ProviderRegistry, "instances" | "access">;
+  registry: Pick<ProviderRegistry, "instances">;
   approvalBus: ApprovalBus;
-  providerConfigs(): InstanceConfigMap;
-  policyModelRefusal(instance: { instanceId: string; driverKind: string }): string | undefined;
   checkedTaskModelSwitch(
     current: BotRecord, raw: unknown, updateBotDefault: boolean, resetApprovalToAsk: boolean, requireAvailableModel?: boolean,
   ): ReturnType<QuotaSwitchDeps["gate"]>;
@@ -25,14 +22,12 @@ export interface QuotaSwitchHostDeps extends Pick<QuotaSwitchDeps, "store" | "co
 
 export function createQuotaSwitchHost(deps: QuotaSwitchHostDeps) {
   const {
-    store, coordinator, registry, turnStops, approvalBus, providerConfigs, policyModelRefusal,
+    store, coordinator, registry, turnStops, approvalBus,
     checkedTaskModelSwitch, threadBusy, directRequestOwners, startOrQueueDirectMessage,
   } = deps;
 
   const quotaSwitch = createQuotaSwitch({
     store, coordinator, registry, turnStops,
-    access: instanceId => providerConfigs()[instanceId]?.access ?? registry.access(instanceId),
-    refusal: policyModelRefusal,
     gate: (thread, selection) => checkedTaskModelSwitch(thread, selection, false, false, true),
     busy: threadBusy,
     request: threadId => directRequestOwners.get(threadId),

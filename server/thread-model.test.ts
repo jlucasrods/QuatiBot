@@ -207,7 +207,6 @@ describe("threadModelFallback", () => {
     expect(threadModelFallback(spare, sonnet, engines({ spare: undefined }))).toBe("unavailable");
     expect(threadModelFallback(spare, sonnet, engines({ spare: engine("spare", { enabled: false }) }))).toBe("unavailable");
     expect(threadModelFallback(spare, sonnet, engines({ spare: engine("spare", { snapshot: { state: "unavailable", reason: "missing" } }) }))).toBe("unavailable");
-    expect(threadModelFallback(spare, sonnet, engines({}), { refusal: (instance) => instance.instanceId === "spare" ? "not allowed" : undefined })).toBe("unavailable");
     expect(threadModelFallback(spare, sonnet, engines({}), { allows: (selection) => selection.instanceId !== "spare" })).toBe("unavailable");
   });
 
@@ -224,7 +223,6 @@ describe("threadModelFallback", () => {
     expect(threadModelFallback(spare, sonnet, engines({ spare: signedOut, claude: claudeOut }))).toBeNull();
     expect(threadModelFallback(spare, sonnet, engines({ spare: signedOut, claude: undefined }))).toBeNull();
     expect(threadModelFallback(spare, sonnet, engines({ spare: signedOut, claude: engine("claude", { enabled: false }) }))).toBeNull();
-    expect(threadModelFallback(spare, sonnet, engines({ spare: { ...signedOut, access: "custom" } }))).toBeNull();
   });
 
   it("never gives way to the same model", () => {

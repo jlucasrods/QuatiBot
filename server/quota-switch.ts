@@ -5,7 +5,7 @@ import { approvalModeFor, modelSwitchNeedsAsk } from "../shared/approval-mode.ts
 import type { QuotaSwitchCardData } from "../shared/wire.ts";
 import { recoveryCapabilityError } from "./automatic-recovery.ts";
 import { newId } from "./contracts.ts";
-import type { EngineAccess, ModelCatalog, ModelSelection, ProviderAdapter, ProviderSnapshot } from "./contracts.ts";
+import type { ModelCatalog, ModelSelection, ProviderAdapter, ProviderSnapshot } from "./contracts.ts";
 import type { Coordinator } from "./coordinator.ts";
 import { readyToRun, selectDefaultModelSelection, type SelectableInstance } from "./default-model-selection.ts";
 import { classifyError } from "./drivers/retry.ts";
@@ -40,9 +40,6 @@ export interface QuotaSwitchDeps {
   coordinator: Pick<Coordinator, "all" | "node">;
   registry: { instances(): QuotaSwitchEngine[] };
   turnStops: Pick<TurnStops, "failureCause">;
-  /** A custom endpoint brings its own credential, so its sign-in state does not count. */
-  access?: (instanceId: string) => EngineAccess | undefined;
-  refusal?: (engine: QuotaSwitchEngine) => string | undefined;
   gate: (thread: BotRecord, selection: ModelSelection) => { ok: true; selection: ModelSelection } | { ok: false; error: string };
   reset?: (from: ModelSelection, to: ModelSelection) => Partial<TaskRecord> | undefined;
   busy: (botId: string, threadId: string) => boolean;
@@ -115,11 +112,9 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
         .then((read) => { wait.cancel(); resolve(read); });
     });
     if (!snapshot) return null;
-    const access = deps.access?.(engine.instanceId);
     return {
       instanceId: engine.instanceId, driverKind: engine.driverKind, snapshot, models: engine.models, enabled: engine.enabled !== false,
       capabilities: { effortLevels: engine.adapter.capabilities.effortLevels, modelVariants: engine.adapter.capabilities.modelVariants === true },
-      ...(access ? { access } : {}),
     };
   };
 
@@ -132,11 +127,10 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
       { driverKind: engine.driverKind, capabilities: engine.adapter.capabilities },
     )) return null;
     if (modelSwitchNeedsAsk(approvalModeFor(bot), current.driverKind, engine.driverKind)) return null;
-    const context = { refusal: () => deps.refusal?.(engine) };
     const instance = await described(engine);
     if (!instance) return "timed-out";
-    if (!readyToRun(instance, context)) return null;
-    const selection = selectDefaultModelSelection([instance], undefined, context);
+    if (!readyToRun(instance)) return null;
+    const selection = selectDefaultModelSelection([instance]);
     return selection.instanceId && selection.model ? selection : null;
   };
 

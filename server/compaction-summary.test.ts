@@ -84,7 +84,6 @@ function helperWriter(write: NonNullable<SideJobInstance["generateText"]>, helpe
   const jobs = createSideJobs({
     bot: () => ({ id: "b1", name: "Scout", threadId: "main", modelSelection: { instanceId: "codex" } }),
     instance: (id) => engines[id] ?? null,
-    refusal: () => undefined,
     helper: () => helper,
     assertWithinBudget: () => {},
     book: (row) => booked.push(row),

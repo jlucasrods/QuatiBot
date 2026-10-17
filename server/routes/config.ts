@@ -63,7 +63,6 @@ export interface ConfigRouteDeps {
   providerConfigBusy: BusyFlag;
   perBotLocalVmCountForModeChange(): Promise<number | null>;
   checkedModelSelection(raw: unknown, current?: { selection: ModelSelection; busy: boolean }, requireAvailableModel?: boolean): ModelSelectionCheck;
-  policyModelRefusal(instance: { instanceId: string; driverKind: string }): string | undefined;
   browserSessionSpec(binaryPath: string, session: string, profile: string | undefined): { command: string; env: Record<string, string> };
   configStatus(): ConfigStatus;
   configForAccess(status: ConfigStatus, admin: boolean): unknown;
@@ -80,7 +79,7 @@ export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
     closeBrowser, browserEngineSwitched, sharedComputers, sharedComputerControl, cloudHome: CLOUD_HOME, lendingEnabled, providerConfigs,
     localVmIdleMs, localVmIdles, localVmActiveThreads, localVmLifecycleBusy, localVmImageBusy, localVmModeChangeBusy,
     providerConfigBusy,
-    perBotLocalVmCountForModeChange, checkedModelSelection, policyModelRefusal, browserSessionSpec, configStatus,
+    perBotLocalVmCountForModeChange, checkedModelSelection, browserSessionSpec, configStatus,
     configForAccess, resyncOpenCodeProviderKeys, revokeEngineCapabilities, reloadProviders, broadcast, drainQueuedSends,
   } = deps;
   return async ({ req, res, url, path, method, auth, json, readBody }) => {
@@ -110,8 +109,6 @@ export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
         if (!checked.ok) return json(res, checked.status, { error: checked.error });
         const target = registry.get(checked.selection.instanceId)!;
         if (!target.enabled) return json(res, 400, { error: "Enable the backup engine before selecting it for recovery." });
-        const refusal = policyModelRefusal(target);
-        if (refusal) return json(res, 403, { error: refusal, code: "managed_policy" });
         patch.automaticRecovery.backup = checked.selection;
       }
       if (!Object.keys(patch).length) return json(res, 400, { error: "nothing to save" });

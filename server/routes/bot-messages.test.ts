@@ -110,7 +110,6 @@ async function fixture() {
     cloudThreadRefusal: () => null,
     turnSelection: () => undefined,
     registry: { get: () => ({ instanceId: "claude", driverKind: "claudeAgent" }) },
-    policyModelRefusal: () => undefined,
   } as unknown as BotMessageRouteDeps;
   const routes = [createBotMessageRoutes(deps)];
   const server = createServer(async (req, res) => {

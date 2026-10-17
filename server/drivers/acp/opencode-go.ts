@@ -165,12 +165,12 @@ export function resetOpenCodeModelCache(): void {
   discoveryFolder = null;
 }
 
-export function openCodeProviderKeysAllowed(state: { cloudHome: boolean; hostedWorkspace: boolean; organisationManaged: boolean; sharedSignIn: boolean }): boolean {
-  return !state.cloudHome && !state.hostedWorkspace && !state.organisationManaged && !state.sharedSignIn;
+export function openCodeProviderKeysAllowed(state: { cloudHome: boolean; hostedWorkspace: boolean; sharedSignIn: boolean }): boolean {
+  return !state.cloudHome && !state.hostedWorkspace && !state.sharedSignIn;
 }
 
 let providerKeysAllowed = () => openCodeProviderKeysAllowed({
-  cloudHome: cloudHomeConfigured(), hostedWorkspace: hostedWorkspaceConfigured(), organisationManaged: false, sharedSignIn: false,
+  cloudHome: cloudHomeConfigured(), hostedWorkspace: hostedWorkspaceConfigured(), sharedSignIn: false,
 });
 
 export function setOpenCodeProviderKeyPolicy(allowed: () => boolean): void {

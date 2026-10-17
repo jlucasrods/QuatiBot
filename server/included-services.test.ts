@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jevEndpoint } from "./decider/jev.ts";
-import { deciderCredential, trialCreditCredential, voiceCredential } from "./included-services.ts";
+import { deciderCredential, voiceCredential } from "./included-services.ts";
 
 const RELAY_VOICE = "https://cloud.example.test/api/cloud/services/voice/v1";
 // A Jev base URL: the relay's one route is <this>/v1/systemone.
@@ -80,21 +80,6 @@ describe("Jev credential", () => {
   });
 });
 
-describe("the trial's AI credit", () => {
-  const AI = "https://cloud.example.test/api/cloud/services/ai", TOKEN = `quati_ai_${"a".repeat(43)}`;
-  it("is the relay and this machine's token, only when both are set, HTTPS (loopback for tests) and the Admin's own token shape", () => {
-    expect(trialCreditCredential({ QUATI_CLOUD_AI_URL: AI, QUATI_CLOUD_AI_TOKEN: TOKEN })).toEqual({ token: TOKEN, api: AI, included: true });
-    expect(trialCreditCredential({ QUATI_CLOUD_AI_URL: `${AI}/`, QUATI_CLOUD_AI_TOKEN: ` ${TOKEN} ` })).toEqual({ token: TOKEN, api: AI, included: true });
-    expect(trialCreditCredential({ QUATI_CLOUD_AI_URL: "http://127.0.0.1:9/ai", QUATI_CLOUD_AI_TOKEN: TOKEN })?.api).toBe("http://127.0.0.1:9/ai");
-    for (const env of [{}, { QUATI_CLOUD_AI_URL: AI }, { QUATI_CLOUD_AI_TOKEN: TOKEN }, { QUATI_CLOUD_AI_URL: "http://cloud.example.test/ai", QUATI_CLOUD_AI_TOKEN: TOKEN },
-      { QUATI_CLOUD_AI_URL: "https://user:pw@cloud.example.test/ai", QUATI_CLOUD_AI_TOKEN: TOKEN }, { QUATI_CLOUD_AI_URL: `${AI}?key=1`, QUATI_CLOUD_AI_TOKEN: TOKEN },
-      { QUATI_CLOUD_AI_URL: "not a url", QUATI_CLOUD_AI_TOKEN: TOKEN }, { QUATI_CLOUD_AI_URL: AI, QUATI_CLOUD_AI_TOKEN: "sk-ant-own-key" },
-      { QUATI_CLOUD_AI_URL: AI, QUATI_CLOUD_AI_TOKEN: `quati_ai_${"a".repeat(42)}` }, { ...cloud }]) {
-      expect(trialCreditCredential(env), JSON.stringify(env)).toBeNull();
-    }
-  });
-});
-
 describe("holdIncludedServices", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -110,7 +95,6 @@ describe("holdIncludedServices", () => {
     vi.stubEnv("QUATI_CLOUD_AI_TOKEN", `quati_ai_${"a".repeat(43)}`);
     services.holdIncludedServices();
     expect(process.env.QUATI_CLOUD_AI_TOKEN).toBeUndefined();
-    expect(services.trialCreditCredential()).toEqual({ token: `quati_ai_${"a".repeat(43)}`, api: "https://cloud.example.test/api/cloud/services/ai", included: true });
     expect(process.env.QUATI_CLOUD_BOAT_TOKEN).toBeUndefined();
     expect(process.env.QUATI_CLOUD_VOICE_TOKEN).toBeUndefined();
     expect(process.env.QUATI_CLOUD_DECIDER_TOKEN).toBeUndefined();

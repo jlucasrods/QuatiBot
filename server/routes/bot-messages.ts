@@ -80,7 +80,6 @@ export interface BotMessageRouteDeps {
   engineSteersImages(instance: RunningInstance | undefined): boolean;
   resolveReplyTarget(threadId: string, value: unknown): Message | undefined;
   turnSelection(botId: string, threadId: string): ModelSelection | undefined;
-  policyModelRefusal(instance: { instanceId: string; driverKind: string }): string | undefined;
   clearUnattended(threadId: string): void;
   drainQueuedSends(): void;
   answeringCardAs(auth: RequestAuth, threadId: string, requestId: string, work: () => Promise<unknown>): Promise<void>;
@@ -127,7 +126,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     acceptDirectSend, directSendRefusal, startTurn, usageTriggerFor, messageSender, cloudGuestSendRefusal, cloudThreadRefusal,
     cloudOwnerSession, cardAnswerRefusal, commandRememberRefusal, requestBehavior, requestedTaskBot, botForThread, threadBusy,
     botAtThreadCapacity, parksBehindCoordination, activeGroupTurnForBot, runningTurnInstance, engineSteersImages, resolveReplyTarget,
-    turnSelection, policyModelRefusal, clearUnattended, drainQueuedSends, answeringCardAs, resolveAndSendTrust, resolveAndSendTeamSetup,
+    turnSelection, clearUnattended, drainQueuedSends, answeringCardAs, resolveAndSendTrust, resolveAndSendTeamSetup,
     resolveAndSendRoutine, resolveAndSendProfile, resolveAndSendModel, resolveSkillRequest, sendSkillResolution, answerRequest,
     deliverLateQuestionAnswer, interruptDirectThread, cancelDirectTurnDispatch, revokeInternalCapabilitiesForThread,
     cancelGroupTurnOperations, closeOpenApprovals, harnessCardOutcome,
@@ -362,9 +361,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
           error: `provider instance "${rerunSelection.instanceId}" is unavailable — pick another model in settings`,
         });
       }
-      const rerunInstance = registry.get(rerunSelection.instanceId)!;
-      const rerunRefusal = policyModelRefusal(rerunInstance);
-      if (rerunRefusal) return json(res, 409, { error: rerunRefusal });
       const replyTo = source.replyToId ? resolveReplyTarget(bot.threadId, source.replyToId) : undefined;
       const dataContext = parseDataContext(body.dataContext) ?? (text === source.text ? source.dataContext : undefined);
       const message = await startTurn(bot.id, text, { threadId: bot.threadId, editedMessageId: messageId, replyTo, sendId, trigger: usageTriggerFor(auth), dataContext,
