@@ -1,9 +1,13 @@
-<img src="public/app-icon.svg" alt="QuatiBot mascot" width="128" />
+<h1 align="center">QuatiBot</h1>
 
-# QuatiBot
+<p align="center">
+  <img src="public/app-icon.svg" alt="QuatiBot mascot" width="160" />
+</p>
 
-AI bots that get work done, with conversations, memory, routines, their own
-browser and isolated VMs — all from a web interface.
+<p align="center">
+  AI bots that get work done.<br />
+  Chat, memory, routines, a dedicated browser and isolated VMs — all from a web interface.
+</p>
 
 ## Get started
 
