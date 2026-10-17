@@ -1,5 +1,8 @@
 {
-  "title": "Computers",
-  "icon": "Monitor",
-  "pages": ["index", "local-computer", "local-vm", "cloud-and-vps"]
+  "title": "Agent environments",
+  "pages": [
+    "index",
+    "browser",
+    "local-vm"
+  ]
 }

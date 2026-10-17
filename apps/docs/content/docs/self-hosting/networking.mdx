@@ -1,24 +1,25 @@
 ---
-title: Networking
-description: Understand the harness, webhook, and companion network boundaries.
-icon: Network
+title: "Network access"
+description: "HTTPS, private networks and device pairing"
 ---
 
-QuatiBot separates its network surfaces by trust level.
 
-| Surface | Default bind | Purpose |
-|---|---|---|
-| Harness | `127.0.0.1:8799` | Full app API and event stream |
-| Webhook receiver | `127.0.0.1:8800` | Health and secret hook endpoints only |
-| Companion sidecar | `0.0.0.0:8810` when enabled | Paired-device, token-authenticated allowlist |
-| Companion control | `127.0.0.1:8811` | Pairing and device administration |
+Run the server behind an HTTPS reverse proxy, a tunnel configured by its operator, or Tailscale. Keep the backend port private and forward HTTP and WebSocket traffic. A public address does not grant access: remote browsers need a paired session.
 
-## Remote access
+Pass the externally reachable origin when starting the server:
 
-Use the companion sidecar rather than exposing the harness. Tailscale is the recommended remote route because it encrypts and authenticates the network path without making the machine public.
+```sh
+pnpm start --public-url https://quati.example.org
+```
 
-For webhook delivery, proxy only the dedicated webhook receiver. Never forward the main harness port to the public internet.
+Generate a device code from the server host:
 
-## Port overrides
+```sh
+pnpm quati pair --public-url https://quati.example.org
+pnpm quati sessions
+pnpm quati sessions revoke SESSION_ID
+```
 
-Source and advanced deployments can change documented ports with the relevant environment settings. When the default harness port is occupied, packaged builds may fall back to another local port and communicate the selected address internally.
+Pairing codes are short-lived and single-use. Send them only to the intended person. `pair --client` grants chat and approvals without administrative settings. Revoking a session signs that device out.
+
+For a private tailnet, an authenticated Tailscale installation can serve HTTPS with `pnpm start --tailscale`. For an operator-owned domain, `--domain HOST` starts the Caddy integration and requires DNS and the necessary inbound ports. Use one access method per launch.

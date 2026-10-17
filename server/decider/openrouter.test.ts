@@ -11,7 +11,7 @@ const ON: AppConfig = { decider: { enabled: true, provider: "openrouter", openro
 const NO_MODEL: AppConfig = { decider: { enabled: true, provider: "openrouter", openrouterKey: KEY, jobs: { roomRouting: true } } };
 const OPTIONS = { maya: "Maya, Product Designer bot.", theo: "Theo, Frontend Engineer bot." };
 const QUESTION = { instructions: "Which bot should answer `new_message`?", options: OPTIONS };
-const STATE = { new_message: { from: "Milind", text: "PRIVATE-MESSAGE-TEXT the navbar overlaps on Safari" } };
+const STATE = { new_message: { from: "Alex", text: "PRIVATE-MESSAGE-TEXT the navbar overlaps on Safari" } };
 
 type FetchMock = ReturnType<typeof vi.fn<typeof fetch>>;
 

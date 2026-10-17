@@ -13,7 +13,6 @@ export interface ServiceInstallInput {
   dataDir: string;
   port: number;
   domain?: string;
-  tunnel?: boolean;
   tailscale?: boolean;
   label?: string;
   sentinel?: boolean;
@@ -35,10 +34,9 @@ export interface ServiceIo {
   error(line: string): void;
 }
 
-export function serviceServeArgs(input: Pick<ServiceInstallInput, "port" | "dataDir" | "domain" | "tunnel" | "tailscale" | "label">): string[] {
+export function serviceServeArgs(input: Pick<ServiceInstallInput, "port" | "dataDir" | "domain" | "tailscale" | "label">): string[] {
   const args = ["--port", String(input.port), "--data-dir", input.dataDir, "--no-pair"];
   if (input.domain) args.push("--domain", input.domain);
-  else if (input.tunnel) args.push("--tunnel");
   else if (input.tailscale) args.push("--tailscale");
   if (input.label) args.push("--label", input.label);
   return args;

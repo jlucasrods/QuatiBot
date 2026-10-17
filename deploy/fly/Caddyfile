@@ -1,4 +1,4 @@
-# Edge for one QUATI Cloud Pro home machine (docs/cloud-pro.md). Fly's proxy
+# Edge for one QUATI Cloud Pro home machine. Fly's proxy
 # terminates TLS for <app>.fly.dev and reaches this machine on :8080. The
 # QuatiBot server listens only on 127.0.0.1, and every request forwarded
 # to it carries X-Forwarded-*, so it is never the loopback owner

@@ -44,7 +44,7 @@ function fakeRunner(script: Script = () => undefined): Fake {
       fake.reports.push({ a, ...(parent ? { parent } : {}) });
     },
     changed: rows => { fake.changes.push([...rows]); },
-    names: a => ({ requester: a.requester.botId ?? "Milind", assignee: a.assignee.botId, person: "Milind" }),
+    names: a => ({ requester: a.requester.botId ?? "Alex", assignee: a.assignee.botId, person: "Alex" }),
     async release(id, result) {
       const resolve = fake.held.get(id);
       if (!resolve) throw new Error(`no held turn ${id}`);

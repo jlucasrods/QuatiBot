@@ -1,29 +1,3 @@
-# QuatiBot harness server — hosted/self-hosted tenant image, and the
-# QUATI Cloud Pro home machine (docs/cloud-pro.md).
-#
-# Build the renderer + the self-contained server bundle, then ship only those
-# artifacts on a slim Node runtime. The runtime stage holds what changes
-# rarely (Chrome's libraries, agent-browser and its Chrome), and each image
-# adds its engine CLIs before the app files, which change with every commit:
-# a code-only change rebuilds only the small app layers, so a pull downloads
-# only those. The server keeps binding 127.0.0.1 inside the container (the
-# loopback-trust invariant is the auth model); deploy/docker-compose.yml puts
-# Caddy in the same network namespace to terminate TLS and authentication at
-# the edge.
-#
-#   docker build -t quatibot .
-#   docker build --build-arg ENGINES="@anthropic-ai/claude-code @openai/codex" -t quatibot .
-#   docker build --target cloud-home -t quati-cloud-home .
-#
-# HOME is the /data volume, so engine CLI logins (~/.claude, ~/.codex, ~/.grok,
-# ...) and QuatiBot's own state (~/.quatibot) persist across container
-# restarts.
-#
-# A plain `docker run` of either image wants `--init --shm-size=512m`, as the
-# compose files set: the bots' browsers leave exited processes for an init to
-# collect, and Chrome needs shared memory (docs/browser-packaging.md, "Process
-# hygiene"). On Fly Machines (the Cloud home) Fly's own init is PID 1.
-
 FROM caddy:2.10.2 AS edge
 # Official Caddy carries a privileged-port file capability. The Cloud home's
 # edge uses the unprivileged 8080, and a plain copy to a fresh inode drops the
@@ -39,7 +13,6 @@ ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # every workspace member's manifest must exist before install resolves the lockfile
 COPY apps/docs/package.json ./apps/docs/package.json
-COPY cloudflare/control-plane/package.json ./cloudflare/control-plane/package.json
 # package.json's `prepare` runs during install. The script itself is written to
 # no-op without a .git (it exits 0 here), but node still has to be able to LOAD
 # it, and .dockerignore keeps .git out — so copy it in before install or the
@@ -68,9 +41,6 @@ RUN apt-get update \
     libxshmfence1 libgbm1 fonts-noto-color-emoji fonts-noto-cjk fonts-freefont-ttf \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --create-home --home-dir /data --shell /bin/bash quati
-# The bots' browser (docs/plans/browser-engine.md): the pinned agent-browser
-# and a Chrome for Testing with its libraries, so a server bot can browse.
-# Pin here and in server/browser-engine-release.ts together.
 ARG AGENT_BROWSER_VERSION=0.37.0
 # `agent-browser install` fetches Chrome for Testing's last-known-good Stable;
 # the publish job passes that version so a Chrome release rebuilds this layer.

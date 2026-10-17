@@ -124,15 +124,9 @@ ChatGPT/Claude subscriptions. New API keys in config.json and managed
 account credentials in tunnel-account.json are plaintext, not encrypted,
 with owner-only permissions (0600 on Unix). Keep these files private.
 
-Ctrl-C before saving AI setup leaves its pending QUATI changes unapplied.
-During the later phone step, it keeps the AI setup already saved and exits
-without starting a server. Completed installs and sign-ins remain; run
-\`quatibot setup\` to continue without deleting your data.
+Ctrl-C before saving AI setup leaves your saved settings unchanged.
 
-For a service, use \`serve --tunnel\` after \`login\` for managed HTTPS,
-\`serve --tailscale\` for your tailnet, or your own reverse proxy. The
-\`login\` command signs in to an QuatiBot account, not an AI provider;
-it does not start the tunnel itself.
+For remote access, configure your own HTTPS proxy and use \`--public-url\`.
 
 Scripts, CI and other agents can drive a running workspace without a screen:
 set a team up from a file, give a bot one job and wait until it and every
@@ -144,7 +138,7 @@ quatibot run "Room Lead" "Rehearse the launch of https://example.com" --export .
 quatibot help run       # every verb: doctor, run, wait, send, export, events, team, engine, connect, mcp
 \`\`\`
 
-[Setup guide](https://github.com/jlucasrods/QuatiBot/blob/main/docs/cli-onboarding.md)
+[Setup guide](https://github.com/jlucasrods/QuatiBot/blob/main/docs/self-hosting.md)
 · [Scripts and CI](https://github.com/jlucasrods/QuatiBot/blob/main/docs/headless-cli.md)
 · [Hosting guide](https://github.com/jlucasrods/QuatiBot/blob/main/docs/self-hosting.md)
 `,

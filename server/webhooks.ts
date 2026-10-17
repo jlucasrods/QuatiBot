@@ -69,8 +69,7 @@ export interface WebhookManagerOptions {
   pendingRuns?: (webhookId: string) => number;
   /** delivery:"post" sink: lands in the trigger's own stable thread, never a caller-supplied one. */
   post?: (botId: string, threadId: string, text: string) => void;
-  /** Absent, every post delivery fails with 503 rather than falling back to an ambient thread
-   *  (https://github.com/milind-soni/OpenMausBot/issues/2071). */
+  /** Absent, every post delivery fails with 503 rather than falling back to an ambient thread. */
   resolvePostThread?: (trigger: WebhookTrigger, forceNew: boolean) => string | undefined;
   findRun?: (webhookId: string, deliveryId: string) => { id: string } | null;
 }

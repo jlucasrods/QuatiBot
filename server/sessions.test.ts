@@ -219,10 +219,10 @@ describe("pairing codes", () => {
   });
 
   it("names the device from the client, else the code's label, else the user agent", () => {
-    const a = registry.openPairing({ label: "Milind's MacBook" });
+    const a = registry.openPairing({ label: "Alex's MacBook" });
     const named = registry.exchange({ code: a.code, label: "", source: "s1", fallbackLabel: "Safari on Mac" });
     if (!named.ok) throw new Error(named.error);
-    expect(named.session.label).toBe("Milind's MacBook");
+    expect(named.session.label).toBe("Alex's MacBook");
     const b = registry.openPairing();
     const ua = registry.exchange({ code: b.code, label: "  ", source: "s2", fallbackLabel: "Safari on Mac" });
     if (!ua.ok) throw new Error(ua.error);

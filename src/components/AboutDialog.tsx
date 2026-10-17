@@ -34,14 +34,12 @@ export function AboutDialog({ open, onClose }: {
         <p className="mt-3 text-[13px] leading-relaxed text-ink-secondary">
           A Linux web home for your agents, powered by OpenCode V2. Apache 2.0 licensed.
         </p>
-        <p className="mt-2 text-[12px] leading-relaxed text-ink-secondary">
-          Based on OpenMausBot by Milind Soni and contributors. An independent fork.
-        </p>
         <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-[13px]">
           <AboutLink href={APP_REPOSITORY} label="GitHub"/>
           <AboutLink href={DOCS_URL} label="Docs"/>
           <AboutLink href={RELEASES_URL} label="Releases"/>
           <AboutLink href={LICENSE_URL} label="License"/>
+          <AboutLink href={`${APP_REPOSITORY}/blob/main/NOTICE`} label="Notices"/>
         </div>
         <button ref={closeRef} type="button" onClick={onClose} className="mt-5 w-full rounded-xl bg-raised px-4 py-2 text-[13px] font-medium text-ink hover:brightness-110">
           Close

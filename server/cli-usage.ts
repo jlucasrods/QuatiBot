@@ -25,15 +25,12 @@ export const USAGE = `quatibot — your team of AI bots, ready in a few steps
   quatibot setup [--data-dir DIR]
   quatibot start [the same options as serve]
   quatibot serve [--port 8799] [--data-dir DIR] [--label NAME]
-                    [--public-url https://host] [--tailscale | --tunnel | --domain HOST] [--no-pair]
-  quatibot pair  [--label NAME] [--client] [--phone ios|android]
+                    [--public-url https://host] [--tailscale | --domain HOST] [--no-pair]
+  quatibot pair  [--label NAME] [--client]
                     [--public-url https://host]
   quatibot sessions [revoke ID]
   quatibot status
-  quatibot login [--email you@example.com]
-  quatibot logout
-  quatibot access list | add EMAIL [--chat-only] | remove EMAIL
-  quatibot service install [--domain HOST | --tunnel | --tailscale] [--port N] [--data-dir DIR] | uninstall
+  quatibot service install [--domain HOST | --tailscale] [--port N] [--data-dir DIR] | uninstall
                     [--sentinel]   (the health scan below, every two minutes, instead of the server)
   quatibot sentinel [--data-dir DIR] [--out DIR] [--once] [--json]   (read-only health scan; see --help)
   quatibot browser install [--with-deps] | status
@@ -43,18 +40,12 @@ export const USAGE = `quatibot — your team of AI bots, ready in a few steps
                   | delete NAME --yes [--keep-data] | upgrade   (all take --dry-run)
                   | agent [--socket PATH] [--group USER]   (root; installed by init --operator)
 
-setup   choose AI access and optional phone access; keep existing bots and chats
+setup   select an available OpenCode model; keep existing bots and chats
 start   same as quatibot: use your saved settings and open the workspace
 serve   starts the server without prompts and prints a pairing link + QR code
 pair    mints a pairing code against a running server (--client: chat only)
 sessions lists paired devices; "sessions revoke ID" signs one out
 status  what the server says about itself
-login   signs this machine in to an QuatiBot account (an emailed code)
-        and reserves its public address for --tunnel
-logout  releases that address and signs out
-access  who may sign in with an emailed code at /pair: an address or
-        @domain; --chat-only gives chat and approvals without settings.
-        Takes effect at once, no restart.
 service keep the server running across reboots: writes a systemd unit
         (Linux) or a launchd agent (macOS) for the same serve options and
         prints the commands that install it. Install the package
@@ -76,16 +67,13 @@ fleet   many client workspaces on one Linux server, each its own account,
 --tailscale  serve over your tailnet: Tailscale terminates HTTPS and the
              link uses this machine's MagicDNS name (needs Tailscale signed in
              and HTTPS certificates enabled for the tailnet)
---tunnel     serve at a public https://c-… address through a
-             Cloudflare tunnel: no domain, no proxy, no open port. Run
-             \`quatibot login\` once on this machine first.
 --domain     serve at https://HOST on your own domain: a pinned Caddy is
              downloaded once and run alongside the server, and gets the
              certificate itself. Point the domain's DNS at this machine and
              open ports 80 and 443.
 
 --no-open   do not open a browser window
---no-pair   skip phone setup and do not print a pairing code
+--no-pair   do not print a pairing code
 --local     start locally this time, ignoring saved remote-access settings
 
 ${HEADLESS_USAGE}

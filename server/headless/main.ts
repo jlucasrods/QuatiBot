@@ -74,7 +74,7 @@ export const VERB_HELP: Record<string, string> = {
   "engine list": "quatibot engine list\n  The engines, whether each is ready, and which keys are set (never their values).",
   connect: `quatibot connect [URL] [--code CODE] --out FILE [--label NAME] [--client] [--force]
   Get a token for a workspace you reach over the network, saved to FILE (only you can read it).
-  On this computer's own server the code is made for you; elsewhere, get one from Settings → Phone.
+  On this computer's own server the code is made for you; elsewhere, ask its operator to run quatibot pair.
   Then use it: --url URL --token-file FILE (or QUATIBOT_URL and QUATIBOT_TOKEN).`,
   mcp: "quatibot mcp\n  Serve the QuatiBot MCP tools on stdin and stdout, for an agent (docs/mcp-server.md).",
 };

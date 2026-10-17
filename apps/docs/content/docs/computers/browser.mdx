@@ -1,0 +1,17 @@
+---
+title: "Agent browser"
+description: "Separate Chromium profile and site access"
+---
+
+
+The agent uses a dedicated Chromium instance with its own profile, cookies, tabs and downloads. Enable the browser for the bot. Browser interactions and screenshots are provided by the backend, independently of the browser displaying the QuatiBot interface.
+
+For a managed engine installation, use:
+
+```sh
+pnpm quati browser install
+pnpm quati browser status
+```
+
+Linux may require Chromium system libraries. Install system dependencies deliberately for the server user and keep the browser sandbox enabled. Browser logins are restricted by their allowed sites and bot grants.
+

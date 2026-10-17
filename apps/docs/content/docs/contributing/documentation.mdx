@@ -1,45 +1,10 @@
 ---
-title: Writing documentation
-description: Add and review Fumadocs pages in the same pull request as the feature.
-icon: FilePenLine
+title: "Documentation"
+description: "Describe the supported product"
 ---
 
-Public documentation lives in `apps/docs/content/docs`. Internal design notes and implementation plans can remain in the repository's top-level `docs` folder.
+Documentation describes supported behavior, ownership boundaries and operational requirements. Commands and links must resolve to the current codebase.
 
-## Add a page
+Keep the repository guides and the site navigation aligned. Use isolated fixtures for examples involving writes. Distinguish a fixture protocol check from real model inference, browser execution or VM execution.
 
-Create a `.mdx` file with a title and description:
-
-```mdx
----
-title: Feature name
-description: One sentence that says what the reader will learn.
----
-
-Explain the user outcome first.
-```
-
-Add the page filename to the nearest `meta.json` so it appears in navigation.
-
-## Preview locally
-
-From the repository root:
-
-```bash
-pnpm docs:dev
-```
-
-Open `http://localhost:3000`. Before submitting:
-
-```bash
-pnpm docs:build
-```
-
-## Documentation standard
-
-- Describe shipped behavior, not an open PR as though it has been released.
-- Lead with user outcomes and include exact recovery steps for known failure modes.
-- State platform and security boundaries plainly.
-- Prefer links to stable public docs over duplicating long internal design records.
-- Keep unreleased claims out of the changelog. Entries are read from GitHub
-  only after a release is published.
+Do not include credentials, personal workspace data, historical implementation diaries or speculative feature plans in product guides.

@@ -2,7 +2,7 @@
 import { BOOT_CLOUD_SECRETS } from "./cloud-secrets-boot.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { rm as removeDirectory } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -432,7 +432,7 @@ import { createWorkspaceBackupRoutes, isWorkspaceBackupSessionControl } from "./
 import { applyPendingWorkspaceRestore, readLastWorkspaceRestore, type WorkspaceRestoreResult } from "./workspace-backup.ts";
 import { repairMovedWorkspacePaths } from "./moved-paths-repair.ts";
 import { createCustomDomainVerifier, customDomainIpv4, normalizeCustomDomain } from "./custom-domain.ts";
-import { allowedScopes, createEmailSignIn, parseAllowList } from "./account-signin.ts";
+import { allowedScopes, parseAllowList } from "./session-membership.ts";
 import { ProviderAuthSessions } from "./provider-auth-sessions.ts";
 import {
   clearSessionCookie,
@@ -680,9 +680,6 @@ bindDecisionRetention(() => decisionRetentionDays(cfg.decisions?.retentionDays))
 bindSafetyFloor(() => cfg);
 const decider = createDecider({ config: () => cfg, dataDir: DATA_DIR });
 const customDomainVerifier = createCustomDomainVerifier({ environmentId: ENVIRONMENT_ID });
-const emailSignIn = createEmailSignIn({
-  allow: signInAllowList,
-});
 let customDomainRevision = 0;
 function savedCustomDomain(): string | null {
   if (DESKTOP_MANAGED || !cfg.customDomain) return null;
@@ -12798,7 +12795,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
     }
     // Hosted workspaces have one sign-in authority: a missing optional layer must never reactivate email/QR credential minting.
     if (HOSTED_WORKSPACE) {
-      if (method === "POST" && ["/api/auth/pair", "/api/pair", "/api/auth/pairing", "/api/auth/email/start", "/api/auth/email/verify"].includes(path)) {
+      if (method === "POST" && ["/api/auth/pair", "/api/pair", "/api/auth/pairing"].includes(path)) {
         return json(res, 403, { error: "Sign in through the workspace portal." });
       }
       if (workspaceAccess) {
@@ -12807,14 +12804,14 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
         return json(res, 503, { error: "Workspace sign-in is unavailable." });
       }
     }
-    if (method === "POST" && ["/api/auth/pair", "/api/pair", "/api/auth/pairing", "/api/auth/email/start", "/api/auth/email/verify"].includes(path)) {
+    if (method === "POST" && ["/api/auth/pair", "/api/pair", "/api/auth/pairing"].includes(path)) {
       const refusal = managedPolicy.remoteAccessRefusal();
       if (refusal) return json(res, 403, { error: refusal, code: "managed_policy" });
     }
     // Two public routes come first; everything else needs the loopback owner or a paired session with the right scope.
     if (method === "GET" && !path.startsWith("/api/") && !path.startsWith("/.well-known/") && serveStatic(res, path)) return;
     if (method === "GET" && path === "/.well-known/quatibot/environment") {
-      return json(res, 200, environmentDescriptor({ environmentId: ENVIRONMENT_ID, desktopManaged: DESKTOP_MANAGED, emailSignIn: !HOSTED_WORKSPACE && !CLOUD_HOME && emailSignIn.enabled(), sharedComputers: lendingEnabled(), cloudHome: Boolean(CLOUD_HOME) }));
+      return json(res, 200, environmentDescriptor({ environmentId: ENVIRONMENT_ID, desktopManaged: DESKTOP_MANAGED, emailSignIn: false, sharedComputers: lendingEnabled(), cloudHome: Boolean(CLOUD_HOME) }));
     }
     const domainCheck = /^\/\.well-known\/quatibot\/domain-check\/([a-f0-9]{64})$/.exec(path);
     if (method === "GET" && domainCheck) {
@@ -12822,44 +12819,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       const challenge = customDomainVerifier.challenge(domainCheck[1]);
       return json(res, challenge ? 200 : 404, challenge ?? { error: "No active domain check." });
     }
-    // Never on a Cloud home: it is personal, and the owner's devices sign in through the Admin.
-    if (CLOUD_HOME && method === "POST" && (path === "/api/auth/email/start" || path === "/api/auth/email/verify")) {
-      return json(res, 403, { error: CLOUD_PERSONAL_REFUSAL, code: "cloud_personal" });
-    }
-    if (method === "POST" && (path === "/api/auth/email/start" || path === "/api/auth/email/verify")) {
-      if (!/^application\/json\b/i.test(String(req.headers["content-type"] ?? ""))) {
-        return json(res, 415, { error: "send the sign-in request as JSON (content-type: application/json)" });
-      }
-      if (!emailSignIn.enabled()) return json(res, 404, { error: "email sign-in is not set up on this server; use a pairing code" });
-      const source = requestSource(req);
-      const allowed = sessions.attemptAllowed(source);
-      if (!allowed.ok) return json(res, 429, { error: `too many failed sign-in attempts from your address; try again in ${Math.ceil(allowed.retryAfterMs / 1000)}s` });
-      const body = await readBody(req);
-      const email = typeof body?.email === "string" ? body.email : "";
-      if (path === "/api/auth/email/start") {
-        const started = await emailSignIn.start(email);
-        if (!started.ok) {
-          if (started.status === 403) sessions.noteFailure(source);
-          return json(res, started.status, { error: started.error });
-        }
-        return json(res, 200, { ok: true });
-      }
-      const code = typeof body?.code === "string" ? body.code : "";
-      const label = typeof body?.label === "string" ? body.label : "";
-      const verified = await emailSignIn.verify(email, code);
-      if (!verified.ok) {
-        if (verified.status === 401 || verified.status === 403) sessions.noteFailure(source);
-        console.warn(`email sign-in refused from ${source}: ${verified.error}`);
-        return json(res, verified.status, { error: verified.error });
-      }
-      sessions.clearFailures(source);
-      const issued = sessions.issue({ label: label.trim() || labelFromUserAgent(req.headers["user-agent"]), scopes: verified.scopes, userId: verified.userId, email: verified.email });
-      const environment = environmentDescriptor({ environmentId: ENVIRONMENT_ID, desktopManaged: DESKTOP_MANAGED, emailSignIn: true, sharedComputers: lendingEnabled() });
-      const secure = requestOrigin(req)?.startsWith("https://") === true;
-      res.setHeader("set-cookie", serializeSessionCookie(SESSION_COOKIE, issued.token, { secure, maxAgeSeconds: cookieMaxAgeSeconds(issued.session) }));
-      return json(res, 200, { session: issued.session, environment });
-    }
-    if (cloudSigned && await cloudSigned({ req, res, url, path, method })) return;
+        if (cloudSigned && await cloudSigned({ req, res, url, path, method })) return;
     if (method === "POST" && path === "/api/auth/pair") {
       // JSON only: a cross-site HTML form cannot send this content type without a preflight, so no unused code is planted as a session.
       if (!/^application\/json\b/i.test(String(req.headers["content-type"] ?? ""))) {
@@ -12883,7 +12843,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
         console.warn(`pairing refused from ${requestSource(req)}: ${result.error}`);
         return json(res, result.status, { error: result.error });
       }
-      const environment = environmentDescriptor({ environmentId: ENVIRONMENT_ID, desktopManaged: DESKTOP_MANAGED, emailSignIn: !CLOUD_HOME && emailSignIn.enabled(), sharedComputers: lendingEnabled(), cloudHome: Boolean(CLOUD_HOME) });
+      const environment = environmentDescriptor({ environmentId: ENVIRONMENT_ID, desktopManaged: DESKTOP_MANAGED, emailSignIn: false, sharedComputers: lendingEnabled(), cloudHome: Boolean(CLOUD_HOME) });
       if (wantsCookie) {
         const previous = browser ? sessions.authenticate(parseCookies(req.headers.cookie).get(SESSION_COOKIE)) : null;
         if (previous && previous.id !== result.session.id) sessions.revoke(previous.id);
@@ -15624,18 +15584,6 @@ server.listen(PORT, "127.0.0.1", async () => {
   memoryUpkeep.start();
 });
 
-// Tunnel requests have no peer address, which request-auth treats as proxied: a session is required, never loopback trust.
-const TUNNEL_SOCKET = process.env.QUATI_TUNNEL_SOCKET?.trim() || null;
-let tunnelListener: ReturnType<typeof createServer> | null = null;
-if (TUNNEL_SOCKET) {
-  if (process.platform !== "win32") rmSync(TUNNEL_SOCKET, { force: true });
-  tunnelListener = createServer(handleRequest);
-  desktopViewer.attach(tunnelListener, handleRequest);
-  tunnelListener.listen(TUNNEL_SOCKET, () => {
-    console.log(`quatibot tunnel listener on ${TUNNEL_SOCKET}`);
-  });
-}
-
 /** A root the runtime holds is the runtime's to account for at the next start: a line here, with Retry, would start the job a second time. */
 function noteTurnsCutByShutdown(): void {
   const cut = (threadId: string) => !coordinator.continuesAfterRestart(threadId) && !runtimeHoldsRoot(threadId);
@@ -15682,7 +15630,6 @@ const gracefulShutdown = createGracefulShutdown({
       cacheKeepWarm.dispose();
       skillReview.stop();
       webhookIngress?.server.close();
-      tunnelListener?.close();
     },
     async () => { await managedDesktop.close(); await registry.disposeAll(); },
     async () => { await dataEngine.closeAll().catch((error) => console.warn("data: close failed", error)); },

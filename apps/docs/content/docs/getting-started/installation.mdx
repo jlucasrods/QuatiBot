@@ -1,58 +1,27 @@
 ---
-title: Installation
-description: Install QuatiBot on macOS, Windows, or Ubuntu.
-icon: Download
+title: "Installation"
+description: "Run the Linux web application"
 ---
 
-## Download a released build
 
-Choose your computer below. Each link always downloads the latest published build.
+## Requirements
 
-| Platform | Recommended package | Notes |
-|---|---|---|
-| macOS Apple silicon | [Download `.dmg`](https://github.com/jlucasrods/QuatiBot/releases/latest/download/QuatiBot.dmg) | Signed and notarized. Drag to Applications. |
-| macOS Intel | [Download `.dmg`](https://github.com/jlucasrods/QuatiBot/releases/latest/download/QuatiBot-intel.dmg) | Signed and notarized. |
-| Windows x64 | [Download installer](https://github.com/jlucasrods/QuatiBot/releases/latest/download/QuatiBot-setup.exe) | Per-user installer; Windows signing is not yet available. |
-| Ubuntu 24.04 x64 | [Download `.deb`](https://github.com/jlucasrods/QuatiBot/releases/latest/download/QuatiBot-amd64.deb) · [AppImage](https://github.com/jlucasrods/QuatiBot/releases/latest/download/QuatiBot.AppImage) | The `.deb` is recommended; the AppImage is portable. |
+- Linux and Node.js 24 or newer.
+- pnpm 10.33, as specified by `package.json`.
+- OpenCode V2 installed and authenticated for the user running the backend.
 
-<Callout type="warn" title="Windows SmartScreen">
-  The Windows installer is not code-signed yet. Windows may show “Unknown publisher.” Verify that you downloaded it from the official QuatiBot releases repository before choosing **More info → Run anyway**.
-</Callout>
+From the repository root:
 
-## Install an agent CLI
-
-QuatiBot needs at least one supported agent engine installed and signed in. Claude and Codex are the most common starting points.
-
-1. Install the CLI from its official provider.
-2. Run it once in a terminal and complete sign-in.
-3. Restart QuatiBot.
-4. Open the model picker. Available engines appear normally; unavailable engines explain what is missing.
-
-See [Agent engines](../providers/index.mdx) for the complete list and explicit path overrides.
-
-## Using QuatiBot at work
-
-If your company uses Quati Admin, you can sign in with your organization to use the AI models it provides, alongside your own. It is optional. See [Use QuatiBot at work](./organisation.mdx).
-
-## Build from source
-
-Requirements: Node.js 24 or newer, pnpm 10.33.0, and at least one authenticated agent CLI.
-
-```bash
-git clone https://github.com/jlucasrods/QuatiBot.git
-cd QuatiBot
-corepack enable
+```sh
 pnpm install --frozen-lockfile
+pnpm build
+pnpm start
 ```
 
-Run the harness, web UI, and Electron shell in separate terminals:
+Open `http://127.0.0.1:8799` in a browser. The Node server serves both the compiled frontend and API. Use the pairing code printed by the server when the browser asks for one.
 
-```bash
-pnpm dev:server
-pnpm dev
-pnpm dev:desktop
+`QUATI_DATA_DIR` selects the workspace directory; its default is `~/.quatibot`. Keep this directory private and persistent. `--port` selects the HTTP port:
+
+```sh
+QUATI_DATA_DIR=/srv/quatibot pnpm start --port 8799
 ```
-
-## Where data lives
-
-QuatiBot stores its application data under `~/.quatibot`. Electron window and browser data use the normal per-platform application data directory.

@@ -1,29 +1,29 @@
 ---
-title: Contributing
-description: Work with the project architecture and keep changes reviewable.
-icon: GitPullRequest
+title: "Development"
+description: "Linux, Node and isolated verification"
 ---
 
-QuatiBot welcomes focused fixes and features. Read the repository's [CONTRIBUTING.md](https://github.com/jlucasrods/QuatiBot/blob/main/CONTRIBUTING.md) before opening a pull request.
 
-## Before building
+Use Linux, Node.js 24+ and the pnpm version specified in `package.json`.
 
-- Search open and recently merged issues and pull requests.
-- Link overlapping work and coordinate with the current contributor.
-- Extend the existing harness, renderer, companion, and provider boundaries instead of adding a parallel system.
-- Open an issue before a large cross-platform change.
-
-## Local checks
-
-```bash
-pnpm typecheck
-pnpm test
-pnpm build
-pnpm check:electron
+```sh
+pnpm install --frozen-lockfile
+pnpm dev:server
 ```
 
-Run the platform-specific package or native tests when your change touches macOS, Windows, Ubuntu, Cloudflare, or iOS.
+In a separate terminal:
 
-## Keep PRs narrow
+```sh
+pnpm dev
+```
 
-One concern per pull request is easier to review, test, revert, and release. Large prototypes are useful integration branches, but upstream submissions should be split into independently green slices.
+Vite serves the development frontend; the backend owns application data and OpenCode sessions. For the single-process web build:
+
+```sh
+pnpm build
+pnpm start
+```
+
+The bundled server is built with `pnpm build:server`. `node scripts/smoke-packaged-server.mjs` exercises the compiled server, frontend assets, CLI and workers in an isolated workspace.
+
+Follow [the repository verification guide](https://github.com/jlucasrods/QuatiBot/blob/main/docs/verification/README.md) before claiming a server or conversation change works. Complement related tests when changing behavior, and keep credentials and personal workspace data out of fixtures.

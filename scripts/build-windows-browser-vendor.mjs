@@ -7,7 +7,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { executableTarget } from "./prepare-cloudflared.mjs";
+import { executableTarget } from "./executable-target.mjs";
 import { bundleInventory, releaseBytes } from "./prepare-browser.mjs";
 
 export const WINDOWS_VENDOR_VERSION = "0.36.0-quati.2";

@@ -53,7 +53,7 @@ function fakeHost(script: Script = () => undefined): Host {
     park(node, question) { host.parks.push({ node, question }); },
     report(child, parent) { host.reports.push({ child, ...(parent ? { parent } : {}) }); },
     changed(groups, threads) { host.changes.push({ groups: [...groups].sort(), threads: [...threads].sort() }); },
-    names: (node, parent) => ({ requester: parent?.botId ?? "Milind", assignee: node.botId, person: "Milind" }),
+    names: (node, parent) => ({ requester: parent?.botId ?? "Alex", assignee: node.botId, person: "Alex" }),
     levelOf: target => host.levels[target.botId] ?? { level: "ask" },
     chiefOf: address => host.chiefs.has(address.threadId),
     async release(id, outcome) {
@@ -204,8 +204,8 @@ describe("RuntimeCoordinator: the requesting turn and its tree", () => {
     const first = w.host.runs[0]!;
     expect(first.node).toMatchObject({ id: node.id, status: "running", executions: 1 });
     expect(first.resumed).toBe(false);
-    expect(first.text.startsWith(`${ENVELOPE_MARK} ${node.id} from @chief for Milind]`)).toBe(true);
-    expect(first.text).toContain('Milind asked: "Ship the CSV export".');
+    expect(first.text.startsWith(`${ENVELOPE_MARK} ${node.id} from @chief for Alex]`)).toBe(true);
+    expect(first.text).toContain('Alex asked: "Ship the CSV export".');
     expect(first.text).toContain("Your level for this is Edits:");
     expect(first.text.endsWith("Brief from @chief:\nBuild it")).toBe(true);
     await flush();
@@ -719,7 +719,7 @@ describe("RuntimeCoordinator: modes and openers", () => {
     expect(second.reply).toBe("poll");
     w.coordinator.tick();
     const text = w.host.runs[0]!.text;
-    expect(text).toContain("This work started with an external runtime, not with Milind's own request");
+    expect(text).toContain("This work started with an external runtime, not with Alex's own request");
     expect(text).toContain("@bridge reads your reply from its inbox when it asks");
     ended(w, "gen-x");
     expect(w.coordinator.node("gen-x")?.status).toBe("waiting");
@@ -757,7 +757,7 @@ describe("RuntimeCoordinator: modes and openers", () => {
     expect(text).toContain("A routine run started this work");
     expect(text).toContain("a step the routine does not cover");
     expect(text).toContain('Done when: "the PDF is in the shared folder".');
-    expect(text).not.toContain("Milind asked");
+    expect(text).not.toContain("Alex asked");
     expect(text).not.toContain("outside content");
     await flush();
     expect(w.coordinator.outstandingFor("chief-chat")).toEqual([]);
@@ -1000,7 +1000,7 @@ describe("RuntimeCoordinator: every turn a root (beginTurn, endTurn, answerRoot,
     expect(second.resumed).toBe(false);
     expect(second.composed.turn).toBe("continued");
     expect(second.composed.restartNote).toBe("");
-    expect(second.text.startsWith(`Step cap: 64 rounds. Every step so far is listed in /handoffs/builder-1.md; read it before going on.\n${ENVELOPE_MARK} ${node.id} from @chief for Milind]`)).toBe(true);
+    expect(second.text.startsWith(`Step cap: 64 rounds. Every step so far is listed in /handoffs/builder-1.md; read it before going on.\n${ENVELOPE_MARK} ${node.id} from @chief for Alex]`)).toBe(true);
     expect(second.text.endsWith("Brief from @chief:\nBuild it")).toBe(true);
     expect(second.composed.note.startsWith("Step cap: 64 rounds.")).toBe(true);
     expect(second.composed.note).not.toContain("Brief from");
@@ -1217,7 +1217,7 @@ describe("RuntimeCoordinator: outward restart policy, answerNode, continuation o
     expect(run.node).toMatchObject({ id: node.id, status: "running", executions: 2 });
     expect("cards" in run.node).toBe(false);
     expect(run.composed.turn).toBe("answered");
-    expect(run.text.startsWith(`${ENVELOPE_MARK} ${node.id} from @chief for Milind]`)).toBe(true);
+    expect(run.text.startsWith(`${ENVELOPE_MARK} ${node.id} from @chief for Alex]`)).toBe(true);
     expect(run.text.endsWith('The person answered: "QuatiBot connection update: the user securely connected GitHub. Continue the task.".')).toBe(true);
     expect(run.text).not.toContain("Your question was");
     await flush();

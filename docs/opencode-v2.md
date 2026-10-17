@@ -1,79 +1,25 @@
-# OpenCode V2 integration
+# OpenCode integration
 
-## Ownership
+## Providers and models
 
-- OpenCode owns providers, authentication, model access and native tools.
-- QuatiBot owns bot profiles, chat history, channels, routines, memory and
-  internal browser/computer/data MCP integrations.
-- QuatiBot starts `opencode acp` with stdio JSON-RPC. Both the CLI version
-  and ACP agent version must be 2.x.
-- Model IDs come from ACP `configOptions` (`model`); variant choices come from
-  the active session. IDs are passed through unchanged.
-- Conversation continuation uses `session/load` and its original working directory.
+Install OpenCode V2 for the user running QuatiBot and configure providers in OpenCode. Authenticate with OpenCode's own interface or `opencode auth login`.
 
-Configure providers using the [OpenCode V2 documentation](https://opencode.ai/v2/docs/)
-on the server machine. After changing native authentication, refresh models in
-QuatiBot. No API key entry or native auth-file deletion is offered here.
-Old QuatiBot engine/provider settings are ignored without deleting saved secrets.
+QuatiBot discovers the models offered by ACP and lets each bot or conversation select a model and its available variant. It requires OpenCode major version 2. Provider credentials and model definitions belong to OpenCode.
 
-Boat, self-hosted VPS and Composio clients, routes and connection flows are not
-included in this fork. Their old stored settings are inert; removing support does
-not delete credentials or terminate remote resources. Decision model/Jev and local
-agent-browser/isolated-VM tools remain independent of this removal.
+The backend communicates over `opencode acp` using ACP session creation, loading, configuration options, prompt updates and permission requests. Session reuse depends on the working directory, environment and injected internal tools.
 
-Session MCPs are supplied with `session/new`/`session/load`. Browser and computer
-tools retain QuatiBot's tool-selection and approval boundaries. Bot-owned
-workspaces disable project configuration so generated files cannot reconfigure
-subsequent turns. Owned attachment/bot directories use V2 `additionalDirectories`.
-Full Access adds a process-local V2 `permissions` override, never a global config edit.
+## Global extensions
 
-## Linux web runtime
+The profile menu's **Extensões** panel lists global user MCP servers, plugins and skills from OpenCode. Project extension definitions are not included in this global inventory. MCP rows show configured or disabled state; configured does not mean connected.
 
-The UI and Node backend run without Electron. `pnpm build && pnpm start` serves
-both on loopback port 8799. OpenCode's terminal runs on the backend host. Computer
-tools can use only the agent's browser or its CUA container, never the physical
-host desktop. Docker/Podman and the sandbox image are required for VM use; there
-is no host-control fallback. The `record_screen` agent tool encodes browser/VM
-frames as a replayable WebM attachment using server-side ffmpeg.
+MCP switches are QuatiBot preferences. A change applies to all its bot conversations on their next message. It does not interrupt a running turn or change OpenCode's global files, credentials or other clients.
 
-Auxiliary service credentials use the encrypted server vault. Website logins
-retain their encrypted vault, bot grants and domain restrictions. Both vaults
-reject unreadable data rather than replacing it with an empty store. The old
-Electron vault is left untouched and is not migrated.
+To apply an MCP switch, the backend uses the complete native definition with a process-local `disabled` override. A changed environment starts an ACP process with the new preferences and loads the conversation session.
 
-## Extensions
+Plugins and skills are read-only in the panel. Configure them in OpenCode. Skills are listed when the native API identifies their global source; remote catalogs without attributable provenance are not part of the list. The browser receives names and safe metadata, not commands, headers, environment variables, secret URLs or skill contents.
 
-OpenCode owns MCP definitions, authentication, plugins and skills. Quati no
-longer edits/imports MCP definitions, signs into HighLevel, or imports Claude
-MCPs/skills. Old stored settings and credentials are preserved but not mounted.
+## Internal agent tools
 
-The Extensions panel lists user-global OpenCode MCP definitions and plugins.
-Skills come from OpenCode's native skill API, filtered to global skill directories
-and local sources declared in user-global config. HTTP skill catalogs lack source
-attribution in that API and are not included in this filtered list.
-Project entries and secrets (commands, URLs, headers, environments, plugin options
-and skill content) are not sent to the interface.
+QuatiBot supplies its browser, sandbox computer, data and coordination tools for the session. Their availability follows bot settings and execution authority. They are not written to the user's global OpenCode configuration.
 
-MCP switches persist only activation preferences in Quati. At the next chat
-turn, OpenCode receives complete native server definitions with `disabled`
-overridden through the ACP process environment. Changed environment fingerprints
-restart only that conversation's ACP process and reload its session. In-flight
-turns and other OpenCode clients are not changed. Configured/enabled does not
-claim that a connection has succeeded; manage OAuth and credentials in OpenCode.
-
-## Isolated smoke check
-
-```sh
-node --experimental-strip-types scripts/control-quati.ts launch
-# Use the printed URL explicitly in a second terminal:
-pnpm control:quati doctor --url http://127.0.0.1:PORT
-pnpm control:quati new-bot --name OpenCodeProbe --url http://127.0.0.1:PORT
-pnpm control:quati send --bot BOT_ID --text hello --url http://127.0.0.1:PORT
-pnpm control:quati wait --bot BOT_ID --timeout 30 --url http://127.0.0.1:PORT
-```
-
-Doctor should expose only `opencodeGo` (the stored instance/driver identifier).
-The wait should report `settled` and contain `hello from fake acp`.
-`FAKE_ACP_*` variables script the repository-owned ACP peer; this proves the real
-QuatiBot API/chat flow, not a paid model response. Native OpenCode handshake
-can be checked separately in a disposable home without using personal credentials.
+Approval settings govern QuatiBot's orchestration and ACP permission requests. Terminal commands still execute on the backend host; selecting a computer VM does not relocate the terminal.

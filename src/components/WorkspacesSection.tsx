@@ -5,7 +5,6 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { formatUsd, hasFiniteCost } from "@/lib/usage";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { CopyLink } from "./PeopleSection";
 import { Card } from "./SettingsPrimitives";
 
 export interface FleetWorkspaceView {
@@ -252,7 +251,7 @@ export function WorkspacesSection({ load = fetchFleet }: { load?: () => Promise<
           <button type="button" onClick={() => void upgrade()} disabled={busy !== null || !fleet?.workspaces.length} className="rounded-lg border border-hairline/40 px-3 py-1.5 text-[12px] text-ink-secondary hover:bg-raised/50 hover:text-ink disabled:opacity-50">{busy === "*" ? t("workspaces.working") : t("workspaces.upgradeAll")}</button>
         </div>
         {creating && fleet && <div className="mb-4 rounded-xl border border-hairline/40 p-3"><NewWorkspaceForm domain={fleet.domain} disabled={busy !== null} onCreated={(lines, created) => { setCreating(false); setLog(lines); setInviteLink(`https://${created.slug}.${fleet.domain}/pair?email=${encodeURIComponent(created.admin)}`); void refresh(); }} /></div>}
-        {inviteLink && <div className="mb-4"><CopyLink link={inviteLink} /></div>}
+        {inviteLink && <div className="mb-4"><a href={inviteLink} className="select-all break-all text-accent underline">{inviteLink}</a></div>}
         {error && <p role="alert" className="mb-2 text-[12px] text-danger">{error}</p>}
         {fleet ? <WorkspacesTable fleet={fleet} onAct={(slug, action) => void act(slug, action)} busy={busy} /> : loading ? <div className="flex items-center gap-2 text-[13px] text-ink-secondary"><Loader2 size={14} className="animate-spin" />{t("common.checking")}</div> : null}
         {usersFor && <UsersForm slug={usersFor} onDone={(lines) => { setLog(lines); void refresh(); }} />}

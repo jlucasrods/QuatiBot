@@ -39,7 +39,7 @@ jobs:
   # smoke stayed hidden behind any vitest failure for a day. Each piece is now
   # its own job: platform-independent checks run once, the suite runs in four
   # shards per platform, and every smoke reports on its own. One final `CI`
-  # check aggregates the required jobs (see docs/ci.md for ruleset migration).
+  # check aggregates the required jobs.
   static:
     name: typecheck + lint
     runs-on: ubuntu-latest
@@ -288,28 +288,6 @@ jobs:
             if (bad.length) { console.error(`\n${bad.length} required job(s) did not pass: ${bad.map(([job]) => job).join(", ")}`); process.exit(1); }
           '
 
-  cloudflared-linux-arm64:
-    needs: static
-    if: needs.static.outputs.runtime == 'true'
-    name: cloudflared installer (Linux ARM64)
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-      - name: Install and reuse the pinned connector in an isolated fixture
-        env:
-          QUATI_ARM64_FIXTURE: ${{ runner.temp }}/quati-cloudflared-arm64
-        run: |
-          node --input-type=module -e 'import assert from "node:assert/strict"; assert.equal(process.platform, "linux"); assert.equal(process.arch, "arm64");'
-          node scripts/prepare-cloudflared.mjs --current --root "$QUATI_ARM64_FIXTURE"
-          node scripts/prepare-cloudflared.mjs --current --root "$QUATI_ARM64_FIXTURE"
-          "$QUATI_ARM64_FIXTURE/dist-native/cloudflared/linux-arm64/cloudflared" version
-
   foss:
     needs: static
     if: needs.static.outputs.runtime == 'true'
@@ -343,78 +321,11 @@ jobs:
           grep -q 'no enterprise layer exists' /tmp/quati-foss/edition.json
           kill %1; wait %1 || true
 
-  control-plane:
-    needs: static
-    if: needs.static.outputs.runtime == 'true'
-    name: control-plane check + workerd tests + dry run
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@ff378ebe6b225b0680b81c1ad4498ae0d1d3a5e3 # v6.0.10
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm control-plane:check
-      - run: pnpm control-plane:test
-      - run: pnpm control-plane:dry-run
-
-  deploy-composio-broker:
-    # Only deploys on push to upstream main. PRs run the control-plane tests
-    # but do not deploy: the wiring is exercised end-to-end only by a merged
-    # commit, so an unreviewed branch can never push to production. Closes
-    # the deploy gap that left #1914's broker fix (45cc2cf) sitting in
-    # source without reaching Cloudflare.
-    needs: [control-plane]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    name: deploy composio broker (Cloudflare Worker)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      # A repo without the secret (a fork, or before the token is created)
-      # skips the deploy with a warning instead of failing every main push.
-      - id: token
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning title=Composio broker not deployed::CLOUDFLARE_API_TOKEN is not set, so the broker Worker was not deployed."
-          fi
-      - if: steps.token.outputs.present == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - if: steps.token.outputs.present == 'true'
-        uses: pnpm/action-setup@ff378ebe6b225b0680b81c1ad4498ae0d1d3a5e3 # v6.0.10
-      - if: steps.token.outputs.present == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: pnpm
-      - if: steps.token.outputs.present == 'true'
-        run: pnpm install --frozen-lockfile
-      - name: Deploy the composio broker Worker via Wrangler
-        if: steps.token.outputs.present == 'true'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          # Mirrors the local `pnpm broker:deploy` script so CI is the same
-          # command a developer runs by hand. The token is created in the
-          # Cloudflare dashboard with Workers Scripts:Edit on the broker
-          # account; store it as the CLOUDFLARE_API_TOKEN repo secret.
-          command: deploy --config cloudflare/composio-broker/wrangler.jsonc
-
   ui-smoke:
     needs: static
     if: needs.static.outputs.runtime == 'true'
     # Advisory, outside the required `test` matrix: the renderer recipe in
-    # docs/verification/chat-ui.md run by a machine. It downloads the pinned
+    # It downloads the pinned
     # agent-browser release (digest verified) and its Chrome, drives the real
     # <App/> against the isolated fake-engine fixture, and keeps the screenshot.
     name: renderer smoke (control-quati ui, Ubuntu 24.04)
@@ -566,7 +477,7 @@ jobs:
     # main pushes, merge groups and manual runs add macOS, as for the vitest
     # shards), then on Linux inside the server image's runtime as a non-root
     # user. Every S4 suite also fails when its trace holds Runtime.enable or
-    # another forbidden CDP method (docs/ci.md).
+    # another forbidden CDP method.
     name: browser driver S4 (${{ matrix.os }})
     strategy:
       fail-fast: false

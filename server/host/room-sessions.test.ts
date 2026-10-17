@@ -69,7 +69,7 @@ function room(options: { threadId?: string; shared?: { messages: Map<string, Mes
     const input: RoomDispatchInput = {
       threadId, botId, claimId: `claim-${serial}`, instance: claude, guestConfined: false, reset: false, hooks: true,
       config: ["You are a bot in the room.", "/work", { instanceId: "claude", model: "opus" }],
-      window: transcript.window(threadId, "Omkar", undefined, botId), tail: tailFor(botId), wrap: wrapWith(),
+      window: transcript.window(threadId, "Jordan", undefined, botId), tail: tailFor(botId), wrap: wrapWith(),
       ...overrides,
     };
     const turn = { botId, claimId: input.claimId, turnId: `turn-${serial}`, instance: input.instance, result: sessions.dispatch(input), input };
@@ -128,26 +128,26 @@ function room(options: { threadId?: string; shared?: { messages: Map<string, Mes
 
 describe("renderRoomDelta", () => {
   it("lists the new lines under one note, as the window renders them", () => {
-    expect(renderRoomDelta([{ id: "a", text: "Omkar: trim the middle" }, { id: "b", text: "[Posted by @Writer]\nWriter: done" }]))
-      .toBe(`${NOTE}\nOmkar: trim the middle\n[Posted by @Writer]\nWriter: done`);
+    expect(renderRoomDelta([{ id: "a", text: "Jordan: trim the middle" }, { id: "b", text: "[Posted by @Writer]\nWriter: done" }]))
+      .toBe(`${NOTE}\nJordan: trim the middle\n[Posted by @Writer]\nWriter: done`);
   });
 
   it("says when its first lines are older than what the session already holds", () => {
-    expect(renderRoomDelta([{ id: "a", text: "Writer: mid-turn", earlier: true }, { id: "b", text: "Omkar: next" }]))
-      .toBe(`${NOTE}\n(The first message is older than messages you have already seen.)\nWriter: mid-turn\nOmkar: next`);
+    expect(renderRoomDelta([{ id: "a", text: "Writer: mid-turn", earlier: true }, { id: "b", text: "Jordan: next" }]))
+      .toBe(`${NOTE}\n(The first message is older than messages you have already seen.)\nWriter: mid-turn\nJordan: next`);
     expect(renderRoomDelta([{ id: "a", text: "A: 1", earlier: true }, { id: "b", text: "B: 2", earlier: true }, { id: "c", text: "C: 3" }]))
       .toContain("\n(The first 2 messages are older than messages you have already seen.)\nA: 1\nB: 2\nC: 3");
   });
 
   it("puts lines that changed since they were shown first, and says they replace what was shown", () => {
-    expect(renderRoomDelta([{ id: "a", text: "[What Editor did: files]", updated: true }, { id: "b", text: "Omkar: next" }]))
-      .toBe(`${NOTE}\n(The first message was shown to you before and has changed since: this copy replaces what you were shown.)\n[What Editor did: files]\nOmkar: next`);
+    expect(renderRoomDelta([{ id: "a", text: "[What Editor did: files]", updated: true }, { id: "b", text: "Jordan: next" }]))
+      .toBe(`${NOTE}\n(The first message was shown to you before and has changed since: this copy replaces what you were shown.)\n[What Editor did: files]\nJordan: next`);
     // window order in, grouped out: changed, then older unseen, then new
     expect(renderRoomDelta([
       { id: "a", text: "Writer: mid-turn", earlier: true },
       { id: "b", text: "[digest one]", updated: true },
       { id: "c", text: "[digest two]", updated: true },
-      { id: "d", text: "Omkar: next" },
+      { id: "d", text: "Jordan: next" },
     ])).toBe([
       NOTE,
       "(The first 2 messages were shown to you before and have changed since: these copies replace what you were shown.)",
@@ -155,7 +155,7 @@ describe("renderRoomDelta", () => {
       "[digest two]",
       "(The next message is older than messages you have already seen.)",
       "Writer: mid-turn",
-      "Omkar: next",
+      "Jordan: next",
     ].join("\n"));
     expect(renderRoomDelta([{ id: "a", text: "A: 1", updated: true }, { id: "b", text: "B: 2", earlier: true }, { id: "c", text: "C: 3", earlier: true }]))
       .toContain("\n(The next 2 messages are older than messages you have already seen.)\nB: 2\nC: 3");
@@ -193,7 +193,7 @@ describe("room sessions: turns that are not managed", () => {
     r.say("Trim the middle.");
     const second = r.dispatch("editor");
     expect(second.result).toEqual({ mode: "legacy", text: r.full(second), send: {} });
-    expect(second.result.text).toContain("Omkar: Cut the intro.\nEditor: Done.\nOmkar: Trim the middle.");
+    expect(second.result.text).toContain("Jordan: Cut the intro.\nEditor: Done.\nJordan: Trim the middle.");
     r.finish(second, "S1", { reply: "Trimmed." });
     // The 90% reset and Compact now are passed on as they always were.
     const reset = r.dispatch("editor", { reset: true });
@@ -225,7 +225,7 @@ describe("room sessions: turns that are not managed", () => {
         scenario.arrange?.(r);
         r.say("Cut the intro.");
         r.botSays("writer", "On it.", { turnTerminal: true, turnId: "t0" });
-        const window = r.transcript.window("room", "Omkar", undefined, "editor");
+        const window = r.transcript.window("room", "Jordan", undefined, "editor");
         const tail = tailFor("editor", "\n\nYour last turn in this room ended without a final message to the room.");
         const main = {
           ...(reset ? { sessionReset: true } : {}),
@@ -295,7 +295,7 @@ describe("room sessions: a member's own session", () => {
     r.say("Cut the intro.");
     const first = r.dispatch("editor");
     expect(first.result).toStrictEqual({ mode: "start", text: r.full(first), send: {} });
-    expect(first.result.text).toBe(`${CLOCK}\n\nOmkar: Cut the intro.\n\n(Reply to the conversation above as Editor.)`);
+    expect(first.result.text).toBe(`${CLOCK}\n\nJordan: Cut the intro.\n\n(Reply to the conversation above as Editor.)`);
   });
 
   it("resumes the session that ran its last turn and sends only the lines since", () => {
@@ -306,14 +306,14 @@ describe("room sessions: a member's own session", () => {
     const second = r.dispatch("editor");
     expect(second.result).toStrictEqual({
       mode: "resume",
-      text: `${CLOCK}\n\n${NOTE}\nOmkar: Trim the middle. CHARLIE\n\n(Reply to the conversation above as Editor.)`,
+      text: `${CLOCK}\n\n${NOTE}\nJordan: Trim the middle. CHARLIE\n\n(Reply to the conversation above as Editor.)`,
       send: { resumeCursor: "S1", recoveryText: r.full(second) },
     });
     // If the driver has to rebuild, it rebuilds from the whole turn.
-    expect(second.result.send.recoveryText).toContain("Omkar: Cut the intro. ALPHA\nEditor: Intro cut. BRAVO\nOmkar: Trim the middle. CHARLIE");
+    expect(second.result.send.recoveryText).toContain("Jordan: Cut the intro. ALPHA\nEditor: Intro cut. BRAVO\nJordan: Trim the middle. CHARLIE");
     r.finish(second, "S1", { reply: "Middle trimmed. DELTA" });
     r.say("Tighten the outro. ECHO");
-    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nOmkar: Tighten the outro. ECHO`);
+    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nJordan: Tighten the outro. ECHO`);
   });
 
   it("keeps the tail, a card continuation included, on a delta", () => {
@@ -324,7 +324,7 @@ describe("room sessions: a member's own session", () => {
     const tail = tailFor("editor", "\n\nThe person answered your question: yes.");
     const turn = r.dispatch("editor", { tail });
     expect(turn.result.mode).toBe("resume");
-    expect(turn.result.text).toBe(`${CLOCK}\n\n${NOTE}\nOmkar: Go on.${tail}`);
+    expect(turn.result.text).toBe(`${CLOCK}\n\n${NOTE}\nJordan: Go on.${tail}`);
   });
 
   it("puts the recalled block in front of the delta and of the recovery text alike", () => {
@@ -334,8 +334,8 @@ describe("room sessions: a member's own session", () => {
     r.say("How long was it?");
     const recalled = "Recalled for this message:\n- the intro is 12s";
     const turn = r.dispatch("editor", { wrap: wrapWith(recalled) });
-    expect(turn.result.text.startsWith(`${CLOCK}\n\n${recalled}\n\n${NOTE}\nOmkar: How long was it?`)).toBe(true);
-    expect(turn.result.send.recoveryText!.startsWith(`${CLOCK}\n\n${recalled}\n\nOmkar: Cut the intro.`)).toBe(true);
+    expect(turn.result.text.startsWith(`${CLOCK}\n\n${recalled}\n\n${NOTE}\nJordan: How long was it?`)).toBe(true);
+    expect(turn.result.send.recoveryText!.startsWith(`${CLOCK}\n\n${recalled}\n\nJordan: Cut the intro.`)).toBe(true);
   });
 
   it("does not offer a member its own replies back, and offers another member's", () => {
@@ -349,7 +349,7 @@ describe("room sessions: a member's own session", () => {
     r.say("Editor, use that.");
     const turn = r.dispatch("editor");
     expect(turn.result.mode).toBe("resume");
-    expect(r.body(turn)).toBe(`${NOTE}\nOmkar: Writer, name it.\nWriter: Call it Dawn.\nOmkar: Editor, use that.`);
+    expect(r.body(turn)).toBe(`${NOTE}\nJordan: Writer, name it.\nWriter: Call it Dawn.\nJordan: Editor, use that.`);
   });
 
   it("offers a line that arrived while its turn ran once, on the next turn, marked as older", () => {
@@ -367,12 +367,12 @@ describe("room sessions: a member's own session", () => {
     expect(lines[1]).toBe("(The first message is older than messages you have already seen.)");
     // Another bot's post keeps its provenance note in a delta.
     expect(lines[2]).toMatch(/^\[Posted by @Writer, another bot in this QuatiBot workspace — not from your user\./);
-    expect(lines.slice(3)).toEqual([`Writer: ${posted}`, "Omkar: Tighten the outro."]);
+    expect(lines.slice(3)).toEqual([`Writer: ${posted}`, "Jordan: Tighten the outro."]);
     r.finish(next, "S1", { reply: "Outro tightened." });
     r.say("Export it.");
     const after = r.dispatch("editor");
     expect(after.result.text).not.toContain("POSTED");
-    expect(r.body(after)).toBe(`${NOTE}\nOmkar: Export it.`);
+    expect(r.body(after)).toBe(`${NOTE}\nJordan: Export it.`);
   });
 
   it("offers a line that arrived between the window being read and the dispatch on the next turn", () => {
@@ -380,14 +380,14 @@ describe("room sessions: a member's own session", () => {
     r.say("Cut the intro.");
     r.run("editor", "S1");
     r.say("Trim the middle.");
-    const window = r.transcript.window("room", "Omkar", undefined, "editor");
+    const window = r.transcript.window("room", "Jordan", undefined, "editor");
     r.say("And fix the titles. LATE");
     const turn = r.dispatch("editor", { window });
-    expect(r.body(turn)).toBe(`${NOTE}\nOmkar: Trim the middle.`);
+    expect(r.body(turn)).toBe(`${NOTE}\nJordan: Trim the middle.`);
     r.finish(turn, "S1", { reply: "Trimmed." });
     r.say("Next.");
     expect(r.body(r.dispatch("editor"))).toBe(
-      `${NOTE}\n(The first message is older than messages you have already seen.)\nOmkar: And fix the titles. LATE\nOmkar: Next.`);
+      `${NOTE}\n(The first message is older than messages you have already seen.)\nJordan: And fix the titles. LATE\nJordan: Next.`);
   });
 
   it("says none when nothing is new, as on the summary re-ask after its own turn", () => {
@@ -415,7 +415,7 @@ describe("room sessions: a member's own session", () => {
       r.say(`Editor, step ${round}.`);
       const next = r.dispatch("editor");
       expect(next.result.mode, `round ${round}`).toBe("resume");
-      expect(r.body(next), `round ${round}`).toBe(`${NOTE}\nOmkar: Writer, step ${round}.\nWriter: Writer did ${round}.\nOmkar: Editor, step ${round}.`);
+      expect(r.body(next), `round ${round}`).toBe(`${NOTE}\nJordan: Writer, step ${round}.\nWriter: Writer did ${round}.\nJordan: Editor, step ${round}.`);
       r.finish(next, "S1", { notes: ["Checking. NOTE"], reply: `Editor did ${round}.` });
     }
   });
@@ -427,18 +427,18 @@ describe("room sessions: a member's own session", () => {
     for (let n = 0; n < GROUP_CONTEXT_MESSAGES; n++) r.say(`Line ${n}.`);
     const thirty = r.dispatch("editor");
     expect(thirty.result.mode).toBe("resume");
-    expect(r.body(thirty).split("\n")).toEqual([NOTE, ...Array.from({ length: GROUP_CONTEXT_MESSAGES }, (_, n) => `Omkar: Line ${n}.`)]);
+    expect(r.body(thirty).split("\n")).toEqual([NOTE, ...Array.from({ length: GROUP_CONTEXT_MESSAGES }, (_, n) => `Jordan: Line ${n}.`)]);
     r.finish(thirty, "S1", { reply: "Caught up." });
     for (let n = 0; n < GROUP_CONTEXT_MESSAGES + 10; n++) r.say(`Later ${n}.`);
     const forty = r.dispatch("editor");
     // A delta with a hole in it is never sent: the window on today's call instead.
     expect(forty.result).toStrictEqual({ mode: "start", text: r.full(forty), send: {} });
     expect(forty.result.text).not.toContain("Later 9.");
-    expect(forty.result.text).toContain("Omkar: Later 10.\n");
+    expect(forty.result.text).toContain("Jordan: Later 10.\n");
     // The warm session went on (no reset): it is recorded with this window.
     r.finish(forty, "S1", { reply: "Caught up again." });
     r.say("And now?");
-    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nOmkar: And now?`);
+    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nJordan: And now?`);
   });
 
   it("starts again when a line that scrolled out of the window was never shown", () => {
@@ -461,7 +461,7 @@ describe("room sessions: a member's own session", () => {
     for (let n = 0; n < 10; n++) r.botSays("writer", `Working ${n}.`, { turnId: "writer-turn" });
     r.say("Editor?");
     const first = r.run("editor", "S1");
-    expect(first.result.text).toContain("Omkar: Old 16.\n");
+    expect(first.result.text).toContain("Jordan: Old 16.\n");
     expect(first.result.text).not.toContain("Old 15.");
     // The writer's turn settles: its ten notes are hidden from now on, so the
     // window slides back over lines the editor's session was never shown.
@@ -470,7 +470,7 @@ describe("room sessions: a member's own session", () => {
     r.say("Editor again?");
     const second = r.dispatch("editor");
     expect(second.result.mode).toBe("start");
-    expect(second.result.text).toContain("Omkar: Old 9.\n");
+    expect(second.result.text).toContain("Jordan: Old 9.\n");
     expect(second.result.text).not.toContain("Old 8.");
   });
 
@@ -501,7 +501,7 @@ describe("room sessions: when a record is not trusted", () => {
     r.say("Tighten the outro.");
     const next = r.dispatch("editor");
     expect(next.result.send).toStrictEqual({ resumeCursor: "S2", recoveryText: r.full(next) });
-    expect(r.body(next)).toBe(`${NOTE}\nOmkar: Tighten the outro.`);
+    expect(r.body(next)).toBe(`${NOTE}\nJordan: Tighten the outro.`);
   });
 
   it("starts again after a turn that did not complete ok", () => {
@@ -548,7 +548,7 @@ describe("room sessions: when a record is not trusted", () => {
     r.say("Still there?");
     const after = r.dispatch("editor");
     expect(after.result.send.resumeCursor).toBe("S2");
-    expect(r.body(after)).toBe(`${NOTE}\nOmkar: Still there?`);
+    expect(r.body(after)).toBe(`${NOTE}\nJordan: Still there?`);
   });
 
   it("ignores events of another instance, and of another turn once its own is known", () => {
@@ -563,7 +563,7 @@ describe("room sessions: when a record is not trusted", () => {
     r.botSays("editor", "Trimmed.", { turnId: turn.turnId, turnTerminal: true });
     r.emit(turn, { type: "turn.completed", ok: true });
     r.say("Next.");
-    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nOmkar: Next.`);
+    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nJordan: Next.`);
   });
 
   it("starts again when anything in its standing configuration changed", () => {
@@ -652,7 +652,7 @@ describe("room sessions: several members", () => {
     r.say("Editor, one more.");
     const again = r.dispatch("editor");
     expect(again.result.send.resumeCursor).toBe("E2");
-    expect(r.body(again)).toBe(`${NOTE}\nOmkar: Editor, one more.`);
+    expect(r.body(again)).toBe(`${NOTE}\nJordan: Editor, one more.`);
   });
 
   it("counts another member's unmanaged turn on the same instance too", () => {
@@ -675,13 +675,13 @@ describe("room sessions: several members", () => {
     r.say("Editor, use that.");
     const back = r.dispatch("editor");
     expect(back.result.send.resumeCursor).toBe("E1");
-    expect(r.body(back)).toBe(`${NOTE}\nOmkar: Writer, name it.\nWriter: Dawn.\nOmkar: Editor, use that.`);
+    expect(r.body(back)).toBe(`${NOTE}\nJordan: Writer, name it.\nWriter: Dawn.\nJordan: Editor, use that.`);
     r.finish(back, "E1", { reply: "Used it." });
     // and the writer, alone on its instance, resumes its own session
     r.say("Writer, thanks.");
     const writer = r.dispatch("writer", { instance: other });
     expect(writer.result.send.resumeCursor).toBe("W1");
-    expect(r.body(writer)).toBe(`${NOTE}\nOmkar: Editor, use that.\nEditor: Used it.\nOmkar: Writer, thanks.`);
+    expect(r.body(writer)).toBe(`${NOTE}\nJordan: Editor, use that.\nEditor: Used it.\nJordan: Writer, thanks.`);
   });
 
   it("leaves another member's record alone when one member's turn ends cleanly or badly", () => {
@@ -724,7 +724,7 @@ describe("room sessions: several members", () => {
     first.say("More for one.");
     const one = first.dispatch("editor");
     expect(one.result.send.resumeCursor).toBe("T1");
-    expect(first.body(one)).toBe(`${NOTE}\nOmkar: More for one.`);
+    expect(first.body(one)).toBe(`${NOTE}\nJordan: More for one.`);
     second.say("More for two.");
     const two = second.dispatch("editor");
     expect(two.result.send.resumeCursor).toBe("T2");
@@ -748,7 +748,7 @@ describe("room sessions: the session a turn really ran in", () => {
     r.say("Tighten the outro.");
     const next = r.dispatch("editor");
     expect(next.result.send.resumeCursor).toBe("S1");
-    expect(r.body(next)).toBe(`${NOTE}\nOmkar: Tighten the outro.`);
+    expect(r.body(next)).toBe(`${NOTE}\nJordan: Tighten the outro.`);
   });
 
   it("records nothing for a start whose session was never announced", () => {
@@ -774,7 +774,7 @@ describe("room sessions: the session a turn really ran in", () => {
     r.say("Tighten the outro.");
     const next = r.dispatch("editor");
     expect(next.result.send.resumeCursor).toBe("S2");
-    expect(r.body(next)).toBe(`${NOTE}\nOmkar: Tighten the outro.`);
+    expect(r.body(next)).toBe(`${NOTE}\nJordan: Tighten the outro.`);
   });
 
   it("credits nothing to a session that replaced the cursor without saying it was rebuilt", () => {
@@ -838,11 +838,11 @@ describe("room sessions: a native compaction", () => {
     r.say("Tighten the outro.");
     const next = r.dispatch("editor");
     expect(next.result).toStrictEqual({ mode: "start", text: r.full(next), send: {} });
-    expect(next.result.text).toContain("Omkar: Cut the intro.");
+    expect(next.result.text).toContain("Jordan: Cut the intro.");
     // The start is recorded like any other: the turn after it is a delta again.
     r.finish(next, "S1", { reply: "Tightened." });
     r.say("Export it.");
-    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nOmkar: Export it.`);
+    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nJordan: Export it.`);
   });
 
   it("does not trust a start that compacted while it ran", () => {
@@ -974,7 +974,7 @@ describe("room sessions: a measured context that went down", () => {
     for (const [n, tokens] of [40_000, 90_000, 150_000].entries()) {
       r.say(`Step ${n}.`);
       const turn = r.dispatch("editor", reading(tokens));
-      expect(r.body(turn), `step ${n}`).toBe(`${NOTE}\nOmkar: Step ${n}.`);
+      expect(r.body(turn), `step ${n}`).toBe(`${NOTE}\nJordan: Step ${n}.`);
       r.finish(turn, "S1", { reply: `Did ${n}.` });
     }
     // During that last turn the CLI compacted S1. No PreCompact, no
@@ -983,14 +983,14 @@ describe("room sessions: a measured context that went down", () => {
     r.say("And now?");
     const after = r.dispatch("editor", reading(25_000));
     expect(after.result).toStrictEqual({ mode: "start", text: r.full(after), send: {} });
-    expect(after.result.text).toContain("Omkar: Cut the intro. ALPHA\nEditor: Intro cut.");
+    expect(after.result.text).toContain("Jordan: Cut the intro. ALPHA\nEditor: Intro cut.");
     // The warm session goes on (no reset) and is recorded with the window:
     // from here its context grows again, and so do the deltas.
     r.finish(after, "S1", { reply: "Here." });
     r.say("Next.");
     const next = r.dispatch("editor", reading(40_000));
     expect(next.result.send.resumeCursor).toBe("S1");
-    expect(r.body(next)).toBe(`${NOTE}\nOmkar: Next.`);
+    expect(r.body(next)).toBe(`${NOTE}\nJordan: Next.`);
   });
 
   it("catches one that happened on a start which went on in the same warm session", () => {
@@ -1085,12 +1085,12 @@ describe("room sessions: a line that changed after it was shown", () => {
       NOTE,
       "(The first message was shown to you before and has changed since: this copy replaces what you were shown.)",
       "[What Writer did in an earlier turn: · no tool activity observed in this turn · files: changed intro.mov · reply: Cut.]",
-      "Omkar: And now?",
+      "Jordan: And now?",
     ].join("\n"));
     // Once: the session holds the row as it reads now.
     r.finish(second, "S1", { reply: "Checked." });
     r.say("Again?");
-    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nOmkar: Again?`);
+    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nJordan: Again?`);
   });
 
   it("sends a teammate's report again when it no longer reads as it did", () => {
@@ -1109,11 +1109,11 @@ describe("room sessions: a line that changed after it was shown", () => {
       NOTE,
       "(The first message was shown to you before and has changed since: this copy replaces what you were shown.)",
       "[Teammate result withheld or no longer retained]",
-      "Omkar: And now?",
+      "Jordan: And now?",
     ].join("\n"));
     r.finish(second, "S1", { reply: "Noted." });
     r.say("Again?");
-    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nOmkar: Again?`);
+    expect(r.body(r.dispatch("editor"))).toBe(`${NOTE}\nJordan: Again?`);
   });
 
   it("does not send an unchanged row again, however often the window is read", () => {
@@ -1126,7 +1126,7 @@ describe("room sessions: a line that changed after it was shown", () => {
     for (let n = 0; n < 5; n++) {
       r.say(`Step ${n}.`);
       const turn = r.dispatch("editor");
-      expect(r.body(turn), `step ${n}`).toBe(`${NOTE}\nOmkar: Step ${n}.`);
+      expect(r.body(turn), `step ${n}`).toBe(`${NOTE}\nJordan: Step ${n}.`);
       r.finish(turn, "S1", { reply: `Did ${n}.` });
     }
   });
@@ -1137,11 +1137,11 @@ describe("room sessions: a line that changed after it was shown", () => {
     r.run("editor", "S1");
     const said = r.say("Use the blue grade.");
     const delta = r.run("editor", "S1");
-    expect(r.body(delta)).toBe(`${NOTE}\nOmkar: Use the blue grade.`);
+    expect(r.body(delta)).toBe(`${NOTE}\nJordan: Use the blue grade.`);
     r.messages.find((m) => m.id === said)!.text = "Use the teal grade.";
     r.say("Go.");
     expect(r.body(r.dispatch("editor"))).toBe(
-      `${NOTE}\n(The first message was shown to you before and has changed since: this copy replaces what you were shown.)\nOmkar: Use the teal grade.\nOmkar: Go.`);
+      `${NOTE}\n(The first message was shown to you before and has changed since: this copy replaces what you were shown.)\nJordan: Use the teal grade.\nJordan: Go.`);
   });
 
   it("sends a changed line together with one that arrived while its turn ran, each under its own sentence", () => {
@@ -1156,11 +1156,11 @@ describe("room sessions: a line that changed after it was shown", () => {
     expect(lines.slice(0, 4)).toEqual([
       NOTE,
       "(The first message was shown to you before and has changed since: this copy replaces what you were shown.)",
-      "Omkar: Use the teal grade.",
+      "Jordan: Use the teal grade.",
       "(The next message is older than messages you have already seen.)",
     ]);
     expect(lines[4]).toMatch(/^\[Posted by @Writer/);
-    expect(lines.slice(5)).toEqual(["Writer: Deploy is green.", "Omkar: Next."]);
+    expect(lines.slice(5)).toEqual(["Writer: Deploy is green.", "Jordan: Next."]);
   });
 
   it("takes a member's own reply as it reads when it first appears, and sends it if it changes after that", () => {
@@ -1173,7 +1173,7 @@ describe("room sessions: a line that changed after it was shown", () => {
     r.say("Thanks.");
     const second = r.dispatch("editor");
     // its own words are not offered back
-    expect(r.body(second)).toBe(`${NOTE}\nOmkar: Thanks.`);
+    expect(r.body(second)).toBe(`${NOTE}\nJordan: Thanks.`);
     r.finish(second, "S1", { reply: "Welcome." });
     // edited later, by something other than the session
     r.messages.find((m) => m.id === reply)!.text = "Here is the note.\n\n[transcript removed]";
@@ -1182,7 +1182,7 @@ describe("room sessions: a line that changed after it was shown", () => {
       NOTE,
       "(The first message was shown to you before and has changed since: this copy replaces what you were shown.)",
       "Editor: Here is the note.\n\n[transcript removed]",
-      "Omkar: And now?",
+      "Jordan: And now?",
     ].join("\n"));
   });
 
@@ -1190,16 +1190,16 @@ describe("room sessions: a line that changed after it was shown", () => {
     const r = room();
     const latest = r.say('Use this frame <attached-image path="/tmp/frame.png" />');
     // the turn that carries the image natively reads the line without the tag
-    const window = r.transcript.window("room", "Omkar", [{ messageId: latest, text: "Use this frame" }], "editor");
+    const window = r.transcript.window("room", "Jordan", [{ messageId: latest, text: "Use this frame" }], "editor");
     const first = r.dispatch("editor", { window });
-    expect(first.result.text).toContain("Omkar: Use this frame\n");
+    expect(first.result.text).toContain("Jordan: Use this frame\n");
     r.finish(first, "S1", { reply: "Used." });
     r.say("And the next one?");
     expect(r.body(r.dispatch("editor"))).toBe([
       NOTE,
       "(The first message was shown to you before and has changed since: this copy replaces what you were shown.)",
-      'Omkar: Use this frame <attached-image path="/tmp/frame.png" />',
-      "Omkar: And the next one?",
+      'Jordan: Use this frame <attached-image path="/tmp/frame.png" />',
+      "Jordan: And the next one?",
     ].join("\n"));
   });
 
@@ -1397,7 +1397,7 @@ describe("room sessions: what it keeps, and that it cannot fail a turn", () => {
     r.say("Cut the intro.");
     r.run("editor", "S1");
     r.say("Trim the middle.");
-    const window = r.transcript.window("room", "Omkar", undefined, "editor");
+    const window = r.transcript.window("room", "Jordan", undefined, "editor");
     const broken = { ...window, get order(): string[] { throw new Error("a bug in the module's own bookkeeping"); } };
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -1443,7 +1443,7 @@ describe("room sessions: long turns, and turns in other rooms meanwhile", () => 
     r.say("Tighten the outro.");
     const next = r.dispatch("editor");
     expect(next.result.send.resumeCursor).toBe("S1");
-    expect(r.body(next)).toBe(`${NOTE}\nOmkar: Tighten the outro.`);
+    expect(r.body(next)).toBe(`${NOTE}\nJordan: Tighten the outro.`);
   });
 
   it("resumes after a turn that itself ran longer than a quiet process is kept", () => {
@@ -1456,7 +1456,7 @@ describe("room sessions: long turns, and turns in other rooms meanwhile", () => 
     r.say("Tighten the outro.");
     const next = r.dispatch("editor");
     expect(next.result.send.resumeCursor).toBe("S1");
-    expect(r.body(next)).toBe(`${NOTE}\nOmkar: Tighten the outro.`);
+    expect(r.body(next)).toBe(`${NOTE}\nJordan: Tighten the outro.`);
   });
 
   it("starts when a turn is answered more than the idle life after it settled, however long it ran", () => {
@@ -1501,7 +1501,7 @@ describe("room sessions: long turns, and turns in other rooms meanwhile", () => 
     r.say("Export it. CHARLIE");
     const next = r.dispatch("editor", reading(25_000));
     expect(next.result).toStrictEqual({ mode: "start", text: r.full(next), send: {} });
-    expect(next.result.text).toContain("Omkar: Cut the intro. ALPHA");
+    expect(next.result.text).toContain("Jordan: Cut the intro. ALPHA");
   });
 
   it("keeps record and reading from the dispatch on, before the provider has acted", () => {
@@ -1522,7 +1522,7 @@ describe("room sessions: long turns, and turns in other rooms meanwhile", () => 
     // Its record survived the wait: with a context that grew, a delta.
     const grew = waited(130_000);
     expect(grew.next.result.send.resumeCursor).toBe("S1");
-    expect(grew.r.body(grew.next)).toBe(`${NOTE}\nOmkar: Export it.`);
+    expect(grew.r.body(grew.next)).toBe(`${NOTE}\nJordan: Export it.`);
     // And so did its last reading: with a context that fell, a start.
     expect(waited(25_000).next.result.mode).toBe("start");
   });
@@ -1539,7 +1539,7 @@ describe("room sessions: long turns, and turns in other rooms meanwhile", () => 
     r.finish(r.dispatch("editor"), "S1", { reply: "Read." });
     r.say("Tighten the outro.");
     const turn = r.dispatch("editor");
-    expect(r.body(turn)).toBe(`${NOTE}\nOmkar: Tighten the outro.`);
+    expect(r.body(turn)).toBe(`${NOTE}\nJordan: Tighten the outro.`);
     const held = r.sessions.tracked();
     // the editor's record is long past its life before the provider says a word
     r.state.now += IDLE_MS + 1;
@@ -1557,7 +1557,7 @@ describe("room sessions: long turns, and turns in other rooms meanwhile", () => 
       NOTE,
       "(The first message was shown to you before and has changed since: this copy replaces what you were shown.)",
       "[Teammate result withheld or no longer retained]",
-      "Omkar: Export it.",
+      "Jordan: Export it.",
     ].join("\n"));
   });
 
@@ -1588,7 +1588,7 @@ describe("room sessions: long turns, and turns in other rooms meanwhile", () => 
     r.say("Export it. CHARLIE");
     const next = r.dispatch("editor", reading(25_000));
     expect(next.result).toStrictEqual({ mode: "start", text: r.full(next), send: {} });
-    expect(next.result.text).toContain("Omkar: Cut the intro. ALPHA");
+    expect(next.result.text).toContain("Jordan: Cut the intro. ALPHA");
     // and from there the deltas go on, with the reading growing again
     r.finish(next, "S1", { reply: "Exported." });
     r.say("Thanks.");

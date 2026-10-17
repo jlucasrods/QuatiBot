@@ -20,5 +20,5 @@ big changes should have an issue agreeing on the approach before code.
 - [ ] `pnpm typecheck` and `pnpm test` pass locally
 - [ ] Server behavior changes come with tests (see CONTRIBUTING.md → Tests)
 - [ ] No `dist-server/` edits (it's build output)
-- [ ] macOS-only code is platform-gated; no `shell: true` / cmd.exe string-building
+- [ ] Web and backend behavior is verified on Linux in an isolated workspace
 - [ ] No secrets in logs, responses, events, or argv

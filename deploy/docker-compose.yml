@@ -16,7 +16,7 @@ services:
     # prebuilt on every main push; `docker compose up --build` builds from source instead
     image: ghcr.io/jlucasrods/quatibot:latest
     restart: unless-stopped
-    # The bots' browsers (docs/browser-packaging.md, "Process hygiene"): an
+    # The bots' browsers: an
     # init collects the browser processes whose parents exit, and Chrome
     # gets the shared memory QUATI's desktop containers give it.
     init: true
@@ -33,10 +33,6 @@ services:
       QUATI_WEBHOOK_PUBLIC_URL: https://${DOMAIN}
       # pairing links for remote clients point here (docs/self-hosting.md)
       QUATI_PUBLIC_URL: https://${DOMAIN}
-      # Who may sign in with an emailed code at /pair (docs/self-hosting.md,
-      # "Sign in with your email"). Empty means pairing codes only.
-      QUATI_SIGNIN_EMAILS: ${QUATI_SIGNIN_EMAILS:-}
-      QUATI_SIGNIN_MEMBER_EMAILS: ${QUATI_SIGNIN_MEMBER_EMAILS:-}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8799/api/health | grep -q quatibot"]
       interval: 30s

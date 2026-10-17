@@ -1,5 +1,7 @@
 {
-  "title": "Contributing",
-  "icon": "GitPullRequest",
-  "pages": ["index", "documentation"]
+  "title": "Development",
+  "pages": [
+    "index",
+    "documentation"
+  ]
 }

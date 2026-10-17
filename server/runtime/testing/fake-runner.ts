@@ -89,7 +89,7 @@ export class FakeRunner implements TurnRunner {
   readonly validateReasons = new Map<string, string>();
   readonly outwardAnswers = new Map<string, string[]>();
   readonly bots: Record<string, BotInfo>;
-  personName = "Milind";
+  personName = "Alex";
   lookup?: (id: string) => Assignment | undefined;
   outward?: (a: Assignment) => string[];
 

@@ -76,7 +76,7 @@ async function fetchJson(url: string, options: RequestInit = {}): Promise<any> {
     const text = await response.text().catch(() => "");
     if (response.status === 403 && !new Headers(headers).has("Authorization")) {
       throw new QuatiBotApiError(403,
-        "QuatiBot refused this write because the installed desktop app requires a paired session token. " +
+        "QuatiBot refused this write because the backend requires a paired session token. " +
         "Set QUATIBOT_TOKEN as described in docs/mcp-server.md.",
       );
     }

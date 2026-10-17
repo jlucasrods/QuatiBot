@@ -1,51 +1,26 @@
-# QuatiBot documentation
+# QuatiBot documentation site
 
-The public documentation site is a Next.js 16 + Fumadocs app. User-facing content lives in `content/docs`; the repository's top-level `docs` folder remains available for implementation notes and detailed platform records.
+The site uses Next.js 16 and Fumadocs. Product guides live in `content/docs`; the repository's `docs/` directory covers operation, architecture and isolated verification.
 
-## Develop
+## Development
 
 From the repository root:
 
-```bash
-pnpm install
+```sh
+pnpm install --frozen-lockfile
 pnpm docs:dev
 ```
 
-The site opens at `http://localhost:3000`.
+Open `http://localhost:3000`. Navigation is defined by the content directories' `meta.json` files.
 
-## Verify
+## Build and serve
 
-```bash
+```sh
 pnpm docs:build
 pnpm --filter @quatibot/docs types:check
-pnpm --filter @quatibot/docs lint
+pnpm --filter @quatibot/docs start
 ```
 
-The changelog reads published releases from `jlucasrods/QuatiBot` plus the
-legacy updater archive, deduplicates them into one complete history, and caches
-the result for five minutes. If one repository is temporarily unavailable, the
-other still renders; if both fail, the page links directly to GitHub.
+The documentation site is separate from the QuatiBot backend. It serves public guides, not workspace data or credentials. Deploy it as a Next.js application with `apps/docs` as its project root; choose the hosting account and domain explicitly.
 
-## Deploy to Vercel
-
-This deploys only the public documentation. It does not deploy the Electron app,
-local harness, credentials, agents, or user data. The changelog page uses Next.js
-incremental regeneration so published releases appear without a source commit.
-
-Create a second Vercel project beside the existing `quatibot.invalid` project:
-
-1. Import the `jlucasrods/QuatiBot` repository.
-2. Set **Root Directory** to `apps/docs`.
-3. Keep the detected **Next.js** framework settings.
-4. Set the production branch to `main` and deploy.
-5. Add `docs.quatibot.invalid` under **Settings → Domains**.
-
-For an immediate changelog refresh after each desktop release, create a Vercel
-Deploy Hook for the production branch and save it in the GitHub repository as
-the `DOCS_DEPLOY_HOOK_URL` Actions secret. Without the optional hook, the next
-normal docs deployment still pulls the current published releases.
-
-Vercel will build the Next.js docs app, publish every push to `main`, and create
-preview URLs for documentation pull requests. Keep `quatibot.invalid` on the
-existing marketing project and add a Docs link there after the new domain is
-live.
+Guides describe supported behavior and operational requirements. Keep local links and navigation aligned with the available pages. Use the repository's isolated verification guide for examples that write application state.

@@ -1,9 +1,7 @@
 {
-  "title": "Self-hosting",
-  "icon": "Server",
+  "title": "Server operation",
   "pages": [
     "index",
-    "deploy-vps",
     "networking",
     "data-and-backups"
   ]

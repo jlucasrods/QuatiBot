@@ -24,7 +24,7 @@ describe("openTaskWorking", () => {
 describe("roomRespondersForComposer", () => {
   const members = [
     { id: "atlas", name: "Atlas" },
-    { id: "milind", name: "Milind" },
+    { id: "alex", name: "Alex" },
   ];
 
   it("routes an unmentioned message to the configured lead", () => {
@@ -35,19 +35,19 @@ describe("roomRespondersForComposer", () => {
 
   it("lets explicit mentions override the configured lead", () => {
     expect(
-      roomRespondersForComposer("@Milind take this", members, { defaultResponder: { kind: "member", botId: "atlas" } }),
+      roomRespondersForComposer("@Alex take this", members, { defaultResponder: { kind: "member", botId: "atlas" } }),
     ).toEqual([members[1]]);
   });
 
   it("uses the shared Markdown, punctuation, and Unicode mention boundaries", () => {
     const mentionsOnly = { defaultResponder: { kind: "mentions" } } as const;
-    expect(roomRespondersForComposer("**@Milind**", members, mentionsOnly)).toEqual([members[1]]);
-    expect(roomRespondersForComposer("(@Milind)", members, mentionsOnly)).toEqual([members[1]]);
-    expect(roomRespondersForComposer("【@Milind】", members, mentionsOnly)).toEqual([members[1]]);
-    expect(roomRespondersForComposer("user@Milind /@Milind", members, mentionsOnly)).toEqual([]);
-    expect(roomRespondersForComposer("@Milindo", members, mentionsOnly)).toEqual([]);
-    expect(roomRespondersForComposer("@Milind𐐀", members, mentionsOnly)).toEqual([]);
-    expect(roomRespondersForComposer("İ @Milind", members, mentionsOnly)).toEqual([members[1]]);
+    expect(roomRespondersForComposer("**@Alex**", members, mentionsOnly)).toEqual([members[1]]);
+    expect(roomRespondersForComposer("(@Alex)", members, mentionsOnly)).toEqual([members[1]]);
+    expect(roomRespondersForComposer("【@Alex】", members, mentionsOnly)).toEqual([members[1]]);
+    expect(roomRespondersForComposer("user@Alex /@Alex", members, mentionsOnly)).toEqual([]);
+    expect(roomRespondersForComposer("@Alexo", members, mentionsOnly)).toEqual([]);
+    expect(roomRespondersForComposer("@Alex𐐀", members, mentionsOnly)).toEqual([]);
+    expect(roomRespondersForComposer("İ @Alex", members, mentionsOnly)).toEqual([members[1]]);
   });
 
   it("supports everyone and mentions-only room policies", () => {

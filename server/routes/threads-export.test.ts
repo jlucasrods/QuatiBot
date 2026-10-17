@@ -24,7 +24,7 @@ afterEach(async () => {
 async function serve(store: Store): Promise<string> {
   const deps = {
     store,
-    cfg: { profile: { name: "Milind" } },
+    cfg: { profile: { name: "Alex" } },
     viewerFor: () => ({}),
     visibleTo: () => ({ bot: () => true, group: () => true }),
     workspaceAccess: () => null,
@@ -65,7 +65,7 @@ describe("GET /api/threads/:id/export", () => {
     expect(markdown.status).toBe(200);
     expect(markdown.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
     expect((await markdown.text()).split("\n").slice(2)).toEqual([
-      "**Milind:**", "", "What is open?", "",
+      "**Alex:**", "", "What is open?", "",
       "**Scout:**", "",
       "**Pull requests** · quati-mobile · 3 open",
       "- iOS: mid-turn steer · #750 · 4 files · passed 2h ago · Ready",
@@ -73,7 +73,7 @@ describe("GET /api/threads/:id/export", () => {
       "- iOS: file links, send, attach · #719 · 9 files · 1 test failing · Failing",
       "[Merge the two ready] [Fix #719 first]",
       "",
-      "**Milind:**", "", "Merge the two ready", "",
+      "**Alex:**", "", "Merge the two ready", "",
     ]);
 
     const exported = await (await fetch(`${base}/api/threads/${bot.threadId}/export?format=json`)).json() as { messages: Array<Record<string, any>> };

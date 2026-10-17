@@ -10,7 +10,7 @@ import {
 import { isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { browserBundlePaths, browserBundleSpec } from "../server/browser-bundle-release.ts";
-import { executableTarget } from "./prepare-cloudflared.mjs";
+import { executableTarget } from "./executable-target.mjs";
 
 export const BROWSER_LICENSE_FILES = [
   "agent-browser-LICENSE.txt", "LICENSE-axe-core.txt", "LICENSE-axe-core-THIRD-PARTY.txt", "README.md",

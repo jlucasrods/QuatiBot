@@ -1,5 +1,8 @@
 {
   "title": "Getting started",
-  "icon": "Rocket",
-  "pages": ["installation", "organisation", "quick-tour", "first-bot", "configuration"]
+  "pages": [
+    "installation",
+    "configuration",
+    "first-bot"
+  ]
 }

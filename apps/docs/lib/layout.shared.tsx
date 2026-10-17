@@ -11,7 +11,6 @@ export function baseOptions(): BaseLayoutProps {
     },
     links: [
       { text: 'Repository', url: 'https://github.com/jlucasrods/QuatiBot', external: true },
-      { text: 'Changelog', url: '/docs/changelog' },
       { type: 'button', text: 'Download', url: 'https://github.com/jlucasrods/QuatiBot/releases/latest', external: true },
     ],
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,

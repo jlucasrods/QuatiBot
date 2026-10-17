@@ -331,7 +331,7 @@ describe("a pairing that cannot be saved", () => {
 
 describe("cleanDeviceName", () => {
   it("clamps, trims, and strips control characters", () => {
-    expect(cleanDeviceName("  Milind's iPhone  ")).toBe("Milind's iPhone");
+    expect(cleanDeviceName("  Alex's iPhone  ")).toBe("Alex's iPhone");
     expect(cleanDeviceName("bad\u0000name\u001b[31m")).toBe("bad name [31m");
     expect(cleanDeviceName("x".repeat(200))).toHaveLength(60);
   });

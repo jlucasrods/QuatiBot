@@ -13,7 +13,7 @@ import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
 import { inflateSync } from "node:zlib";
 import { browserBundlePaths, browserBundleSpec } from "../server/browser-bundle-release.ts";
-import { executableTarget } from "./prepare-cloudflared.mjs";
+import { executableTarget } from "./executable-target.mjs";
 import { WINDOWS_VENDOR_VERSION, verifyVendorCandidate, verifyVendorPatch } from "./build-windows-browser-vendor.mjs";
 
 const { values } = parseArgs({ options: {

@@ -586,7 +586,7 @@ describe("message-scoped file targets", () => {
   });
 
   it("preserves supported local file spellings without widening unsafe protocols", () => {
-    expect(chatUrlTransform("file:///Users/milind/report.md")).toBe("file:///Users/milind/report.md");
+    expect(chatUrlTransform("file:///Users/alex/report.md")).toBe("file:///Users/alex/report.md");
     expect(chatUrlTransform("C:/Users/Quati/report.md")).toBe("C:/Users/Quati/report.md");
     expect(chatUrlTransform("\\\\server\\share\\report.md")).toBe("\\\\server\\share\\report.md");
     expect(chatUrlTransform("C:%5CUsers%5CQuati%5Crelease%20notes.md")).toBe("C:\\Users\\Quati\\release%20notes.md");
@@ -618,11 +618,11 @@ describe("ChatMarkdown attachments", () => {
 
   it("keeps host paths private while routing them through the scoped file handler", () => {
     const html = renderToStaticMarkup(createElement(ChatMarkdown, {
-      text: "[macOS](file:///Users/milind/report.md) [Windows](C:/Users/Quati/report.md)",
+      text: "[macOS](file:///Users/alex/report.md) [Windows](C:/Users/Quati/report.md)",
       message: { threadId: "thread-1", messageId: "message-1" },
     }));
     expect(html).toContain('title="Save a copy"');
-    expect(html).not.toContain("/Users/milind/report.md");
+    expect(html).not.toContain("/Users/alex/report.md");
     expect(html).not.toContain("C:/Users/Quati/report.md");
   });
 

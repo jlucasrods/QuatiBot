@@ -123,7 +123,7 @@ describe("quota-switch card", () => {
       host: {
         validate: () => undefined, busy: () => teammateSays === undefined, run: async () => teammateSays!,
         report: () => {}, changed: () => {}, park: () => parked(),
-        names: (node, parent) => ({ requester: parent?.botId ?? "Omkar", assignee: node.botId, person: "Omkar" }),
+        names: (node, parent) => ({ requester: parent?.botId ?? "Jordan", assignee: node.botId, person: "Jordan" }),
         levelOf: () => ({ level: "ask" }), chiefOf: () => false,
       },
     });

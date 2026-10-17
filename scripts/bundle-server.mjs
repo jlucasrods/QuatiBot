@@ -75,32 +75,6 @@ await build({
   logLevel: "info",
 });
 
-// `quatibot serve --tunnel` spawns the connector guardian as its own
-// process, so it must exist as a file beside the server.
-await build({
-  entryPoints: [join(server, "platform", "managed-companion-guardian-main.mjs")],
-  bundle: true,
-  platform: "node",
-  target: "node20",
-  format: "esm",
-  outfile: join(root, "dist-server", "tunnel-guardian.js"),
-  allowOverwrite: true,
-  logLevel: "info",
-});
-
-// Runs itself when executed directly, so it must never be inlined into another
-// entry.
-await build({
-  entryPoints: [join(root, "scripts", "prepare-cloudflared.mjs")],
-  bundle: true,
-  platform: "node",
-  target: "node20",
-  format: "esm",
-  outfile: join(root, "dist-server", "prepare-cloudflared.js"),
-  allowOverwrite: true,
-  logLevel: "info",
-});
-
 // The model catalog snapshot (server/model-catalog/catalog.ts) is read from
 // disk, not inlined: 1.5 MB of JSON has no place in index.js. The bundle looks
 // for it under model-catalog/ beside itself. Its MIT notice is inside the file.

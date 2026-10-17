@@ -8,7 +8,7 @@ services:
         ENGINES: ${ENGINES:-}
     image: localhost/quatibot-podman:${QUATI_IMAGE_TAG:-local}
     # Collects exited browser processes; Chrome's shared memory as on the
-    # desktop containers (docs/browser-packaging.md, "Process hygiene").
+    # desktop containers.
     init: true
     shm_size: 512m
     userns_mode: keep-id:uid=1001,gid=1001

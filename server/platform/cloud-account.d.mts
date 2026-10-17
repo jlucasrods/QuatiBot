@@ -54,7 +54,7 @@ export interface CloudAccountBridge {
   connectHome(): Promise<CloudAccountState>;
   /** The same, opening the Cloud's Settings on its phone pairing. */
   onState(callback: (state: CloudAccountState) => void): () => void;
-  /** "Let My Cloud use this computer" (docs/cloud-pro.md). */
+  /** "Let My Cloud use this computer". */
   lending?: import("./computer-sharing.mjs").CloudLendingBridge;
   files?: import("./cloud-sync.mjs").CloudFilesBridge;
 }

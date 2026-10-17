@@ -3,7 +3,7 @@ import { profileInitials, profileLabel, profileMenuItems } from "./SidebarProfil
 
 describe("profile identity", () => {
   it.each([
-    [{ name: "Milind Soni" }, "MS", "Milind Soni"],
+    [{ name: "Alex Morgan" }, "AM", "Alex Morgan"],
     [{ name: "Ada Byron Lovelace" }, "AB", "Ada Byron Lovelace"],
     [{ email: "you@x.dev" }, "Y", "you@x.dev"],
     [{ name: "   ", email: "you@x.dev" }, "Y", "you@x.dev"],

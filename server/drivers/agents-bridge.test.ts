@@ -146,7 +146,7 @@ describe("what a bridged turn is listed", () => {
   });
 
   it("never hides a tool the host counts as an outward action by its name", () => {
-    // The restart policy (docs/runtime-contract.md §5) reads a turn's tool
+    // The restart policy reads a turn's tool
     // names. A send must be seen under its own, so such a tool is always
     // listed, whatever the hot list says.
     for (const { name, profile: turn } of everyProfile()) {

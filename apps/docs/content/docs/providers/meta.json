@@ -1,5 +1,6 @@
 {
-  "title": "Agent engines",
-  "icon": "BrainCircuit",
-  "pages": ["index", "model-providers", "antigravity", "troubleshooting"]
+  "title": "OpenCode",
+  "pages": [
+    "index"
+  ]
 }

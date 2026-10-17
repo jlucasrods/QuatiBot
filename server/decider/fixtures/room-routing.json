@@ -4,7 +4,7 @@
     "launch": {
       "name": "#launch",
       "humans": [
-        "Milind (owner)",
+        "Alex (owner)",
         "Priya (product manager, human)"
       ],
       "members": [
@@ -48,7 +48,7 @@
     "salesops": {
       "name": "#sales-ops",
       "humans": [
-        "Milind (owner)",
+        "Alex (owner)",
         "Arjav (co-founder, human)"
       ],
       "members": [
@@ -81,7 +81,7 @@
     "infra": {
       "name": "#infra",
       "humans": [
-        "Milind (owner)"
+        "Alex (owner)"
       ],
       "members": [
         {
@@ -263,11 +263,11 @@
       "id": "r16",
       "set": "clean",
       "room": "launch",
-      "from": "Milind",
+      "from": "Alex",
       "recent": [
         {
           "from": "Priya",
-          "text": "Milind, did you see the investor update I sent?"
+          "text": "Alex, did you see the investor update I sent?"
         }
       ],
       "message": "Yes, reading it now",

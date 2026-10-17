@@ -25,15 +25,15 @@ import {
 } from "../src/mdns.ts";
 
 const service: ServiceInfo = {
-  name: "Milind's computer",
+  name: "Alex's computer",
   type: "_quatibot._tcp",
   port: 8800,
   host: "quatibot-1a2b3c4d.local",
   addresses: ["192.168.1.42"],
-  txt: ["v=1", "name=Milind's computer"],
+  txt: ["v=1", "name=Alex's computer"],
 };
 
-const INSTANCE = "Milind's computer._quatibot._tcp.local";
+const INSTANCE = "Alex's computer._quatibot._tcp.local";
 const SERVICE_NAME = "_quatibot._tcp.local";
 
 function query(name: string, type: number, opts: { id?: number; unicast?: boolean } = {}): Buffer {
@@ -243,11 +243,11 @@ describe("naming", () => {
   });
 
   it("claims a host name the system responder will not fight us for", () => {
-    const name = defaultHostName("Milinds-MacBook-Pro");
+    const name = defaultHostName("Alexs-MacBook-Pro");
     expect(name).toMatch(/^quatibot-[0-9a-f]{8}\.local$/);
-    expect(defaultHostName("Milinds-MacBook-Pro")).toBe(name);
+    expect(defaultHostName("Alexs-MacBook-Pro")).toBe(name);
     expect(defaultHostName("another-machine")).not.toBe(name);
-    expect(name).not.toContain("Milinds-MacBook-Pro");
+    expect(name).not.toContain("Alexs-MacBook-Pro");
   });
 
   it("publishes only routable IPv4 addresses", () => {

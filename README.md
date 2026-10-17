@@ -57,10 +57,8 @@ corepack pnpm dev:server
 corepack pnpm dev
 ```
 
-See [integration details](docs/opencode-v2.md) and
-[isolated verification](docs/verification/README.md).
+See the [documentation](docs/README.md) for operation, architecture and isolated verification.
 
 ## License
 
-[Apache-2.0](LICENSE). Based on [OpenMausBot](https://github.com/milind-soni/OpenMausBot)
-by Milind Soni and contributors. Original attribution is retained in [NOTICE](NOTICE).
+[Apache-2.0](LICENSE). Copyright and third-party attribution are retained in [NOTICE](NOTICE).

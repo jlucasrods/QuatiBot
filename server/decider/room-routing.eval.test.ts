@@ -56,7 +56,7 @@ for (const run of RUNS) describe.skipIf(!run.live)(`room routing, live (${run.pr
       };
       const input: RoomRoutingInput = {
         room: room.name, humans: room.humans, members: room.members, recent: item.recent ?? [],
-        message: { from: item.from ?? "Milind", text: item.message },
+        message: { from: item.from ?? "Alex", text: item.message },
       };
       // The production budget is 1.5 s; this measures the answer rather than cutting it.
       const route = await decideRoomResponder(recorded, input, { timeoutMs: 10_000 });

@@ -1,4 +1,4 @@
-# QUATI Cloud Pro home machine: one Fly app per customer (docs/cloud-pro.md).
+# QUATI Cloud Pro home machine: one Fly app per customer.
 # The Admin creates it through the Machines API with these settings; this file
 # is the same shape for a manual deploy. Fill the {{…}} values per customer.
 # Create each app in its own private network (`fly apps create --network

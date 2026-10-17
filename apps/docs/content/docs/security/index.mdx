@@ -1,28 +1,31 @@
 ---
-title: Security model
-description: The boundaries that keep agents, credentials, computers, and paired devices scoped.
-icon: ShieldCheck
+title: "Security"
+description: "Sessions, credentials and tool boundaries"
 ---
 
-QuatiBot is designed around a local owner, explicit capabilities, and narrow process boundaries. Local-first does not mean risk-free: an agent with tool or computer access can still act on the resources you grant it.
 
-## Core boundaries
+## Workspace
 
-- The harness owns agent processes and listens on loopback.
-- The renderer receives configured-or-not credential state, not secret values.
-- Provider-specific credentials are injected only into the process that needs them.
-- Bots start at Full access, as in T3 Code: each engine runs in its own most permissive mode. Choose **Ask for approval** on a bot or thread to turn risky actions into approval cards. Real questions and missing credentials always come to you.
-- Local computer control is a separate opt-in and per-bot selection.
-- Paired phones use a default-deny API allowlist and per-device bearer tokens.
-- Cloud and VPS backends are validated before reuse.
-- This fork does not collect or send product analytics. Local diagnostic logs remain available.
+The workspace defaults to `~/.quatibot`; `QUATI_DATA_DIR` selects another directory. It contains bot configuration, conversations, files, memory, routines, attachments and local execution records. Protect the directory and its backups as private application data.
 
-## Your responsibility
+Local diagnostic logs and token/cost history support troubleshooting and usage inspection. Product analytics are not collected or sent.
 
-- Review approvals, especially shell commands, file writes, and actions in connected services.
-- Use dedicated environments for untrusted or destructive work.
-- Keep provider accounts and connected apps scoped to what a bot needs.
-- Revoke lost companion devices immediately.
-- Keep QuatiBot and agent CLIs updated.
+## Credentials
 
-Security reports should be filed through the repository's documented security channel rather than disclosed in a public issue before a fix is available.
+OpenCode owns model-provider credentials. QuatiBot reads native model and extension metadata without exposing provider secrets to the frontend.
+
+Auxiliary service keys saved in QuatiBot settings are encrypted in `credentials.enc` with a separate `credentials-key` file. Both files use owner-only permissions. The key and ciphertext must be kept together on trusted storage; an attacker with both can decrypt them.
+
+Website passwords and login material use the backend login vault and its key. A login's site restrictions and bot grants determine who can use it. Authentication material is not returned in ordinary settings reads or inserted into conversation text.
+
+Unreadable vaults fail closed. Restore the correct key and ciphertext before saving changes. An undecryptable vault is not treated as an empty one. Portable workspace exports exclude credential vaults and their keys; arrange trusted secret backups separately.
+
+## Browser sessions
+
+Remote access requires a paired session. Device pairing uses an expiring, single-use code. Admin sessions can change settings and pair devices; client sessions are restricted to chat and approvals. Session revocation removes that device's access.
+
+Keep the backend port private behind an HTTPS proxy or private network. Forward WebSockets for live updates and viewers. Do not grant loopback-owner trust to requests merely because they arrived through a local proxy.
+
+## Tools and computers
+
+Tool authority is scoped to the originating turn. Internal MCP bearers are not general administrative credentials. Browser and VM actions follow bot settings and approvals. Desktop control is confined to the isolated VM; the operator's mouse, keyboard and screen are not capture targets.

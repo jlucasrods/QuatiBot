@@ -8,14 +8,14 @@ import type { ChoiceAnswer, DeciderResult } from "./types.ts";
 
 const INPUT: RoomRoutingInput = {
   room: "#launch",
-  humans: ["Milind", "Priya"],
+  humans: ["Alex", "Priya"],
   members: [
     { id: "bot-maya", name: "Maya", title: "Product Designer", description: "Owns UI mockups and the brand look." },
     { id: "bot-theo", name: "Theo", title: "Frontend Engineer", description: "Builds the web app in React." },
     { id: "bot-chief", name: "Chief", title: "Chief of Staff" },
   ],
   recent: [{ from: "Theo (bot)", text: "Pushed the new navbar to staging." }],
-  message: { from: "Milind", text: "The signup button overlaps the footer on Safari mobile." },
+  message: { from: "Alex", text: "The signup button overlaps the footer on Safari mobile." },
 };
 
 type Choose = Decider["choose"];
@@ -37,15 +37,15 @@ describe("room routing request", () => {
     expect(question.instructions).toContain("`new_message`");
     expect(state).toEqual({
       room: "#launch",
-      humans_in_room: ["Milind", "Priya"],
+      humans_in_room: ["Alex", "Priya"],
       bots_in_room: ["Maya", "Theo", "Chief"],
       recent_messages: [{ from: "Theo (bot)", text: "Pushed the new navbar to staging." }],
-      new_message: { from: "Milind", text: "The signup button overlaps the footer on Safari mobile." },
+      new_message: { from: "Alex", text: "The signup button overlaps the footer on Safari mobile." },
     });
   });
 
   it("keeps the newest room lines within a size budget, each clipped", () => {
-    const recent = Array.from({ length: 30 }, (_, i) => ({ from: "Milind", text: `line ${i} ${"x".repeat(900)}` }));
+    const recent = Array.from({ length: 30 }, (_, i) => ({ from: "Alex", text: `line ${i} ${"x".repeat(900)}` }));
     const { state } = roomRoutingRequest({ ...INPUT, recent });
     const kept = state.recent_messages!;
     expect(kept.length).toBeGreaterThan(0);

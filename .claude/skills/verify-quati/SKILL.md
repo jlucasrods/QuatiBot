@@ -7,5 +7,5 @@ description: "Verify QuatiBot server and conversation changes against an isolate
 
 Follow the canonical instructions in `docs/verification/README.md`. Use its
 shared control tool; do not improvise raw API calls or drive the user's live
-QuatiBot instance. The canonical feature map currently covers only the
-server flows that tool can prove.
+QuatiBot instance. Distinguish fake ACP orchestration checks from real
+model inference, browser execution and VM execution.

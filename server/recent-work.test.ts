@@ -29,9 +29,9 @@ const me = { id: "me", threadId: "main", tasks: [task("t-inv", "Invoice reconcil
 
 describe("botThreads", () => {
   it("lists the main chat, tasks, and the rooms the bot belongs to, each named for the bot", () => {
-    expect(botThreads(store, me, "Milind")).toEqual([
-      { threadId: "main", where: "1:1 with Milind", title: "Getting started", private: true },
-      { threadId: "t-inv", where: "1:1 with Milind", title: "Invoice reconciliation", private: true },
+    expect(botThreads(store, me, "Alex")).toEqual([
+      { threadId: "main", where: "1:1 with Alex", title: "Getting started", private: true },
+      { threadId: "t-inv", where: "1:1 with Alex", title: "Invoice reconciliation", private: true },
       { threadId: "room-ops", where: 'room "Ops"', title: null, private: false },
       { threadId: "room-ops-t1", where: 'room "Ops"', title: "Deploy day", private: false },
       { threadId: "dm-them", where: 'room "DM"', title: null, private: true },
@@ -41,7 +41,7 @@ describe("botThreads", () => {
 
 describe("recentWorkLines + recentWorkPrompt", () => {
   const now = new Date(2026, 8, 16, 10, 30).getTime();
-  const threads = botThreads(store, me, "Milind");
+  const threads = botThreads(store, me, "Alex");
 
   it("joins what was said to where, newest first, and words the brief for a standup", () => {
     const lines = recentWorkLines(threads, [
@@ -51,10 +51,10 @@ describe("recentWorkLines + recentWorkPrompt", () => {
       { threadId: "main", messageId: "m9", at: new Date(2026, 8, 10, 8, 0).getTime(), head: "" },
     ]);
     expect(lines.map((line) => line.threadId)).toEqual(["t-inv", "room-ops"]);
-    expect(lines[0]).toMatchObject({ where: "1:1 with Milind", title: "Invoice reconciliation", private: true });
+    expect(lines[0]).toMatchObject({ where: "1:1 with Alex", title: "Invoice reconciliation", private: true });
     const text = recentWorkPrompt(lines, now);
     expect(text).toContain("Your recent work");
-    expect(text).toContain('- today 09:05 · 1:1 with Milind · "Invoice reconciliation" · you said: "Sent the three flagged invoices to finance; two are still missing a PO."');
+    expect(text).toContain('- today 09:05 · 1:1 with Alex · "Invoice reconciliation" · you said: "Sent the three flagged invoices to finance; two are still missing a PO."');
     expect(text).toContain('- yesterday 17:40 · room "Ops" · you said: "I\'ll take the deploy tomorrow morning."');
     expect(text).toContain("session_search with since");
     expect(recentWorkPrompt([], now)).toBe("");
@@ -71,7 +71,7 @@ describe("recentWorkLines + recentWorkPrompt", () => {
     expect(lines[0]!.said.length).toBeLessThanOrEqual(160);
     expect(lines[0]!.said.endsWith("…")).toBe(true);
     const many = recentWorkLines(
-      Array.from({ length: 30 }, (_, index) => ({ threadId: `t${index}`, where: "1:1 with Milind", title: `Task ${index}`, private: true })),
+      Array.from({ length: 30 }, (_, index) => ({ threadId: `t${index}`, where: "1:1 with Alex", title: `Task ${index}`, private: true })),
       Array.from({ length: 30 }, (_, index) => ({ threadId: `t${index}`, messageId: `m${index}`, at: now - index, head: "x".repeat(150) })),
     );
     expect(many).toHaveLength(10);

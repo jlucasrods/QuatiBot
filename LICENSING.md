@@ -1,8 +1,6 @@
 # Licensing
 
-QuatiBot is an independent fork of [OpenMausBot](https://github.com/milind-soni/OpenMausBot),
-originally developed by Milind Soni and contributors. The open-source code is
-licensed under the [Apache License 2.0](LICENSE).
+QuatiBot is licensed under the [Apache License 2.0](LICENSE).
 
 The upstream `enterprise/` directory has a separate, restrictive license. It
 has been removed in full, as that license permits. It is not part of QuatiBot.

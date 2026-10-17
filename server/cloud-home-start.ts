@@ -87,7 +87,7 @@ export function spawnWithSecrets(command: string, args: string[], env: NodeJS.Pr
 export function startCloudHome(env: NodeJS.ProcessEnv = process.env) {
   process.umask(0o077);
   const config = cloudHomeConfiguration(env);
-  if (!config) throw new Error("This image runs a My Cloud machine for Quati Cloud; set its boot contract (docs/cloud-pro.md).");
+  if (!config) throw new Error("This image runs a My Cloud machine for Quati Cloud; set its boot contract.");
   // Logged here once: the server child never sees what they are about.
   for (const warning of config.warnings) console.warn(`cloud home: ${warning}`);
   const home = env.HOME || "/data";
