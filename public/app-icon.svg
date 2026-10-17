@@ -1,83 +1,80 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
   <title id="title">QuatiBot</title>
-  <desc id="desc">A curious coati with a long snout, raised eyebrow and striped tail on a dark tile.</desc>
+  <desc id="desc">A curious coati mascot with a long snout, raised eyebrow and striped tail, transparent background for app icon.</desc>
 
-  <!-- Base do Ícone -->
-  <rect width="512" height="512" rx="112" fill="#101916"/>
-
-  <!-- Cauda Anelada (Fundo) -->
+  <!-- Cauda Anelada (Erguida e Preenchendo o Canto Superior Direito) -->
   <g id="cauda">
     <!-- Base da cauda -->
-    <path d="M 315 385 C 415 380 445 285 430 205 C 418 135 365 110 325 140"
-          fill="none" stroke="#89d7ad" stroke-width="52" stroke-linecap="round"/>
-    <!-- Anéis escuros -->
-    <path d="M 315 385 C 415 380 445 285 430 205 C 418 135 365 110 325 140"
-          fill="none" stroke="#284c3b" stroke-width="52" stroke-linecap="butt"
-          stroke-dasharray="26 26" stroke-dashoffset="13"/>
+    <path d="M 305 435 C 430 430 475 320 455 210 C 440 120 370 52 315 90"
+          fill="none" stroke="#89d7ad" stroke-width="64" stroke-linecap="round"/>
+    <!-- Anéis escuros da cauda -->
+    <path d="M 305 435 C 430 430 475 320 455 210 C 440 120 370 52 315 90"
+          fill="none" stroke="#284c3b" stroke-width="64" stroke-linecap="butt"
+          stroke-dasharray="32 32" stroke-dashoffset="16"/>
     <!-- Ponta escura da cauda -->
-    <circle cx="325" cy="140" r="26" fill="#284c3b"/>
+    <circle cx="315" cy="90" r="32" fill="#284c3b"/>
   </g>
 
   <!-- Orelha Traseira -->
-  <path d="M 248 185 C 248 150 275 140 286 162 C 294 177 282 205 264 205 Z" fill="#284c3b"/>
-  <path d="M 255 182 C 255 160 270 152 278 167 C 282 176 274 196 264 196 Z" fill="#89d7ad"/>
+  <path d="M 220 220 C 220 178 255 165 268 192 C 278 210 262 245 240 245 Z" fill="#284c3b"/>
+  <path d="M 230 216 C 230 188 248 180 258 198 C 262 210 252 234 240 234 Z" fill="#89d7ad"/>
 
-  <!-- Corpo e Cabeça (Silhueta Principal) -->
-  <path d="M 220 185
-           C 180 195 140 235 108 268
-           C 98 274 96 284 104 290
-           C 114 296 142 298 168 312
-           C 188 322 178 360 178 412
-           L 328 412
-           C 336 365 320 285 275 220
-           C 255 195 238 185 220 185 Z"
+  <!-- Corpo e Cabeça (Preenchendo a Base e a Lateral Esquerda) -->
+  <path d="M 185 220
+           C 135 235 80 290 42 332
+           C 30 340 28 352 38 360
+           C 50 368 85 370 120 388
+           C 145 400 135 440 135 475
+           L 325 475
+           C 335 415 315 315 255 240
+           C 230 225 210 220 185 220 Z"
         fill="#89d7ad"/>
 
   <!-- Mancha Clara do Peito -->
-  <path d="M 172 318 C 188 328 178 365 178 412 L 235 412 C 235 375 225 338 190 320 Z" fill="#eef4e9"/>
+  <path d="M 125 395 C 145 408 135 442 135 475 L 205 475 C 205 430 192 390 150 372 Z" fill="#eef4e9"/>
 
   <!-- Pata Dianteira -->
-  <path d="M 206 345 C 196 365 196 395 198 412" fill="none" stroke="#284c3b" stroke-width="6" stroke-linecap="round"/>
-  <ellipse cx="190" cy="412" rx="14" ry="5" fill="#284c3b"/>
+  <path d="M 170 405 C 158 425 158 458 160 475" fill="none" stroke="#284c3b" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="150" cy="475" rx="18" ry="6" fill="#284c3b"/>
 
   <!-- Orelha Dianteira -->
-  <path d="M 216 192 C 210 160 228 142 245 148 C 260 154 260 182 246 198 Z"
-        fill="#89d7ad" stroke="#284c3b" stroke-width="8" stroke-linejoin="round"/>
-  <path d="M 224 186 C 220 166 232 154 242 158 C 248 164 248 180 240 190 Z" fill="#eef4e9"/>
+  <path d="M 180 228 C 172 188 195 166 216 174 C 235 181 235 216 218 236 Z"
+        fill="#89d7ad" stroke="#284c3b" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M 190 221 C 185 196 200 181 212 186 C 220 193 220 213 210 226 Z" fill="#eef4e9"/>
 
   <!-- Máscara Facial Escura do Quati -->
-  <path d="M 124 266
-           C 150 252 185 228 222 228
-           C 238 228 245 240 240 255
-           C 232 274 205 284 175 284
-           C 145 284 130 274 124 266 Z"
+  <path d="M 65 330
+           C 100 312 145 282 190 282
+           C 210 282 220 296 214 315
+           C 204 338 170 350 132 350
+           C 94 350 74 340 65 330 Z"
         fill="#284c3b"/>
 
   <!-- Mancha Clara do Focinho e Queixo -->
-  <path d="M 104 278
-           C 108 274 124 272 145 275
-           C 160 277 170 290 162 305
-           C 150 308 125 302 108 290
-           C 102 286 102 280 104 278 Z"
+  <path d="M 38 346
+           C 44 340 64 338 90 341
+           C 110 343 122 360 112 378
+           C 96 382 66 374 44 360
+           C 36 355 36 348 38 346 Z"
         fill="#eef4e9"/>
 
   <!-- Marcas Claras nos Olhos -->
-  <ellipse cx="188" cy="225" rx="7" ry="4" fill="#eef4e9" transform="rotate(-15 188 225)"/>
-  <ellipse cx="184" cy="260" rx="9" ry="5" fill="#eef4e9" transform="rotate(10 184 260)"/>
+  <ellipse cx="148" cy="278" rx="9" ry="5" fill="#eef4e9" transform="rotate(-15 148 278)"/>
+  <ellipse cx="144" cy="322" rx="11" ry="6" fill="#eef4e9" transform="rotate(10 144 322)"/>
 
-  <!-- Olho Expressivo -->
-  <ellipse cx="188" cy="243" rx="13" ry="15" fill="#eef4e9"/>
-  <ellipse cx="186" cy="243" rx="8" ry="10" fill="#101916"/>
-  <circle cx="183" cy="239" r="3.5" fill="#ffffff"/>
-  <circle cx="189" cy="246" r="1.5" fill="#ffffff"/>
+  <!-- Olho Expressivo com Íris e Brilho -->
+  <ellipse cx="148" cy="300" rx="16" ry="18" fill="#eef4e9"/>
+  <ellipse cx="145" cy="300" rx="10" ry="12" fill="#101916"/>
+  <circle cx="141" cy="295" r="4.5" fill="#ffffff"/>
+  <circle cx="149" cy="304" r="2" fill="#ffffff"/>
 
   <!-- Sobrancelha Erguida (Curiosa) -->
-  <path d="M 172 216 C 182 210 196 211 206 217" fill="none" stroke="#101916" stroke-width="6" stroke-linecap="round"/>
+  <path d="M 128 266 C 141 258 158 260 171 268" fill="none" stroke="#101916" stroke-width="7.5" stroke-linecap="round"/>
 
   <!-- Trufa do Focinho (Nariz Arrebitado) -->
-  <path d="M 106 266 C 96 270 93 282 100 288 C 106 293 114 290 115 282 C 116 274 112 268 106 266 Z" fill="#101916"/>
-  <ellipse cx="102" cy="275" rx="3" ry="5" fill="#89d7ad" opacity="0.6" transform="rotate(-20 102 275)"/>
+  <path d="M 42 330 C 29 335 25 350 34 358 C 42 364 52 360 53 350 C 54 340 49 332 42 330 Z" fill="#101916"/>
+  <ellipse cx="36" cy="342" rx="4" ry="6" fill="#89d7ad" opacity="0.6" transform="rotate(-20 36 342)"/>
 
-  <!-- Linha da Boca / Sorriso -->
-  <path d="M 108 288 C 118 294 132 296 146 292" fill="none" stroke="#284c3b" stroke-width="4" stroke-linecap="round"/>
+  <!-- Linha da Boca -->
+  <path d="M 44 358 C 56 366 74 368 92 363" fill="none" stroke="#284c3b" stroke-width="5" stroke-linecap="round"/>
 </svg>
