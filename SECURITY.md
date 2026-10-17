@@ -4,12 +4,13 @@
 
 Please **do not open a public issue** for security problems.
 
-- **Email** **soni.mil2001@gmail.com** with the details.
-- **Or, if it is enabled on this repository,** use GitHub's private vulnerability reporting:
+- **If enabled on this repository,** use GitHub's private vulnerability reporting:
   <https://github.com/jlucasrods/QuatiBot/security/advisories/new>. The report stays visible
   only to you and the maintainers until a fix is published.
 
-You'll get a response as soon as possible, normally within a few days.
+Otherwise, contact [@jlucasrods](https://github.com/jlucasrods) through the contact
+options on their profile to arrange a private reporting channel. Do not include
+vulnerability details in public messages.
 
 ## Scope notes for researchers
 
