@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveCallState } from "../shared/wire.ts";
 import {
   ATTACH_TIMEOUT_MS, CLOSE_TIMEOUT_MS, CONSENT_SETTLE_MS, DELEGATION_SETTLE_MS, IDLE_CHECK_MS, PROGRESS_INTERVAL_MS,
-  LiveCallBusyError, LiveCallController, LiveCallNeedsProError, LiveCallSignedOutError, type LiveActivity, type LiveCallDeps, type LiveSocket,
+  LiveCallBusyError, LiveCallController, LiveCallSignedOutError, type LiveActivity, type LiveCallDeps, type LiveSocket,
 } from "./live-call-controller.ts";
 import { LIVE_COPY } from "../shared/live-approval.ts";
 import { LiveSessionError } from "./live-call.ts";
@@ -47,7 +47,6 @@ function setup(overrides: Partial<LiveCallDeps> = {}) {
     queued: vi.fn((_botId: string, _threadId: string, queueId: string) => queue.has(queueId)),
     activity: () => activity,
     broadcast: (frame) => frames.push(frame.call),
-    pro: () => true,
     settings: () => settings,
     createSession: vi.fn(async () => ({ sessionId: "sess_1", sdp: "answer-sdp" })),
     openSocket: (url, key) => { const socket = new FakeSocket(url, key); sockets.push(socket); return socket; },
@@ -102,53 +101,11 @@ describe("LiveCallController lifecycle", () => {
     expect(t.deps.createSession).not.toHaveBeenCalled();
   });
 
-  it("refuses a phone's start without Pro, before the key and before OpenAI", async () => {
-    const t = setup({ pro: () => false });
-    t.settings.key = "";
-    const refused = t.controller.start({ auth: owner, ...BOT, client: "ios", sdp: "a" });
-    await expect(refused).rejects.toBeInstanceOf(LiveCallNeedsProError);
-    await expect(refused).rejects.toMatchObject({ status: 402, message: "Live calls from your phone need a Pro plan." });
-    expect(t.deps.createSession).not.toHaveBeenCalled();
-    expect(t.controller.current()).toBeNull();
-    expect(t.frames).toEqual([]);
-    t.settings.key = "sk-test";
-    t.deps.pro = () => true;
-    await expect(t.controller.start({ auth: owner, ...BOT, client: "ios", sdp: "a" })).resolves.toMatchObject({ sdp: "answer-sdp" });
-  });
+  it.each(["web", "desktop", "ios", "android"] as const)("starts an authenticated %s call using the configured key", async (client) => {
+    const t = setup();
 
-  it("starts a call from the desktop app, or a browser on this computer, without Pro and without asking the plan", async () => {
-    for (const client of ["desktop", "web"] as const) {
-      const asked = vi.fn(() => false);
-      const t = setup({ pro: asked });
-      await expect(t.controller.start({ auth: owner, ...BOT, client, sdp: "a" })).resolves.toMatchObject({ sdp: "answer-sdp" });
-      expect(asked).not.toHaveBeenCalled();
-      expect(t.deps.createSession).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  it("asks for the key only once the plan allows the call", async () => {
-    const t = setup({ pro: () => true });
-    t.settings.key = " ";
-    const refused = t.controller.start({ auth: owner, ...BOT, client: "desktop", sdp: "a" });
-    await expect(refused).rejects.toMatchObject({ status: 409, message: "Add an OpenAI API key to use Live calls." });
-    await expect(refused).rejects.not.toBeInstanceOf(LiveCallNeedsProError);
-  });
-
-  it("never ends a phone's running call when the plan changes; the phone's next start is refused", async () => {
-    let pro = true;
-    const asked = vi.fn(() => pro);
-    const t = setup({ pro: asked });
-    const { call } = await t.controller.start({ auth: owner, ...BOT, client: "ios", sdp: "offer-sdp" });
-    t.socket().open();
-    pro = false;
-    await vi.advanceTimersByTimeAsync(IDLE_CHECK_MS * 4);
-    expect(t.controller.current()).toMatchObject({ callId: call.callId, status: "live" });
-    expect(t.frames.map((f) => f?.status)).toEqual(["connecting", "live"]);
-    expect(asked).toHaveBeenCalledTimes(1);
-    const ending = t.controller.end(call.callId);
-    t.socket().receive({ type: "session.closed", reason: "close_requested" });
-    await expect(ending).resolves.toMatchObject({ status: "ended", endReason: "hung-up" });
-    await expect(t.controller.start({ auth: owner, ...BOT, client: "ios", sdp: "b" })).rejects.toBeInstanceOf(LiveCallNeedsProError);
+    await expect(t.controller.start({ auth: owner, ...BOT, client, sdp: "offer-sdp" }))
+      .resolves.toMatchObject({ sdp: "answer-sdp" });
     expect(t.deps.createSession).toHaveBeenCalledTimes(1);
   });
 

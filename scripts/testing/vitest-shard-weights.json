@@ -91,7 +91,6 @@
   "server/host-lazy-claim.e2e.test.ts": 12,
   "server/hosted-access.test.ts": 63,
   "server/hosted-desktop.e2e.test.ts": 11,
-  "server/hosted-models-api.test.ts": 13,
   "server/incidents.e2e.test.ts": 5,
   "server/independent-threads-api.test.ts": 42,
   "server/index.test.ts": 236,

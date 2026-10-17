@@ -112,18 +112,6 @@ describe("live call media", () => {
     expect(currentCall()).toBeNull();
   });
 
-  it("shows the Pro prompt, never the key form, and releases the microphone", async () => {
-    request.mockRejectedValueOnce(new ApiError("Live calls from your phone need a Pro plan.", 402, { needsPro: true }));
-    await startLiveCall({ botId: "b1", threadId: "t1" });
-    expect(liveMedia()).toMatchObject({ phase: "idle", needsPro: true, needsKey: false, botId: "b1", threadId: "t1", notice: null, action: null });
-    expect(track.stopped).toBe(true);
-    expect(peer.closed).toBe(true);
-    expect(currentCall()).toBeNull();
-    expect(endRequests()).toEqual([]);
-    await startLiveCall({ botId: "b1", threadId: "t1" });
-    expect(liveMedia()).toMatchObject({ phase: "starting", needsPro: false, callId: "c1" });
-  });
-
   it("says who is on the line when another call runs", async () => {
     const other = { ...call, callId: "c0", client: "ios", status: "live" } as const;
     request.mockRejectedValueOnce(new ApiError("A Live call is already running.", 409, { activeCall: other }));
@@ -502,15 +490,6 @@ describe("live call media", () => {
     expect(liveMedia()).toMatchObject({ phase: "idle", needsKey: false, botId: null });
   });
 
-  it("drops the Pro prompt only for the bot it was left for", async () => {
-    request.mockRejectedValueOnce(new ApiError("Live calls from your phone need a Pro plan.", 402, { needsPro: true }));
-    await startLiveCall({ botId: "b1", threadId: "t1" });
-    dismissStartPrompt("b2");
-    expect(liveMedia()).toMatchObject({ needsPro: true, botId: "b1" });
-    dismissStartPrompt("b1");
-    expect(liveMedia()).toMatchObject({ phase: "idle", needsPro: false, botId: null });
-  });
-
   it("plays blocked audio on the next click and clears the hint", async () => {
     const listeners = new Map<string, () => void>();
     vi.stubGlobal("document", {
@@ -845,17 +824,18 @@ describe("a blocked microphone", () => {
     expect(request).not.toHaveBeenCalledWith("/api/live/session", expect.anything());
   });
 
-  it("asks the desktop app through permStatus, and opens the page as a link", async () => {
+  it("checks the browser microphone permission and opens the page as a link", async () => {
     const open = vi.fn();
-    const permStatus = vi.fn(async () => ({ mic: "granted", pageMic: "refused" }));
-    vi.stubGlobal("window", { quati: { speechStop: vi.fn(async () => {}), permStatus }, open });
+    const query = vi.fn(async () => ({ state: "denied" }));
+    vi.stubGlobal("navigator", { permissions: { query } });
+    vi.stubGlobal("window", { open });
     vi.stubGlobal("location", { href: "https://quati-u-0123456789ab.fly.dev/" });
     configureLiveMedia({
       getUserMedia: async () => { throw new DOMException("denied", "NotAllowedError"); },
       capabilities: () => ({ dictation: { available: false, engine: "none", onDevice: false, reasonCode: "remote-server" } }) as DesktopCapabilities,
     });
     await startLiveCall({ botId: "b1", threadId: "t1" });
-    expect(permStatus).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledExactlyOnceWith({ name: "microphone" });
     expect(liveMedia()).toMatchObject({ notice: APP_REFUSED, action: "open-in-browser" });
     takeLiveCallAction();
     expect(open).toHaveBeenCalledExactlyOnceWith("https://quati-u-0123456789ab.fly.dev/", "_blank", "noopener,noreferrer");

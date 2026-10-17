@@ -74,17 +74,14 @@ export function CallTargetButton({ targetId, targetName, threadId, voices, setup
     const helpMotion = useMenuMotion(Boolean(unavailable && helpOpen));
     const [menuOpen, setMenuOpen] = useState(false);
     const keyPopover = canLive && !active && media.needsKey && media.botId === targetId;
-    const proPopover = canLive && !active && media.needsPro && media.botId === targetId;
-    const startPrompt = keyPopover || proPopover;
+    const startPrompt = keyPopover;
     const rootRef = useRef<HTMLDivElement>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const chevronRef = useRef<HTMLButtonElement>(null);
     const keyRef = useRef<HTMLDivElement>(null);
-    const proRef = useRef<HTMLDivElement>(null);
     const helpId = useId();
     const menuId = useId();
     const keyId = useId();
-    const proId = useId();
     const elsewhereName = liveElsewhere ? state.bots.find((candidate) => candidate.id === media.botId)?.name : undefined;
     const composer = placement === "composer";
     const label = active
@@ -160,13 +157,6 @@ export function CallTargetButton({ targetId, targetName, threadId, voices, setup
         if (opened)
             keyRef.current?.querySelector<HTMLInputElement>("input")?.focus();
     }, [keyPopover]);
-    const proShown = useRef(proPopover);
-    useEffect(() => {
-        const opened = proPopover && !proShown.current;
-        proShown.current = proPopover;
-        if (opened)
-            proRef.current?.focus();
-    }, [proPopover]);
     if (liveMode && !onCall && liveLineHeldElsewhere(media, state.liveCall))
         return null;
     return (<div ref={rootRef} className="relative flex items-center gap-0.5">
@@ -187,7 +177,7 @@ export function CallTargetButton({ targetId, targetName, threadId, voices, setup
                 return;
             }
             start(liveMode ? "live" : "turns");
-        }} aria-expanded={unavailable ? helpOpen : startPrompt ? true : undefined} aria-controls={unavailable ? helpId : keyPopover ? keyId : proPopover ? proId : undefined} aria-label={label} title={label} data-call-button={placement} className={cn("relative flex shrink-0 items-center justify-center disabled:opacity-60", "rounded-l-3xl rounded-r-lg active:rounded-3xl transition-[color,background,border-radius]", composer ? "size-8" : "size-9", active
+        }} aria-expanded={unavailable ? helpOpen : startPrompt ? true : undefined} aria-controls={unavailable ? helpId : keyPopover ? keyId : undefined} aria-label={label} title={label} data-call-button={placement} className={cn("relative flex shrink-0 items-center justify-center disabled:opacity-60", "rounded-l-3xl rounded-r-lg active:rounded-3xl transition-[color,background,border-radius]", composer ? "size-8" : "size-9", active
             ? "bg-danger text-white hover:brightness-110"
             : composer
                 ? unavailable
@@ -218,7 +208,7 @@ export function CallTargetButton({ targetId, targetName, threadId, voices, setup
           <LiveKeySetup key={`${targetId}:${liveThreadId}`} compact onSaved={() => void startLiveCall({ botId: targetId, threadId: liveThreadId })}/>
         </div>)}
 
-      {proPopover && (<div ref={proRef} id={proId} tabIndex={-1} className={cn("animate-pop-in absolute right-0 z-30 w-[340px] max-w-[90vw] rounded-xl shadow-2xl outline-none", composer ? "bottom-full mb-1.5" : "top-full mt-1.5")}></div>)}
+
 
       {helpMotion.shown && (<div id={helpId} role="group" aria-label="Call unavailable" className={cn("absolute right-0 z-30 w-[280px]", composer ? "bottom-full mb-1.5" : "mt-1.5", "rounded-xl border border-hairline bg-panel p-3 text-left shadow-2xl", helpMotion.className)} {...helpMotion.exitProps}>
           <div className="text-[13px] font-medium text-ink">Call unavailable</div>

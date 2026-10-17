@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LiveCallState, LiveSettings } from "../../shared/wire.ts";
 import { json, readBody } from "../harness/http.ts";
-import { LiveCallBusyError, LiveCallNeedsProError } from "../live-call-controller.ts";
+import { LiveCallBusyError } from "../live-call-controller.ts";
 import { LiveSessionError } from "../live-call.ts";
 import { requiredScope } from "../request-auth.ts";
 import { createLiveRoutes, type LiveRouteDeps } from "./live.ts";
@@ -109,11 +109,6 @@ describe("live routes", () => {
     const refused = await request(busy, "POST", "/api/live/session", { botId: "bot1", sdp: "v=0", client: "ios" });
     expect(refused).toMatchObject({ status: 409, body: { activeCall: active } });
     expect(refused.body).not.toHaveProperty("needsKey");
-  });
-  it("says when a phone's Live call needs a Pro plan, and nothing about a key", async () => {
-    const noPro = deps({ calls: { ...deps().calls, start: vi.fn(async () => { throw new LiveCallNeedsProError(); }) } });
-    const refused = await request(noPro, "POST", "/api/live/session", { botId: "bot1", sdp: "v=0", client: "android" });
-    expect(refused).toEqual({ status: 402, body: { error: "Live calls from your phone need a Pro plan.", needsPro: true } });
   });
   it("passes OpenAI's refusals through with their status and message", async () => {
     const refusal = deps({ calls: { ...deps().calls, start: vi.fn(async () => { throw new LiveSessionError("OpenAI rejected the API key. Check the key for Live calls.", 502); }) } });

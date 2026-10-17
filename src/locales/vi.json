@@ -4161,8 +4161,6 @@
   "call.live.keyField": "Khóa API OpenAI cho cuộc gọi Live",
   "call.live.keySaving": "Đang lưu…",
   "call.live.keySaveAndCall": "Lưu và bắt đầu cuộc gọi",
-  "call.live.proTitle": "Cuộc gọi Live từ điện thoại của bạn cần có gói Pro",
-  "call.live.proExplain": "Các cuộc gọi từ ứng dụng desktop là miễn phí. Trên điện thoại của bạn, bất kỳ gói Quati Cloud nào đang hoạt động đều mở khóa tính năng này: Personal, Pro hoặc Max. Cuộc gọi cũng sử dụng khóa API OpenAI của riêng bạn.",
   "settings.group.you": "Bạn",
   "settings.group.ai": "AI",
   "settings.group.computers": "Máy tính",
