@@ -31,7 +31,4 @@ cloudflare/composio-broker/worker-configuration.d.ts
 
 # per-tenant deploy settings (see deploy/.env.example)
 deploy/.env
-deploy/podman/.env
-deploy/podman/.env.*
-!deploy/podman/.env.example
 /.env

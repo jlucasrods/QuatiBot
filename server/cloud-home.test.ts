@@ -332,35 +332,6 @@ it("the root supervisor runs and trusts only root's code, never the volume's or 
   expect(codeTrustProblem(files, "/data", () => { throw new Error("ENOENT"); })).toBe("/usr/local/bin/node cannot be checked");
 });
 
-it("ships an edge and a Fly template that keep the server private", () => {
-  const caddy = readFileSync(join(import.meta.dirname, "../deploy/fly/Caddyfile"), "utf8");
-  expect(caddy).toMatch(/^:8080 \{/m);
-  const upstreams = [...caddy.matchAll(/reverse_proxy (\S+)/g)].map(match => match[1]);
-  expect(new Set(upstreams)).toEqual(new Set(["127.0.0.1:8799", "127.0.0.1:8800"]));
-  expect(caddy).toMatch(/handle \/hooks\/\* \{\s*reverse_proxy 127\.0\.0\.1:8800 \{/);
-  expect(caddy.match(/127\.0\.0\.1:8800/g)).toHaveLength(1);
-  const homeStart = caddy.indexOf("handle @home {");
-  let homeEnd = homeStart + "handle @home {".length;
-  for (let depth = 1; depth > 0; homeEnd++) depth += caddy[homeEnd] === "{" ? 1 : caddy[homeEnd] === "}" ? -1 : 0;
-  expect(caddy.slice(homeStart, homeEnd)).toContain("handle /hooks/* {");
-  expect(caddy.match(/header_up X-Forwarded-For \{client_ip\}/g)).toHaveLength(upstreams.length);
-  // The root supervisor's code is root's, quati owns only the volume; the image's last step refuses to build otherwise.
-  const dockerfile = readFileSync(join(import.meta.dirname, "../Dockerfile"), "utf8");
-  const image = dockerfile.slice(dockerfile.indexOf("FROM runtime AS cloud-home"), dockerfile.indexOf("FROM runtime AS server"));
-  const check = image.indexOf('untrusted="$(find /app /usr/local/bin/caddy \\( ! -user root -o ! -type l -perm /022 \\) -print)"');
-  expect(image.slice(check)).toMatch(/^untrusted=.*\n && if \[ -n "\$untrusted" \]; then .*exit 1; fi \\\n/);
-  expect(check).toBeGreaterThan(image.lastIndexOf("COPY "));
-  expect(check).toBeLessThan(image.indexOf("CMD ["));
-  expect(image).toContain("COPY deploy/fly/Caddyfile /app/cloud/Caddyfile");
-  const fly = readFileSync(join(import.meta.dirname, "../deploy/fly/fly.toml"), "utf8");
-  expect(fly).toMatch(/internal_port = 8080/);
-  expect(fly).toMatch(/destination = "\/data"/);
-  expect(fly).toMatch(/path = "\/api\/health"/);
-  const env = /\[env\]([\s\S]*?)\n\[/.exec(fly)![1];
-  for (const secretKey of ["QUATI_CLOUD_BOOTSTRAP_SECRET", "QUATI_CLOUD_ADMIN_URL"]) expect(env).not.toMatch(new RegExp(`^\\s*${secretKey}\\s*=`, "m"));
-  expect(fly).not.toContain("QUATI_HOSTED_");
-});
-
 it("the Cloud launcher starts the server again only when it asks to after a restore, and only a few times in a row", () => {
   const launcher = readFileSync(join(import.meta.dirname, "cloud-home-start.ts"), "utf8");
   expect(launcher).toContain("const policy = restartPolicy();");

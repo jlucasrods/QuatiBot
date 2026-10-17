@@ -22,6 +22,10 @@ Open `http://127.0.0.1:8799` in a browser. The Node server serves both the compi
 QUATI_DATA_DIR=/srv/quatibot pnpm start --port 8799
 ```
 
+## Docker
+
+The [Docker deployment guide](../deploy/README.md) provides a Linux x86-64 Compose stack with persistent storage, OpenCode V2, the agent browser and optional public HTTPS. The application container does not manage host VMs by default.
+
 ## Remote access
 
 Run the server behind an HTTPS reverse proxy, a tunnel configured by its operator, or Tailscale. Keep the backend port private and forward HTTP and WebSocket traffic. A public address does not grant access: remote browsers need a paired session.

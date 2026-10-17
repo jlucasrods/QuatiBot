@@ -2,7 +2,6 @@ node_modules
 **/node_modules
 dist
 dist-server
-dist-electron
 release
 .git
 .github
@@ -10,7 +9,6 @@ release
 *.dmg
 *.zip
 *.log
-electron/resources/cloudflared*
 .quati-scratch
 .env
 **/.env
