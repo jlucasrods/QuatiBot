@@ -5,7 +5,6 @@ import { timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 
 import type { Scope, SessionRecord, SessionRegistry } from "./sessions.ts";
-import { denyReason as companionDenial, isCompanionNotice } from "../companion/src/routes.ts";
 
 /** `owner`: the machine's owner. `service`: a shared server where every bot's shell is a loopback caller too,
  * so loopback without a session may reach only SERVICE_ALLOW. */
@@ -122,7 +121,7 @@ export function isLoopbackHost(host: string | undefined): boolean {
 
 /** Browsers send Sec-Fetch-Site and Sec-Fetch-Dest on every request to a loopback address and Origin on every WebSocket
  * handshake (Chrome 155 sends no Sec-Fetch-* there); a page can remove none of them. Node's fetch (undici) sends
- * Sec-Fetch-Mode alone, so it does not count; curl, the companion and the desktop app's main process send none. */
+ * Sec-Fetch-Mode alone does not identify a browser; Node fetch sends it too. */
 export function fromBrowser(req: IncomingMessage): boolean {
   const headers = req.headers;
   if (headers["sec-fetch-site"] !== undefined || headers["sec-fetch-dest"] !== undefined) return true;
@@ -368,7 +367,6 @@ export interface ResolveOptions {
   url: URL;
   /** Desktop capability over Electron's private child port: with it, every public loopback mutation must come through the desktop's web session. */
   loopbackMutationToken?: string;
-  companionMutationToken?: string;
   features?: { sharedComputers?: boolean };
   /** Absent is `owner`; ignored while loopbackMutationToken is in force. */
   loopbackTrust?: LoopbackTrust;
@@ -396,8 +394,7 @@ function mutatingPublicRoute(method: string, path: string): boolean {
   // Internal routes carry their own per-boot authorization; pairing-code exchange is public (the one-time code is its authorization).
   return !path.startsWith("/api/internal/") &&
     path !== "/api/testing/internal-capability" &&
-    path !== "/api/auth/pair" &&
-    path !== "/api/pair";
+    path !== "/api/auth/pair";
 }
 
 function secureTokenMatch(actual: string | undefined, expected: string): boolean {
@@ -453,16 +450,6 @@ export function resolveRequestAuth(req: IncomingMessage, options: ResolveOptions
   const proxied = isProxied(req);
   const loopback = !proxied && isLoopbackHost(headerValue(req.headers.host)) && isAllowedOrigin(headerValue(req.headers.origin));
   if (loopback) {
-    const companionToken = headerValue(req.headers["x-quatibot-companion-auth"]);
-    if (companionToken && options.loopbackMutationToken !== undefined) {
-      if (
-        !secureTokenMatch(companionToken, options.companionMutationToken ?? "") ||
-        req.headers["x-quatibot-companion"] !== "1" ||
-        !/^[\w-]{1,128}$/.test(headerValue(req.headers["x-quatibot-companion-device"]) ?? "") ||
-        (companionDenial({ path, method, authenticated: true }) && !isCompanionNotice(method, path))
-      ) return deny(403, "forbidden: invalid companion request");
-      return { auth: { kind: "loopback", scopes: LOOPBACK_SCOPES }, status: 401, error: "" };
-    }
     const desktopOwner = options.loopbackMutationToken !== undefined &&
       secureTokenMatch(headerValue(req.headers[DESKTOP_OWNER_HEADER]), options.loopbackMutationToken);
     if (fromBrowser(req) && !desktopOwner && !options.trustLocalBrowser) return deny(401, BROWSER_SIGN_IN);

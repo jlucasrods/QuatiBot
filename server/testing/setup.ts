@@ -14,8 +14,6 @@ process.env.USERPROFILE = home;
 delete process.env.QUATI_DATA_DIR;
 // Do not let a developer's Hermes global config path leak into per-test homes.
 delete process.env.HERMES_HOME;
-// Named explicitly although homedir() already covers it: the device tests delete this directory wholesale.
-process.env.QUATI_COMPANION_DIR = join(home, ".quatibot-companion");
 
 // Product code follows navigator.language; pin it so English assertions do not depend on the host locale.
 Object.defineProperty(globalThis.navigator, "language", { value: "en", configurable: true });

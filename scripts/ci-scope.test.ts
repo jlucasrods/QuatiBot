@@ -9,8 +9,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { selectCiScope, selectPushScope, versionOnlyPackageJson } from "./ci-scope.mjs";
 
 const script = fileURLToPath(new URL("./ci-scope.mjs", import.meta.url));
-const ALL_OS = JSON.stringify(["macos-latest", "ubuntu-latest", "windows-latest"]);
-const PR_OS = JSON.stringify(["ubuntu-latest", "windows-latest"]);
+const ALL_OS = JSON.stringify(["ubuntu-latest"]);
+const PR_OS = JSON.stringify(["ubuntu-latest"]);
 const temporaryDirectories: string[] = [];
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -70,9 +70,9 @@ describe("CI path scope", () => {
   });
 
   it.each([
-    ["server/index.ts"], ["shared/types.ts"], ["electron/main.mjs"], ["companion/src/index.ts"],
+    ["server/index.ts"], ["shared/types.ts"], ["electron/main.mjs"],
     ["package.json"], ["pnpm-lock.yaml"], ["vite.config.ts"], [".github/workflows/release.yml"],
-    ["docs/fixture.json"], ["unknown/file"], ["src/App.tsx", "server/index.ts"], ["scripts/capture-companion-fixtures.mjs"],
+    ["docs/fixture.json"], ["unknown/file"], ["src/App.tsx", "server/index.ts"],
   ])("runs the runtime suite for %j", (...files) => {
     expect(selectCiScope(files)).toEqual({ runtime: true });
   });

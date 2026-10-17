@@ -138,7 +138,6 @@ describe("Settings → Appearance", () => {
     expect(render()).not.toContain('aria-label="Advanced mode"');
   });
 
-
   it("groups skins, thread visibility, and tool-call display with preservation copy", () => {
     const html = render();
     expect(html).toContain('<option value="appearance" selected="">Appearance</option>');
@@ -338,7 +337,7 @@ describe("Settings → Appearance", () => {
     vi.stubGlobal("window", { quati: { remoteClient: { active: true } } });
     const html = render();
     expect(html).toContain('<option value="appearance" selected="">Appearance</option>');
-    expect(html).toContain('<option value="companion">Remote access</option>');
+    expect(html).toContain('<option value="remoteAccess">Remote access</option>');
     expect(html).not.toContain('<option value="general">');
     expect(html).not.toContain('<option value="connections">');
     expect(html).not.toContain('<option value="engines">');

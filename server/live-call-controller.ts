@@ -19,7 +19,6 @@ export const IDLE_CHECK_MS = 15_000;
 export const STATUS_INTERVAL_MS = 30_000;
 const SOCKET_OPEN = 1;
 const MAX_ERRORS = 5;
-const MAX_REVOKED_DEVICES = 200;
 /** GPT-Live's own delegation of a spoken yes/no may land this far past the decision on the session timeline. */
 const DECISION_ECHO_MS = 3_000;
 
@@ -77,9 +76,8 @@ export class LiveCallNeedsProError extends LiveSessionError {
   }
 }
 
-/** The companion vouches for `device`: a phone cannot choose its device id or drop it. */
-export function liveCallFromPhone(input: { device?: string; client: LiveClient }): boolean {
-  return Boolean(input.device) || input.client === "ios" || input.client === "android";
+export function liveCallFromPhone(input: { client: LiveClient }): boolean {
+  return input.client === "ios" || input.client === "android";
 }
 
 type AppendKind = "instructions" | "thinking" | "commentary";
@@ -94,8 +92,6 @@ interface OpenCard {
 interface Call {
   state: LiveCallState;
   auth: RequestAuth;
-  /** A phone's requests arrive as loopback, so this is what its unpairing ends. */
-  device: string | null;
   personKey: string | undefined;
   botName: string;
   key: string;
@@ -145,7 +141,6 @@ const CLOSE_REASONS: Record<string, LiveEndReason> = {
 export class LiveCallController {
   private readonly deps: LiveCallDeps;
   private call: Call | null = null;
-  private readonly revokedDevices = new Set<string>();
 
   constructor(deps: LiveCallDeps) {
     this.deps = deps;
@@ -155,9 +150,8 @@ export class LiveCallController {
     return this.call && this.call.state.status !== "ended" ? { ...this.call.state } : null;
   }
 
-  async start(input: { auth: RequestAuth; device?: string; botId: string; botName: string; threadId: string; client: LiveClient; sdp: string }): Promise<{ call: LiveCallState; sdp: string }> {
+  async start(input: { auth: RequestAuth; botId: string; botName: string; threadId: string; client: LiveClient; sdp: string }): Promise<{ call: LiveCallState; sdp: string }> {
     if (this.call && this.call.state.status !== "ended") throw new LiveCallBusyError({ ...this.call.state });
-    if (input.device && this.revokedDevices.has(input.device)) throw new LiveCallSignedOutError();
     if (liveCallFromPhone(input) && !this.deps.pro()) throw new LiveCallNeedsProError();
     const settings = this.deps.settings();
     const key = settings.key.trim();
@@ -214,26 +208,16 @@ export class LiveCallController {
     this.finish(call, "shutdown");
   }
 
-  deviceRevoked(deviceId: string): LiveCallState | null {
-    this.revokedDevices.add(deviceId);
-    if (this.revokedDevices.size > MAX_REVOKED_DEVICES) this.revokedDevices.delete(this.revokedDevices.values().next().value!);
-    const call = this.call;
-    if (!call || call.device !== deviceId) return null;
-    return this.endSignedOut(call, null, LIVE_COPY.unpaired) ? { ...call.state } : null;
-  }
-
   sessionRevoked(sessionId: string): LiveCallState | null {
     const call = this.call;
     if (!call || call.auth.kind !== "session" || call.auth.session.id !== sessionId) return null;
     return this.endSignedOut(call, null) ? { ...call.state } : null;
   }
 
-
-  private newCall(input: { auth: RequestAuth; device?: string; botId: string; botName: string; threadId: string; client: LiveClient }, key: string, voice: string): Call {
+  private newCall(input: { auth: RequestAuth; botId: string; botName: string; threadId: string; client: LiveClient }, key: string, voice: string): Call {
     return {
       state: { callId: randomUUID(), botId: input.botId, threadId: input.threadId, client: input.client, voice, startedAt: this.now(), status: "connecting" },
       auth: input.auth,
-      device: input.device ?? null,
       personKey: this.deps.personKey?.(input.auth),
       botName: input.botName,
       key,
@@ -412,7 +396,6 @@ export class LiveCallController {
     if (this.now() - call.lastActivityAt >= idleMs) void this.hangUp(call, "idle");
   }
 
-
   private onSideband(call: Call, raw: unknown): void {
     const text = typeof raw === "string" ? raw : Buffer.isBuffer(raw) ? raw.toString("utf8") : raw instanceof ArrayBuffer ? Buffer.from(raw).toString("utf8") : "";
     // The sideband mirrors the audio; skip it without parsing megabytes of base64.
@@ -469,7 +452,6 @@ export class LiveCallController {
         return;
     }
   }
-
 
   private async delegate(call: Call, id: string, offsetMs: number): Promise<void> {
     if (call.state.status !== "live") return;
@@ -564,7 +546,6 @@ export class LiveCallController {
       return spokenConsent(pending, "live") ? this.decide(call, pending, call.activeDelegation) : undefined;
     }, CONSENT_SETTLE_MS);
   }
-
 
   private onStoreChange(call: Call, change: StoreChange): void {
     if (call.state.status === "ended") return;
@@ -743,7 +724,6 @@ export class LiveCallController {
     if (next) this.onCard(call, next);
   }
 
-
   private beginWork(call: Call): void {
     const now = this.now();
     call.workStartedAt = now;
@@ -768,7 +748,6 @@ export class LiveCallController {
   private mayNarrate(call: Call): boolean {
     return this.deps.settings().readTypedReplies || call.pendingCall.size > 0 || call.claimNextTerminal;
   }
-
 
   private append(call: Call, kind: AppendKind, content: string, delegationId: string | null = call.activeDelegation): boolean {
     return this.command(call, { type: `session.${kind}.append`, delegation_id: delegationId, content: clampAppend(content) });

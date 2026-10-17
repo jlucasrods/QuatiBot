@@ -14,8 +14,6 @@ import { MASCOT_BODIES, MASCOT_BODY_IDS } from "../../shared/mascot-bodies.ts";
 // leading slash, which is not a usable cwd — spawnSync then fails ENOENT.
 const root = fileURLToPath(new URL("../../", import.meta.url));
 
-// Guards the TypeScript catalog the desktop and web apps use. The generator writes
-// the native catalogs only when given their paths (`--swift`, `--kotlin`).
 const TS_PATH = "../../shared/mascot-bodies.ts";
 
 // Normalised to LF: a clone whose git config disagrees with .gitattributes must

@@ -1,6 +1,3 @@
-// The v1 live view the phone apps and the companion speak (GET …/browser/live as server-sent events, POST
-// …/browser/action), served from the new browser. Its events and actions are frozen: the same names, fields and limits
-// as the agent-browser engine's, so a phone built against that keeps working unchanged.
 import type { ServerResponse } from "node:http";
 
 import { BROWSER_HELD_ELSEWHERE } from "../../../shared/browser-held.ts";

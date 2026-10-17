@@ -12,7 +12,6 @@ import type { BrowserLive } from "../browser-live.ts";
 import type { BrowserRuntime } from "../browser-runtime.ts";
 import type { CacheKeepWarm } from "../cache-keepwarm.ts";
 
-
 import type { AppConfig } from "../config.ts";
 import type { ModelSelection } from "../contracts.ts";
 import type { createApprovalModeSupport } from "../harness-capabilities.ts";
@@ -79,7 +78,7 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
   return async ({ req, res, path, method, auth, json, readBody }) => {
     let m: RegExpMatchArray | null = null;
     const routines = deps.routines();
-    const requirePinnedClientThread = pinnedClientThread(auth, req);
+    const requirePinnedClientThread = pinnedClientThread(auth);
     m = path.match(/^\/api\/bots\/([\w-]+)$/);
     if (m && method === "PATCH") {
       const body = await readBody(req);

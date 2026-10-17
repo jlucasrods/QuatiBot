@@ -201,8 +201,6 @@ export function createComputerRoutes(deps: ComputerRouteDeps): RouteHandler {
         image: await containerComputerScreenshot(undefined, undefined, target),
       });
     }
-    // Granted only to the control lease holding this bot's computer, and only with admin scope. The loopback companion
-    // sidecar gets the noVNC address (VNC password included); a directly paired phone gets only the lease-bound proxy.
     m = path.match(/^\/api\/bots\/([\w-]+)\/local-computer\/join$/);
     if (m && method === "POST") {
       if (!String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) {

@@ -23,7 +23,6 @@
   },
   "include": [
     "server",
-    "companion",
     "enterprise"
   ],
   "exclude": [

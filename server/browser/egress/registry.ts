@@ -10,13 +10,11 @@ import { openGate, type EgressGate, type GateTarget } from "./gate.ts";
 import { ListenerOwnership } from "./ownership.ts";
 import { allowList, REFUSAL_TEXT, refusalFor, type BrowserEgressConfig, type EgressHost, type EgressRules, type Refusal } from "./policy.ts";
 
-/** The server (and its fallbacks), webhooks, the desktop client relay, the companion, its control page and its
- * private origin, the Vite dev server and the Local VM's noVNC. */
 const DEFAULT_PORTS = [8799, 18799, 28799, 8800, 8798, 18798, 28798, 8810, 8811, 8812, 5199, 6080];
 const FLEET_WORKSPACES = 100;
 /** A server's edge, Caddy's admin API, and the workspaces a fleet host runs side by side (server and webhooks). */
 const SERVER_PORTS = [8080, 2019, ...Array.from({ length: FLEET_WORKSPACES }, (_, n) => FLEET_FIRST_PORT + FLEET_PORT_STRIDE * n).flatMap((port) => [port, port + 1])];
-const PORT_ENV = ["QUATI_PORT", "QUATI_WEBHOOK_PORT", "QUATI_COMPANION_PORT", "QUATI_CONTROL_PORT"];
+const PORT_ENV = ["QUATI_PORT", "QUATI_WEBHOOK_PORT"];
 const DEVTOOLS_SCAN_MS = 2_000;
 const NOTICE_LIMIT = 20;
 const NOTICE_SHOWN = 3;
@@ -40,23 +38,6 @@ subscribe("tracing:net.server.listen:asyncEnd", (message) => {
   if (address && typeof address === "object") processPorts.add(address.port);
 });
 
-/** The desktop app's own listeners (the companion and its gateway, the client relay), sent each time they change over
- * Electron's private utility-process port; plain Node has none. */
-let reportedPorts = new Set<number>();
-let hearingReports = false;
-
-/** Attached only once the server's own receiver is: the port starts delivering, once, with its first listener. */
-function hearDesktopReports(): void {
-  const parentPort = (process as NodeJS.Process & { parentPort?: { on(event: "message", listener: (event: { data?: unknown }) => void): void } }).parentPort;
-  if (hearingReports || !parentPort) return;
-  hearingReports = true;
-  parentPort.on("message", ({ data }) => {
-    const message = data as { type?: unknown; ports?: unknown } | undefined;
-    if (message?.type !== "quatibot:own-listeners" || !Array.isArray(message.ports) || message.ports.length > 256) return;
-    reportedPorts = new Set(message.ports.filter(validPort));
-  });
-}
-
 export class OwnListeners {
   private readonly fixed: Set<number>;
   private devTools: { at: number; ports: Set<number> } = { at: -Infinity, ports: new Set() };
@@ -72,7 +53,7 @@ export class OwnListeners {
   }
 
   has(port: number): boolean {
-    if (this.fixed.has(port) || processPorts.has(port) || reportedPorts.has(port)) return true;
+    if (this.fixed.has(port) || processPorts.has(port)) return true;
     // Read fresh: a bot's page may look for a stream server the moment it opens.
     if (this.streamPorts().includes(port)) return true;
     if (this.now() - this.devTools.at >= DEVTOOLS_SCAN_MS) this.devTools = { at: this.now(), ports: new Set(this.devToolsPorts()) };
@@ -98,7 +79,6 @@ export class BrowserEgress {
   private readonly blocked = new Map<string, Blocked[]>();
 
   configure(setup: EgressSetup): void {
-    hearDesktopReports();
     this.setup = {
       ...setup,
       listeners: setup.listeners ?? new OwnListeners(setup.host),

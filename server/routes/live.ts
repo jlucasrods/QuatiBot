@@ -1,5 +1,3 @@
-// The OpenAI key is never read or written here. A phone's call needs an active Pro plan (402 `needsPro`, checked
-// before the key's 409 `needsKey`); a phone can never send device-revoked.
 import type { IncomingMessage } from "node:http";
 import { z } from "zod";
 import type { LiveSettings } from "../../shared/wire.ts";
@@ -8,7 +6,7 @@ import { LiveCallBusyError, LiveCallNeedsProError, type LiveCallController } fro
 import { PASS, type RouteContext, type RouteHandler } from "./table.ts";
 
 export interface LiveRouteDeps {
-  calls: Pick<LiveCallController, "start" | "end" | "current" | "deviceRevoked">;
+  calls: Pick<LiveCallController, "start" | "end" | "current">;
   resolveTarget(botId: string, threadId: string | undefined): { botId: string; botName: string; threadId: string } | null;
   settings(): LiveSettings;
   saveSettings(patch: { voice?: string; readTypedReplies?: boolean; idleMinutes?: number }): Promise<LiveSettings>;
@@ -30,15 +28,6 @@ const settingsBody = z.object({
   idleMinutes: z.number().int().min(1).max(60).optional(),
 }).strict();
 
-const DEVICE_ID = /^[\w-]{1,128}$/;
-
-/** The companion sends its own id for the phone that authenticated, never one the phone chose. */
-function companionDevice(req: IncomingMessage): string | undefined {
-  if (req.headers["x-quatibot-companion"] !== "1") return undefined;
-  const device = req.headers["x-quatibot-companion-device"];
-  return typeof device === "string" && DEVICE_ID.test(device) ? device : undefined;
-}
-
 async function bodyOf(req: IncomingMessage, readBody: RouteContext["readBody"]): Promise<unknown> {
   try {
     return await readBody(req);
@@ -57,8 +46,7 @@ export function createLiveRoutes(deps: LiveRouteDeps): RouteHandler {
       const target = deps.resolveTarget(parsed.data.botId, parsed.data.threadId);
       if (!target) return json(res, 404, { error: "That bot or chat does not exist." });
       try {
-        const device = companionDevice(req);
-        const { call, sdp } = await deps.calls.start({ auth, ...(device ? { device } : {}), ...target, client: parsed.data.client, sdp: parsed.data.sdp });
+        const { call, sdp } = await deps.calls.start({ auth, ...target, client: parsed.data.client, sdp: parsed.data.sdp });
         return json(res, 201, { call, transport: { type: "webrtc", sdp } });
       } catch (error) {
         if (error instanceof LiveCallBusyError) return json(res, 409, { error: error.message, activeCall: error.call });
@@ -78,13 +66,6 @@ export function createLiveRoutes(deps: LiveRouteDeps): RouteHandler {
     }
 
     if (method === "GET" && path === "/api/live/call") return json(res, 200, { call: deps.calls.current() });
-
-    if (method === "POST" && path === "/api/live/device-revoked") {
-      if (req.headers["x-quatibot-companion"] !== "1") return json(res, 403, { error: "Only the phone companion can report an unpaired phone." });
-      const device = companionDevice(req);
-      if (!device) return json(res, 400, { error: "The unpaired phone was not named." });
-      return json(res, 200, { call: deps.calls.deviceRevoked(device) });
-    }
 
     if (method === "PATCH" && path === "/api/live/settings") {
       const parsed = settingsBody.safeParse(await bodyOf(req, readBody));

@@ -617,7 +617,7 @@ export interface InstanceInfo {
     };
     freeUpSpace?: boolean;
 }
-export type AppSettingsSection = "general" | "desktopWorkspaces" | "organization" | "cloudAccount" | "appearance" | "experimental" | "connections" | "decisionModel" | "engines" | "companion" | "remote" | "computer" | "logins" | "usage" | "people" | "activity" | "backups" | "workspaces" | "skills";
+export type AppSettingsSection = "general" | "desktopWorkspaces" | "organization" | "cloudAccount" | "appearance" | "experimental" | "connections" | "decisionModel" | "engines" | "remoteAccess" | "remote" | "computer" | "logins" | "usage" | "people" | "activity" | "backups" | "workspaces" | "skills";
 export type BotSettingsSection = "overview" | "identity" | "slack" | "soul" | "skills" | "memory" | "routines" | "access" | "model" | "permissions" | "voice" | "visibility" | "history" | "usage";
 export interface ModelVariantSession {
     instanceId: string;

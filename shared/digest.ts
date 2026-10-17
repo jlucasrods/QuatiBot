@@ -1,4 +1,3 @@
-// Observed per-turn evidence, shared by server and companion renderers.
 export type HookCoverage = "full" | "preview" | "none";
 
 export interface DigestFiles {

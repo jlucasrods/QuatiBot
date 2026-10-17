@@ -56,7 +56,7 @@ export function createBotSettingsRoutes(deps: BotSettingsRouteDeps): RouteHandle
   const pinnedClientThread = pinnedClientThreadGuard(store);
   return async ({ req, res, url, path, method, auth, json, readBody }) => {
     let m: RegExpMatchArray | null = null;
-    const requirePinnedClientThread = pinnedClientThread(auth, req);
+    const requirePinnedClientThread = pinnedClientThread(auth);
     m = path.match(/^\/api\/bots\/([\w-]+)\/avatar\/generate$/);
     if (m && method === "POST") {
       const existing = store.bot(m[1]);

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LiveCallState, LiveSettings } from "../../shared/wire.ts";
 import { json, readBody } from "../harness/http.ts";
-import { LiveCallBusyError, LiveCallNeedsProError, LiveCallSignedOutError } from "../live-call-controller.ts";
+import { LiveCallBusyError, LiveCallNeedsProError } from "../live-call-controller.ts";
 import { LiveSessionError } from "../live-call.ts";
 import { requiredScope } from "../request-auth.ts";
 import { createLiveRoutes, type LiveRouteDeps } from "./live.ts";
@@ -42,8 +42,6 @@ async function request(deps: LiveRouteDeps, method: string, path: string, body?:
   return { status: response.status, body: await response.json() };
 }
 
-const fromPhone = (device = "phone-1") => ({ "x-quatibot-companion": "1", "x-quatibot-companion-device": device });
-
 function deps(overrides: Partial<LiveRouteDeps> = {}): LiveRouteDeps & { saved: SettingsPatch[] } {
   const saved: SettingsPatch[] = [];
   const call: LiveCallState = { callId: "c1", botId: "bot1", threadId: "t1", client: "desktop", voice: "marin", startedAt: 1, status: "connecting" };
@@ -53,7 +51,6 @@ function deps(overrides: Partial<LiveRouteDeps> = {}): LiveRouteDeps & { saved: 
       start: vi.fn(async () => ({ call, sdp: "answer" })),
       end: vi.fn(async (id: string) => (id === "c1" ? { ...call, status: "ended" as const, endReason: "hung-up" as const } : null)),
       current: () => call,
-      deviceRevoked: vi.fn((device: string) => (device === "phone-1" ? { ...call, client: "ios" as const, status: "ending" as const } : null)),
     },
     resolveTarget: (botId, threadId) => (botId === "bot1" && (threadId ?? "t1") === "t1" ? { botId, botName: "Ada", threadId: threadId ?? "t1" } : null),
     settings: () => ({ configured: true, voice: "marin", readTypedReplies: true, idleMinutes: 5 }),
@@ -114,11 +111,9 @@ describe("live routes", () => {
     expect(refused.body).not.toHaveProperty("needsKey");
   });
   it("says when a phone's Live call needs a Pro plan, and nothing about a key", async () => {
-    for (const headers of [{}, fromPhone()]) {
-      const noPro = deps({ calls: { ...deps().calls, start: vi.fn(async () => { throw new LiveCallNeedsProError(); }) } });
-      const refused = await request(noPro, "POST", "/api/live/session", { botId: "bot1", sdp: "v=0", client: "android" }, headers);
-      expect(refused).toEqual({ status: 402, body: { error: "Live calls from your phone need a Pro plan.", needsPro: true } });
-    }
+    const noPro = deps({ calls: { ...deps().calls, start: vi.fn(async () => { throw new LiveCallNeedsProError(); }) } });
+    const refused = await request(noPro, "POST", "/api/live/session", { botId: "bot1", sdp: "v=0", client: "android" });
+    expect(refused).toEqual({ status: 402, body: { error: "Live calls from your phone need a Pro plan.", needsPro: true } });
   });
   it("passes OpenAI's refusals through with their status and message", async () => {
     const refusal = deps({ calls: { ...deps().calls, start: vi.fn(async () => { throw new LiveSessionError("OpenAI rejected the API key. Check the key for Live calls.", 502); }) } });
@@ -167,37 +162,4 @@ describe("live routes", () => {
     expect(requiredScope("POST", "/api/live/device-revoked")).toBe("admin");
   });
 
-  describe("a call from a paired phone", () => {
-    it("is bound to the phone the companion vouched for", async () => {
-      const d = deps();
-      await request(d, "POST", "/api/live/session", { botId: "bot1", sdp: "v=0", client: "ios" }, fromPhone());
-      expect(d.calls.start).toHaveBeenCalledWith(expect.objectContaining({ device: "phone-1", client: "ios" }));
-    });
-    it("is bound to no phone without the companion's word, or with a malformed id", async () => {
-      const d = deps();
-      await request(d, "POST", "/api/live/session", { botId: "bot1", sdp: "v=0", client: "desktop" });
-      await request(d, "POST", "/api/live/session", { botId: "bot1", sdp: "v=0", client: "ios" }, { "x-quatibot-companion-device": "phone-1" });
-      await request(d, "POST", "/api/live/session", { botId: "bot1", sdp: "v=0", client: "ios" }, fromPhone("../phone"));
-      for (const [input] of vi.mocked(d.calls.start).mock.calls) expect(input.device).toBeUndefined();
-    });
-    it("is refused once its phone was unpaired", async () => {
-      const refused = deps({ calls: { ...deps().calls, start: vi.fn(async () => { throw new LiveCallSignedOutError(); }) } });
-      expect(await request(refused, "POST", "/api/live/session", { botId: "bot1", sdp: "v=0", client: "ios" }, fromPhone()))
-        .toEqual({ status: 401, body: { error: "The sign-in that started this call has ended." } });
-    });
-    it("ends when the companion says its phone was unpaired", async () => {
-      const d = deps();
-      expect(await request(d, "POST", "/api/live/device-revoked", undefined, fromPhone()))
-        .toMatchObject({ status: 200, body: { call: { status: "ending" } } });
-      expect(d.calls.deviceRevoked).toHaveBeenCalledWith("phone-1");
-      expect(await request(d, "POST", "/api/live/device-revoked", undefined, fromPhone("phone-2"))).toEqual({ status: 200, body: { call: null } });
-    });
-    it("takes the unpairing only from the companion, for a well-formed phone", async () => {
-      const d = deps();
-      expect((await request(d, "POST", "/api/live/device-revoked", undefined, { "x-quatibot-companion-device": "phone-1" })).status).toBe(403);
-      expect((await request(d, "POST", "/api/live/device-revoked", undefined, { "x-quatibot-companion": "1" })).status).toBe(400);
-      expect((await request(d, "POST", "/api/live/device-revoked", undefined, fromPhone("a/b"))).status).toBe(400);
-      expect(d.calls.deviceRevoked).not.toHaveBeenCalled();
-    });
-  });
 });

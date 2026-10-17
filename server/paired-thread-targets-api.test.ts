@@ -20,19 +20,19 @@ describe("paired thread targets through an isolated HTTP fixture", () => {
     return result;
   };
   const paired = (method: string, path: string, body?: unknown) => api(method, path, body, { authorization: `Bearer ${token}` });
-  const selection = (model: string) => ({ instanceId: "claude", model });
+  const selection = (model: string) => ({ instanceId: "opencodeGo", model });
   const botState = async (id: string) => (await api("GET", "/api/bots?messages=30")).body.bots.find((bot: any) => bot.id === id);
   const page = async (id: string) => (await api("GET", `/api/threads/${id}/messages?limit=100`)).body;
   const idle = (id: string) => expect.poll(async () => (await botState(id)).busy, { timeout: 15_000 }).toBe(false);
 
   beforeAll(async () => {
-    fixture = await launchVerificationServer();
+    fixture = await launchVerificationServer({ ...process.env, FAKE_ACP_MODELS: "fixture/one,fixture/two,fixture/three" });
     const invitation = await api("POST", "/api/auth/pairing", { label: "Thread compatibility fixture", scopes: ["client", "admin"] });
     expect(invitation.status).toBe(200);
-    const accepted = await api("POST", "/api/auth/pair", { code: invitation.body.code, label: "Old paired client" });
+    const accepted = await api("POST", "/api/auth/pair", { code: invitation.body.code, label: "Paired browser" });
     expect(accepted.status).toBe(200);
     token = accepted.body.token;
-    const catalog = (await api("GET", "/api/instances")).body.instances.find((instance: any) => instance.instanceId === "claude");
+    const catalog = (await api("GET", "/api/instances")).body.instances.find((instance: any) => instance.instanceId === "opencodeGo");
     models = catalog.models.options.map((model: any) => model.id);
     expect(models.length).toBeGreaterThanOrEqual(3);
   });
@@ -45,8 +45,8 @@ describe("paired thread targets through an isolated HTTP fixture", () => {
     await fixture.close();
   });
 
-  it("refuses ambiguous old-phone actions and keeps explicit A actions on A while B is selected", async () => {
-    const bot = (await api("POST", "/api/bots", { name: "Pinned phone", modelSelection: selection(models[0]) })).body.bot;
+  it("refuses ambiguous paired-client actions and keeps explicit A actions on A while B is selected", async () => {
+    const bot = (await api("POST", "/api/bots", { name: "Pinned browser", modelSelection: selection(models[0]) })).body.bot;
     const threadA = bot.threadId;
     expect((await paired("POST", `/api/bots/${bot.id}/messages`, { text: "Original A", threadId: threadA })).status).toBe(202);
     await idle(bot.id);
@@ -69,10 +69,8 @@ describe("paired thread targets through an isolated HTTP fixture", () => {
     for (const [method, suffix, body] of actions) {
       const result = await paired(method, `/api/bots/${bot.id}${suffix}`, body);
       expect(result.status, `${method} ${suffix}`).toBe(409);
-      expect(result.body.error).toMatch(/Update the QuatiBot app on this device.*choose a thread/);
+      expect(result.body.error).toMatch(/Choose a thread/);
     }
-    const legacyPhone = await api("POST", `/api/bots/${bot.id}/read`, undefined, { "x-quatibot-companion": "1", "x-quatibot-companion-device": "fixture-phone" });
-    expect(legacyPhone.status).toBe(409);
     expect((await page(threadA)).messages).toEqual(beforeA.messages);
     expect((await page(threadB)).messages).toEqual(beforeB.messages);
     expect((await botState(bot.id)).modelSelection).toEqual(selection(models[0]));

@@ -108,20 +108,18 @@ describe("Settings rail groups", () => {
     expect(SETTINGS_GROUPS.map((group) => group.id)).toEqual(["you", "ai", "computers", "account"]);
     const ids = SECTIONS.map((entry) => entry.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toHaveLength(17);
     for (const entry of SECTIONS) expect(SETTINGS_GROUPS.map((group) => group.id)).toContain(entry.group);
   });
 
-  it("shows every desktop page under its labelled group", () => {
-    vi.stubGlobal("window", { quati: { environments: {}, organization: {}, cloudAccount: {} } });
+  it("shows the web settings under their labelled groups", () => {
     const html = render();
     for (const label of ["You", "AI", "Computers", "Account"]) expect(html).toContain(`>${label}</div>`);
     expect(html).toContain("glass-surface");
     expect(rail(html)).toEqual({
-      you: ["general", "appearance", "companion"],
+      you: ["general", "appearance", "remoteAccess"],
       ai: ["engines", "decisionModel"],
-      computers: ["desktopWorkspaces", "computer", "logins"],
-      account: ["cloudAccount", "organization", "usage", "backups", "experimental"],
+      computers: ["computer", "logins"],
+      account: ["usage", "backups", "experimental"],
     });
     expect(html).toContain('<optgroup label="AI">');
   });
@@ -129,20 +127,14 @@ describe("Settings rail groups", () => {
   it("keeps the browser-only pages for a hosted workspace's admins", () => {
     fixture.ownerOrAdmin = true;
     const groups = rail(render());
-    expect(groups.account).toEqual(["usage", "backups", "people", "activity", "experimental"]);
+    expect(groups.account).toEqual(["usage", "backups", "activity", "experimental"]);
     expect(Object.values(groups).flat()).not.toContain("desktopWorkspaces");
     expect(Object.values(groups).flat()).not.toContain("cloudAccount");
   });
 
-  it("shows a paired remote client only Appearance, Remote access and Servers", () => {
-    vi.stubGlobal("window", { quati: { remoteClient: { active: true }, environments: {}, organization: {}, cloudAccount: {} } });
-    expect(rail(render())).toEqual({ you: ["appearance", "companion"], computers: ["desktopWorkspaces"] });
-  });
-
   it("routes legacy deep links to their current settings pages", () => {
-    vi.stubGlobal("window", { quati: { environments: {} } });
     fixture.section = "remote" as AppSettingsSection;
-    expect(render()).toContain('data-settings-section="companion" aria-current="page"');
+    expect(render()).toContain('data-settings-section="remoteAccess" aria-current="page"');
     fixture.section = "connections";
     expect(render()).toContain('data-settings-section="engines" aria-current="page"');
   });

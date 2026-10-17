@@ -66,7 +66,7 @@ export const SECTIONS: Array<{
 }> = [
     { id: "general", group: "you", labelKey: "settings.section.general", icon: User, keywords: ["profile", "name", "email", "about me", "about", "suggestions", "suggested", "memory", "effort", "new bots", "reasoning", "threads", "parallel", "concurrency", "cleanup", "retention", "event log", "event-log", "log size", "automatic recovery", "backup model", "fallback", "routines", "conversation", "schedule"] },
     { id: "appearance", group: "you", labelKey: "settings.section.appearance", icon: Palette, keywords: ["skin", "theme", "appearance", "chat width", "width", "wide", "full width", "bubble", "bubbles", "tools", "tool calls", "threads", "show threads", "hide threads", "sidebar", "density", "compact", "comfortable", "avatars", "display", "run", "this run", "run card", "commands", "notifications", "sound", "sounds", "mute", "silent", "chime", "pinned", "circles", "universal", "groups", "top", "send", "enter", "return", "shift+enter", "ctrl+enter", "cmd+enter", "⌘+enter", "new line", "keyboard", "ime", "japanese", "message color", "my messages", "toolbar", "tools layout", "footer", "routines", "triggers", "team map"] },
-    { id: "companion", group: "you", labelKey: "settings.section.companion", icon: TabletSmartphone, keywords: ["companion", "device", "desktop", "client", "host", "pair", "https", "secure", "tailscale", "wifi", "remote", "advanced", "domain", "dns", "self-hosted", "server", "caddy"] },
+    { id: "remoteAccess", group: "you", labelKey: "settings.section.remoteAccess", icon: TabletSmartphone, keywords: ["device", "client", "host", "pair", "https", "secure", "tailscale", "wifi", "remote", "advanced", "domain", "dns", "self-hosted", "server", "caddy"] },
     { id: "engines", group: "ai", labelKey: "settings.section.engines", icon: Terminal, keywords: ["models", "model providers", "engines", "claude", "codex", "grok", "providers", "cli", "sign in", "subscription"] },
     { id: "decisionModel", group: "ai", labelKey: "settings.section.decisionModel", icon: Zap, keywords: ["decision", "jev", "typesafe", "routing", "auto", "rooms", "who answers"] },
     { id: "skills", group: "ai", labelKey: "settings.section.skills", icon: BookOpen, keywords: ["skills", "library", "assign", "agent skills", "skill md"] },
@@ -91,7 +91,7 @@ export const SIMPLE_PAGES: SimpleSettingsPage[] = [
     { id: "general", labelKey: "settings.section.general", icon: User, sections: ["general"] },
     { id: "appearance", labelKey: "settings.section.appearance", icon: Palette, sections: ["appearance"] },
     { id: "ai", labelKey: "settings.group.ai", icon: Sparkles, sections: ["engines", "decisionModel"] },
-    { id: "computers", labelKey: "settings.group.computers", icon: Monitor, sections: ["companion", "desktopWorkspaces", "computer", "logins"] },
+    { id: "computers", labelKey: "settings.group.computers", icon: Monitor, sections: ["remoteAccess", "desktopWorkspaces", "computer", "logins"] },
     { id: "account", labelKey: "settings.group.account", icon: CircleUser, sections: ["cloudAccount", "organization", "people", "activity"] },
 ];
 export const SIMPLE_HIDDEN_SECTIONS: readonly AppSettingsSection[] = ["usage", "backups", "experimental", "workspaces", "skills"];
@@ -431,7 +431,7 @@ export function SettingsModal() {
     const { state, dispatch } = useStore();
     const advanced = useAdvancedMode();
     const section: AppSettingsSection = state.appSettingsSection === "remote"
-        ? "companion"
+        ? "remoteAccess"
         : state.appSettingsSection === "connections" ? "engines" : state.appSettingsSection;
     const dialogRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -577,7 +577,7 @@ export function SettingsModal() {
                 return <EnginesSettings />;
             case "backups":
                 return <><WorkspaceBackupSettings />{null}</>;
-            case "companion":
+            case "remoteAccess":
                 return <>{<CustomDomainSettings />}</>;
             case "computer":
                 return advanced

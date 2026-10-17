@@ -137,7 +137,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
   const pressesInFlight = new Map<string, string | undefined>();
   return async ({ req, res, path, method, auth, json, readBody }) => {
     let m: RegExpMatchArray | null = null;
-    const requirePinnedClientThread = pinnedClientThread(auth, req);
+    const requirePinnedClientThread = pinnedClientThread(auth);
     const routines = deps.routines();
     m = path.match(/^\/api\/bots\/([\w-]+)\/messages(?:\/(guarded))?$/);
     if (m && method === "POST") {

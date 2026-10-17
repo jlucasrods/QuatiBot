@@ -27,46 +27,6 @@ import { SettingRow } from "./SettingsPrimitives";
 import { Select } from "./Select";
 const SECTIONS = ["Identity", "Soul", "Skills", "Memory", "Routines", "Access", "Model", "Permissions", "Voice & alerts"] as const;
 type Section = typeof SECTIONS[number];
-/** Companion pairing permits creation, but not reading host defaults or patching host settings. */
-export function CompanionNewBotDialog() {
-    const { state, dispatch } = useStore();
-    const dialog = useRef<HTMLDivElement>(null);
-    const close = () => dispatch({ type: "toggleNewBot", open: false });
-    useEffect(() => {
-        const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-        dialog.current?.focus();
-        return () => {
-            if (opener?.isConnected)
-                opener.focus();
-        };
-    }, []);
-    return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-    <div ref={dialog} role="dialog" aria-modal="true" aria-label={t("newBot.create")} tabIndex={-1} className="w-full max-w-sm rounded-2xl border border-hairline/50 bg-panel p-5 text-ink shadow-2xl" onKeyDown={event => {
-            if (event.key === "Escape") {
-                event.stopPropagation();
-                close();
-            }
-            if (event.key === "Tab") {
-                const root = event.currentTarget;
-                const buttons = [...root.querySelectorAll<HTMLButtonElement>("button:not([disabled])")];
-                if (event.shiftKey && (document.activeElement === root || document.activeElement === buttons[0])) {
-                    event.preventDefault();
-                    buttons.at(-1)?.focus();
-                }
-                else if (!event.shiftKey && document.activeElement === buttons.at(-1)) {
-                    event.preventDefault();
-                    buttons[0]?.focus();
-                }
-            }
-        }}>
-      <h2 className="mb-4 text-[17px] font-semibold">{t("newBot.create")}</h2>
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={close} className="rounded-lg px-3 py-2">{t("common.cancel")}</button>
-        <button type="button" disabled={state.botCreationPending} onClick={() => dispatch({ type: "newBot", onCreated: () => { close(); } })} className="rounded-lg bg-accent px-4 py-2 text-white disabled:opacity-40">{t("newBot.create")}</button>
-      </div>
-    </div>
-  </div>;
-}
 export function NewBotDialog(props: Parameters<typeof LocalNewBotDialog>[0] = {}) {
     return <LocalNewBotDialog {...props}/>;
 }

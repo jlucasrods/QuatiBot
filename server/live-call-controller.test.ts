@@ -126,14 +126,6 @@ describe("LiveCallController lifecycle", () => {
     }
   });
 
-  it("counts a call through the companion as a phone's, whatever client it names", async () => {
-    for (const client of ["desktop", "web", "android"] as const) {
-      const t = setup({ pro: () => false });
-      await expect(t.controller.start({ auth: owner, ...BOT, device: "phone-1", client, sdp: "a" })).rejects.toBeInstanceOf(LiveCallNeedsProError);
-      expect(t.deps.createSession).not.toHaveBeenCalled();
-    }
-  });
-
   it("asks for the key only once the plan allows the call", async () => {
     const t = setup({ pro: () => true });
     t.settings.key = " ";
@@ -378,52 +370,7 @@ describe("LiveCallController lifecycle", () => {
     expect(t.logs.at(-1)).toMatch(/errors=internal,internal,internal,broadcast$/);
   });
 
-  describe("a call bound to the phone or sign-in that started it", () => {
-    const fromPhone = (t: ReturnType<typeof setup>, device = "phone-1") =>
-      t.controller.start({ auth: owner, device, ...BOT, client: "ios", sdp: "offer-sdp" });
-
-    it("ends at once, and says why, when that phone is unpaired", async () => {
-      const t = setup();
-      await fromPhone(t);
-      t.socket().open();
-      const ending = t.controller.deviceRevoked("phone-1");
-      expect(ending).toMatchObject({ status: "ending" });
-      expect(t.socket().appends("commentary")).toEqual([expect.objectContaining({ content: LIVE_COPY.unpaired })]);
-      expect(t.socket().sent.at(-1)).toMatchObject({ type: "session.close" });
-      t.socket().receive({ type: "session.closed", reason: "close_requested" });
-      expect(t.frames.at(-1)).toMatchObject({ status: "ended", endReason: "signed-out", error: LIVE_COPY.unpaired });
-      expect(t.logs.at(-1)).toContain("end=signed-out");
-    });
-
-    it("ends a call that is still connecting to OpenAI", async () => {
-      const t = setup();
-      await fromPhone(t);
-      t.controller.deviceRevoked("phone-1");
-      expect(t.controller.current()).toBeNull();
-      expect(t.frames.at(-1)).toMatchObject({ status: "ended", endReason: "signed-out" });
-    });
-
-    it("leaves a call from another phone, or from the computer, alone", async () => {
-      const t = setup();
-      await fromPhone(t, "phone-2");
-      t.socket().open();
-      expect(t.controller.deviceRevoked("phone-1")).toBeNull();
-      expect(t.controller.current()?.status).toBe("live");
-      await t.controller.shutdown();
-
-      const desktop = setup();
-      await desktop.start();
-      expect(desktop.controller.deviceRevoked("phone-1")).toBeNull();
-      expect(desktop.controller.current()?.status).toBe("live");
-    });
-
-    it("refuses a call from a phone that was already unpaired, before creating a session", async () => {
-      const t = setup();
-      t.controller.deviceRevoked("phone-1");
-      await expect(fromPhone(t)).rejects.toBeInstanceOf(LiveCallSignedOutError);
-      expect(t.deps.createSession).not.toHaveBeenCalled();
-      await expect(fromPhone(t, "phone-2")).resolves.toBeTruthy();
-    });
+  describe("a call bound to the sign-in that started it", () => {
 
     it("ends at once when the sign-in that started it is revoked", async () => {
       const t = setup();

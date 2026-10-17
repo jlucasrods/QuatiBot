@@ -75,7 +75,6 @@ jobs:
         run: pnpm i18n:check
       - run: pnpm typecheck
       - run: pnpm lint
-      - run: pnpm check:electron
       - name: production UI build
         run: pnpm exec vite build
 
@@ -91,21 +90,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The harness and pure desktop capabilities stay portable across all
-        # supported host platforms. POSIX-only process tests self-skip.
-        # scripts/ci-scope.mjs picks the platforms: PRs run Linux and Windows
-        # (the account runs only five macOS jobs at a time, and a PR used to
-        # queue seven), main pushes, merge groups and manual runs add macOS.
         os: ${{ fromJSON(needs.static.outputs.vitest_os) }}
         shard: [1, 2, 3, 4]
     runs-on: ${{ matrix.os }}
-    # scripts/testing/duration-sequencer.ts splits the files by their recorded
-    # CI seconds, not by count, so the heavy e2e files no longer share one
-    # shard. The cap catches a hang, not normal suite growth: Linux shards
-    # took 15-20 minutes by Oct 13 (the runtime and room suites), so Linux
-    # gets 30. Windows shards took 30-35 minutes by Oct 15, so the slower
-    # platforms get 45.
-    timeout-minutes: ${{ matrix.os == 'ubuntu-latest' && 30 || 45 }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ff378ebe6b225b0680b81c1ad4498ae0d1d3a5e3 # v6.0.10
@@ -114,11 +102,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Prepare Electron test runtime
-        # Electron lazily downloads its runtime on first import. Resolve it
-        # before Vitest starts so a cold download cannot consume the fixture
-        # timeout.
-        run: node --input-type=commonjs -e "require('electron')"
       - name: Run tests
         # The github-actions reporter turns each failure into an annotation
         # on the PR, so the failing test and its assertion are readable
@@ -136,9 +119,6 @@ jobs:
         env:
           QUATI_VITEST_RETRY_LOG: ${{ runner.temp }}/vitest-retries.jsonl
         run: node scripts/testing/ci-retry-summary.mjs
-      - name: Broker and Electron unit tests
-        if: matrix.shard == 1
-        run: pnpm broker:test && pnpm test:electron
 
   behavior-evals:
     needs: static
@@ -190,15 +170,11 @@ jobs:
   packaged-server:
     needs: static
     if: needs.static.outputs.runtime == 'true'
-    # `pnpm build:server`, then the bundle is copied out of the repo and run
-    # with no node_modules in reach: every bare import must be inlined. The
-    # macOS copy runs inside the macOS smokes job, so it takes no extra
-    # macOS runner.
     name: packaged server smoke (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -211,60 +187,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:packaged-server
 
-  windows-cua:
-    needs: static
-    if: needs.static.outputs.runtime == 'true'
-    name: Windows CUA host smoke
-    runs-on: windows-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@ff378ebe6b225b0680b81c1ad4498ae0d1d3a5e3 # v6.0.10
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Smoke the staged Windows CUA host (no computer actions)
-        timeout-minutes: 5
-        run: pnpm build:cua:win && pnpm smoke:cua-win
-
-  electron-smokes:
-    needs: static
-    if: needs.static.outputs.runtime == 'true'
-    # Real Electron utility processes against disposable homes and fake CLIs.
-    # Never the live app. Each script prints its own evidence lines. Every
-    # PR's macOS checks live in this one job: macOS runners are the scarce
-    # ones, and each extra job pays its own queue wait and install.
-    name: macOS smokes (packaged server + Electron)
-    runs-on: macos-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@ff378ebe6b225b0680b81c1ad4498ae0d1d3a5e3 # v6.0.10
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Prepare Electron test runtime
-        run: node --input-type=commonjs -e "require('electron')"
-      - name: Packaged server smoke (macOS)
-        # Builds dist-server/ and runs a copy of it outside the repo; the
-        # phone-relay smoke below forks the same dist-server/index.js.
-        run: pnpm test:packaged-server
-      - name: Verify native approval mode transitions
-        run: pnpm exec electron scripts/smoke-approval-modes.cjs
-      - name: Verify app permissions and guarded display capture
-        run: node scripts/smoke-app-permissions.mjs
-      - name: Verify paired phone authorization against packaged harness
-        # Forks dist-server/index.js, built by the packaged server step.
-        run: pnpm build:companion && pnpm exec electron scripts/smoke-phone-relay-auth.cjs
-
   gate:
     # One aggregation, not three queued runners doing the same check.
     name: CI
-    needs: [static, vitest, behavior-evals, packaged-server, windows-cua, electron-smokes]
+    needs: [static, vitest, behavior-evals, packaged-server]
     # Still report failed/skipped dependencies, but don't keep a superseded
     # workflow alive just to schedule its summary jobs.
     if: ${{ !cancelled() }}

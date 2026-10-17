@@ -343,67 +343,6 @@ describe("pairing", () => {
     expect((await call("/api/bots", { headers: remote("10.0.0.4", { cookie }) })).status).toBe(401);
   });
 
-  it("pairs a native companion app on its own route, with the body shape it sends", async () => {
-    const opened = await pairingCode(["client"]);
-    expect(opened.credential).toMatch(/^quati_pair_[A-Za-z0-9_-]{43}$/);
-
-    const paired = await call("/api/pair", {
-      method: "POST",
-      headers: remote("10.0.0.31"),
-      body: JSON.stringify({ credential: opened.credential, deviceName: "Pixel 9", pairRequestId: "11111111-2222-4333-8444-555555555555" }),
-    });
-    expect(paired.status).toBe(200);
-    // Exactly the fields android/core's PairResponseSerializer requires.
-    expect(typeof paired.body.token).toBe("string");
-    expect(paired.body.token.startsWith("quati_sess_")).toBe(true);
-    expect(paired.body.serverName).toBe(opened.serverName);
-    expect(paired.body.device.name).toBe("Pixel 9");
-    expect(typeof paired.body.device.id).toBe("string");
-    expect(typeof paired.body.device.createdAt).toBe("number");
-    expect(typeof paired.body.device.lastSeenAt).toBe("number");
-
-    const used = await call("/api/bots", { headers: remote("10.0.0.31", { authorization: `Bearer ${paired.body.token}` }) });
-    expect(used.status).toBe(200);
-    const listed = await call("/api/auth/sessions");
-    expect(listed.body.sessions.some((s: { label: string }) => s.label === "Pixel 9")).toBe(true);
-
-    const again = await call("/api/pair", {
-      method: "POST",
-      headers: remote("10.0.0.32"),
-      body: JSON.stringify({ credential: opened.credential, deviceName: "Pixel 9" }),
-    });
-    expect(again.status).toBe(401);
-    const byCode = await call("/api/auth/pair", {
-      method: "POST",
-      headers: remote("10.0.0.32"),
-      body: JSON.stringify({ code: opened.code, label: "same window" }),
-    });
-    expect(byCode.status).toBe(401);
-  });
-
-  it("offers the app-scheme invite the Android scanner can read", async () => {
-    const opened = await pairingCode(["client"]);
-    expect(opened.inviteUrl).not.toBeNull();
-    const invite = new URL(opened.inviteUrl!);
-    // Android's PairingInvite.parse accepts only this exact scheme and host (android/core Connection.kt).
-    expect(invite.protocol).toBe("quatibot:");
-    expect(invite.host).toBe("pair");
-    expect(invite.searchParams.get("address")).toBe(PUBLIC_URL);
-    expect(invite.searchParams.get("token")).toBe(opened.credential);
-    expect(invite.searchParams.get("name")).toBe(opened.serverName);
-    expect(opened.url).toBe(`${PUBLIC_URL}/pair#code=${opened.code}`);
-  });
-
-  it("refuses a native pairing body that is not JSON", async () => {
-    const opened = await pairingCode(["client"]);
-    const refused = await call("/api/pair", {
-      method: "POST",
-      headers: remote("10.0.0.33", { "content-type": "text/plain" }),
-      body: opened.credential,
-    });
-    expect(refused.status).toBe(415);
-  });
-
   it("only accepts JSON for the exchange, and replays a lost response by attempt id", async () => {
     const opened = await pairingCode();
     const form = await call("/api/auth/pair", { method: "POST", headers: { ...remote("10.0.0.20"), "content-type": "application/x-www-form-urlencoded" }, body: `code=${opened.code}` });
@@ -470,7 +409,6 @@ describe("pairing", () => {
     }
     const config = await call("/api/config", { headers: h() });
     expect(config.status).toBe(200);
-    expect(config.body.vps.sshAlias).toBe("");
     expect(config.body.profile.email).toBe("");
     expect(JSON.stringify(config.body)).not.toContain("partitionId");
   });
@@ -492,17 +430,12 @@ describe("pairing", () => {
       streams.push(opened);
       return opened;
     }
-    expect((await call("/api/config", { method: "PUT", body: JSON.stringify({ opencodeGo: { providerKeys: { VENICE_API_KEY: "venice-fixture-key" } } }) })).status).toBe(200);
     function expectClientConfig(config: any) {
-      expect(config.opencodeGo).toEqual({ configured: false, providerKeys: [] });
       expect(config.profile).toEqual({ name: "Updated fixture", email: "" });
-      expect(config.vps).toEqual({ configured: true, sshAlias: "" });
       expect(config.browserProfiles).toEqual([{ id: "fixture", name: "Fixture browser" }]);
     }
     function expectAdminConfig(config: any) {
-      expect(config.opencodeGo).toEqual({ configured: false, providerKeys: ["VENICE_API_KEY"] });
       expect(config.profile).toEqual({ name: "Updated fixture", email: "updated-private@example.invalid", aboutMe: "" });
-      expect(config.vps).toEqual({ configured: true, sshAlias: "fixture-private-host" });
       expect(config.browserProfiles).toEqual([{ id: "fixture", name: "Fixture browser", partitionId: "fixture-private-partition" }]);
     }
     try {

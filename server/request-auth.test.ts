@@ -159,50 +159,6 @@ describe("resolveRequestAuth", () => {
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  it("accepts authenticated relay mutations without exposing the desktop owner capability", () => {
-    const headers = {
-      host: "127.0.0.1:8799",
-      "x-quatibot-companion": "1",
-      "x-quatibot-companion-device": "phone-1",
-      "x-quatibot-companion-auth": "relay-secret",
-    };
-    const check = (method: string, path: string, overrides: Record<string, string> = {}, relay = "relay-secret") =>
-      resolveRequestAuth(request({ ...headers, ...overrides }, method), {
-        sessions, cookieName, streamPath: "/api/events", url: new URL(path, "http://localhost"),
-        loopbackMutationToken: "desktop-secret", companionMutationToken: relay,
-      });
-    for (const [method, path] of [
-      ["POST", "/api/bots"], ["POST", "/api/bots/b/messages"],
-      ["POST", "/api/bots/b/read"], ["POST", "/api/bots/b/respond"],
-      ["POST", "/api/bots/b/secret-cards/card/provide"],
-      ["GET", "/api/events"], ["PATCH", "/api/bots/b/profile"],
-      ["GET", "/api/bots/b/browser/live"], ["POST", "/api/bots/b/browser/action"],
-    ]) expect(check(method, path).auth?.kind, path).toBe("loopback");
-    for (const [method, path] of [
-      ["POST", "/api/bots/b/browser/live"], ["GET", "/api/bots/b/browser/action"],
-      ["POST", "/api/bots/b/browser/restart"],
-    ]) expect(check(method, path).auth?.kind, path).not.toBe("loopback");
-    const forged: Record<string, string>[] = [
-      { "x-quatibot-companion-auth": "" },
-      { "x-quatibot-companion-auth": "desktop-secret" },
-      { "x-quatibot-companion-device": "" },
-      { "x-quatibot-companion": "0" },
-      { origin: "https://evil.example" },
-      { "x-forwarded-for": "203.0.113.1" },
-      { host: "remote.example" },
-    ];
-    for (const overrides of forged) expect(check("POST", "/api/bots/b/read", overrides).auth).toBeNull();
-    expect(check("POST", "/api/bots/b/read", {}, "").auth).toBeNull();
-    for (const [method, path] of [
-      ["PUT", "/api/config"], ["POST", "/api/auth/pairing"],
-      ["POST", "/api/internal/anything"], ["GET", "/api/auth/sessions"],
-      ["POST", "/api/not-yet-supported"],
-    ]) expect(check(method, path).auth, path).toBeNull();
-    expect(check("POST", "/api/live/device-revoked").auth?.kind).toBe("loopback");
-    for (const overrides of forged) expect(check("POST", "/api/live/device-revoked", overrides).auth).toBeNull();
-    expect(check("GET", "/api/live/device-revoked").auth).toBeNull();
-  });
-
   function pairedToken(scopes: Array<"admin" | "client"> = ["admin", "client"]): string {
     const { code } = sessions.openPairing({ scopes });
     const result = sessions.exchange({ code, label: "test", source: "1.2.3.4" });
@@ -613,7 +569,7 @@ describe("a browser on this machine is not the owner", () => {
   const check = (headers: Record<string, string>, path = "/api/bots", method = "GET", options: { desktopToken?: string; trust?: "owner" | "service"; localBrowsers?: boolean } = {}) =>
     resolveRequestAuth(request(headers, method), {
       sessions, cookieName, streamPath: "/api/events", url: new URL(path, "http://x"),
-      ...(options.desktopToken !== undefined ? { loopbackMutationToken: options.desktopToken, companionMutationToken: "relay-secret" } : {}),
+      ...(options.desktopToken !== undefined ? { loopbackMutationToken: options.desktopToken } : {}),
       ...(options.trust ? { loopbackTrust: options.trust } : {}),
       ...(options.localBrowsers ? { trustLocalBrowser: true } : {}),
     });
@@ -665,10 +621,8 @@ describe("a browser on this machine is not the owner", () => {
     }
     // Before the desktop app has sent its capability, nothing a browser sends matches.
     expect(check({ ...ownUi, "x-quatibot-desktop-owner": "" }, "/api/bots", "GET", { desktopToken: "" }).auth).toBeNull();
-    // The app's main process and the companion send no Sec-Fetch-*.
+    // Node clients send no Sec-Fetch-*.
     expect(check({ host: "127.0.0.1:8799" }, "/api/bots", "GET", desktop).auth?.kind).toBe("loopback");
-    const relay = { host: "127.0.0.1:8799", "x-quatibot-companion": "1", "x-quatibot-companion-device": "phone-1", "x-quatibot-companion-auth": "relay-secret" };
-    expect(check(relay, "/api/bots/b/messages", "POST", desktop).auth?.kind).toBe("loopback");
   });
 
   it("still admits a browser that signed in", () => {

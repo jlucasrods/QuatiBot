@@ -139,6 +139,5 @@ export const LIVE_COPY = {
     `Status note, do not announce it: you are still working on it (${duration(workedMs)} so far, ${steps} step${steps === 1 ? "" : "s"}${
       lastStep ? `; last step: ${lastStep}, ${duration(lastStepAgoMs)} ago` : ""}).`,
   signedOut: "The call has ended because the sign-in that started it has ended. Sign in again to start a new call.",
-  unpaired: "The call has ended because the phone that started it was unpaired from this computer.",
   permissionRequest: (prompt: string) => `You need the user's permission. Say it in your own words: ${prompt} Ask for a clear yes or no, then delegate their answer.`,
 };

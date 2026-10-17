@@ -62,14 +62,6 @@ function workspaceSummary(state) {
   return { local: false, name: active.name, origin: active.origin };
 }
 
-/** Native identity must not depend on a hosted renderer's version/title. */
-function workspaceWindowTitle(state, companion) {
-  if (companion) return `QuatiBot — Connected to: ${companion.serverName} (${new URL(companion.endpoint).host})`;
-  const active = activeEnvironment(state);
-  if (active && active.kind !== "local") return `QuatiBot — Hosted: ${active.name} (${new URL(active.origin).host})`;
-  return "QuatiBot";
-}
-
 /** Switching is a main-process action; a cloud page must not navigate itself onto the local bridge. */
 function workspaceNavigationAllowed(url, state, localOrigin) {
   try {
@@ -285,5 +277,4 @@ module.exports = {
   workspaceNavigationAllowed,
   workspaceSenderAllowed,
   workspaceSummary,
-  workspaceWindowTitle,
 };

@@ -1,7 +1,17 @@
 // Never log Tailscale's raw stderr (it can contain auth keys and node names): failures are classified into a closed set.
 import { execFile } from "node:child_process";
 
-import { tailscaleCandidates, tailscaleEnvironment } from "../companion/src/listener.ts";
+const TAILSCALE_CANDIDATES = [
+  "/usr/bin/tailscale",
+  "/usr/local/bin/tailscale",
+  "/run/current-system/sw/bin/tailscale",
+  "tailscale",
+] as const;
+
+function tailscaleEnvironment(): NodeJS.ProcessEnv {
+  const path = [process.env.PATH ?? "", "/usr/local/bin", "/usr/bin", "/bin", "/sbin"].filter(Boolean).join(":");
+  return { ...process.env, PATH: path };
+}
 
 export interface TailscaleStatus {
   cli: string;
@@ -83,7 +93,7 @@ export function parseTailscaleStatus(cli: string, stdout: string): TailscaleStat
 
 export async function tailscaleStatus(): Promise<{ status: TailscaleStatus } | { failure: TailscaleFailure }> {
   let sawCli = false;
-  for (const cli of tailscaleCandidates()) {
+  for (const cli of TAILSCALE_CANDIDATES) {
     const result = await run(cli, ["status", "--json"], 5_000);
     if (!result.ok && !result.stdout && result.code === null) continue;
     sawCli = true;
