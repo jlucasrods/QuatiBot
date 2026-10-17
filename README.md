@@ -1,3 +1,5 @@
+<img src="public/app-icon.svg" alt="QuatiBot mascot" width="128" />
+
 # QuatiBot
 
 AI bots that get work done, with conversations, memory, routines, their own
