@@ -8,7 +8,7 @@ import type { ModelSelection } from "../contracts.ts";
 import { MAX_MCP_SERVERS, mcpServerNameError } from "../mcp-registry.ts";
 import { journalMemoryWrite } from "../memory-journal.ts";
 import { resolveBotCreationDefaults } from "../new-bot-defaults.ts";
-import { PRESET_UNAVAILABLE_MESSAGE, applyPresetToBot, presetOffered, type OrgInstallStatus, type PresetStore } from "../presets.ts";
+import { PRESET_UNAVAILABLE_MESSAGE, applyPresetToBot, type PresetStore } from "../presets.ts";
 import { clientBotPatchViolation, type RequestAuth } from "../request-auth.ts";
 import type { RoutineManager } from "../routines.ts";
 import { installOrgSkill, installSkill, parseSkillMd, setSkillEnabled } from "../skills.ts";
@@ -22,7 +22,6 @@ export interface BotCreateRouteDeps {
   store: Store;
   cfg: AppConfig;
   presetStore: Pick<PresetStore, "resolve">;
-  orgInstallStatuses(): ReadonlyMap<string, OrgInstallStatus>;
   /** A hosted (company) workspace: Full access comes only from its policy. */
   hostedWorkspace: boolean;
   hostedFullAccessRefusal: string;
@@ -40,7 +39,7 @@ export interface BotCreateRouteDeps {
 
 export function createBotCreateRoutes(deps: BotCreateRouteDeps): RouteHandler {
   const {
-    store, cfg, presetStore, orgInstallStatuses,
+    store, cfg, presetStore,
     hostedWorkspace: HOSTED_WORKSPACE, hostedFullAccessRefusal: HOSTED_FULL_ACCESS_REFUSAL, desktopManaged: DESKTOP_MANAGED,
     maxWorkspaceBots: MAX_WORKSPACE_BOTS, cloudOwnerKey: CLOUD_OWNER_KEY, cloudRoutineAuthors,
     storedAvatarExists, defaultSelection, checkedModelSelection, cloudOwnerSession, wireBot,
@@ -64,7 +63,7 @@ export function createBotCreateRoutes(deps: BotCreateRouteDeps): RouteHandler {
         return json(res, 400, { error: "preset must be a preset id from New bot" });
       }
       const resolvedPreset = typeof body.preset === "string" ? presetStore.resolve(body.preset) : null;
-      const preset = resolvedPreset && presetOffered(resolvedPreset.row, orgInstallStatuses()) ? resolvedPreset : null;
+      const preset = resolvedPreset?.row.source === "file" ? resolvedPreset : null;
       if (body.preset !== undefined && !preset) return json(res, 404, { error: PRESET_UNAVAILABLE_MESSAGE });
       body = { ...body, ...settings, name: settings.name };
       // Custom comes only through the desktop's private channel.

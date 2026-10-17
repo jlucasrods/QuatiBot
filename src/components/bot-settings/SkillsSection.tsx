@@ -7,7 +7,6 @@ import { useBotEditor } from "./BotEditorContext";
 import { skillAuthoringEnabled, skillsLibraryEnabled } from "@/lib/feature-flags";
 import { Switch } from "../SettingsPrimitives";
 import { inputCls } from "./field";
-import { OrgSkillsCard } from "./OrgSkillsCard";
 import { WriteCommandCard } from "./WriteCommandCard";
 import { Select } from "../Select";
 
@@ -502,8 +501,6 @@ export function SkillsSection({ bot }: { bot: Bot }) {
       </div>
 
       <WriteCommandCard bot={bot} taken={skills.map((skill) => skill.name)} onSaved={() => void refresh()} />
-
-      <OrgSkillsCard bot={bot} onAdded={() => void refresh()} />
 
       {reviewing && (
         <SkillReviewDialog

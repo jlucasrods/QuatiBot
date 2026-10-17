@@ -281,14 +281,6 @@ function usedContent(row: StoredPreset, content: InstallContent | undefined): In
   };
 }
 
-export type OrgInstallStatus = "installed" | "withdrawn" | "removed";
-
-export function presetOffered(row: StoredPreset, statuses: ReadonlyMap<string, OrgInstallStatus>): boolean {
-  if (row.source !== "org") return true;
-  const status = statuses.get(row.installId);
-  return status !== "withdrawn" && status !== "removed";
-}
-
 export interface WireBotPreset {
   id: string;
   source: PresetSource;
@@ -305,10 +297,10 @@ export interface WireBotPreset {
   notes: string[];
 }
 
-export function listBotPresets(store: Pick<PresetStore, "list" | "resolve">, statuses: ReadonlyMap<string, OrgInstallStatus>): WireBotPreset[] {
+export function listBotPresets(store: Pick<PresetStore, "list" | "resolve">): WireBotPreset[] {
   const wire: Array<WireBotPreset & { addedAt: number }> = [];
   for (const row of store.list()) {
-    if (!presetOffered(row, statuses)) continue;
+    if (row.source !== "file") continue;
     const resolved = store.resolve(row.id);
     if (!resolved) continue;
     const { preset } = resolved;
@@ -320,19 +312,15 @@ export function listBotPresets(store: Pick<PresetStore, "list" | "resolve">, sta
       ...(preset.description ? { description: preset.description } : {}),
       packageName: row.packageName,
       release: row.release,
-      ...(row.source === "org" && row.publisherName ? { publisherName: row.publisherName } : {}),
       bot: preset.bot,
       skills: resolved.skills.map((skill) => ({ name: skill.name, description: skill.description })),
-      skillsEnabled: row.source === "org",
+      skillsEnabled: false,
       playbooks: resolved.playbooks.map((playbook) => playbook.name),
       notes: Object.keys(preset.seed?.memory ?? {}),
       addedAt: row.addedAt,
     });
   }
-  const org = wire.filter((preset) => preset.source === "org")
-    .sort((a, b) => (a.publisherName ?? "").localeCompare(b.publisherName ?? "") || a.name.localeCompare(b.name));
-  const files = wire.filter((preset) => preset.source === "file").sort((a, b) => b.addedAt - a.addedAt);
-  return [...org, ...files].map(({ addedAt: _addedAt, ...preset }) => preset);
+  return wire.sort((a, b) => b.addedAt - a.addedAt).map(({ addedAt: _addedAt, ...preset }) => preset);
 }
 
 export interface PresetApplyDeps {

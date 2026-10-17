@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { json, readBody } from "../harness/http.ts";
-import { createPresetStore, type OrgInstallStatus } from "../presets.ts";
+import { createPresetStore } from "../presets.ts";
 import { requiredScope } from "../request-auth.ts";
 import { parsePackageDocument } from "../../shared/package-format.ts";
 import { createBotPresetRoutes } from "./bot-presets.ts";
@@ -20,11 +20,11 @@ afterEach(async () => {
   for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true });
 });
 
-async function serve(statuses = new Map<string, OrgInstallStatus>()) {
+async function serve() {
   const folder = mkdtempSync(join(tmpdir(), "quati-preset-routes-"));
   folders.push(folder);
   const presets = createPresetStore(join(folder, "presets.json"));
-  const routes = [createBotPresetRoutes({ presets, orgStatuses: () => statuses })];
+  const routes = [createBotPresetRoutes({ presets })];
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const handled = await dispatchRoutes(routes, {
@@ -39,28 +39,21 @@ async function serve(statuses = new Map<string, OrgInstallStatus>()) {
 }
 
 describe("/api/bot-presets through the route table", () => {
-  it("lists nothing with no presets, and the organization's before a file's", async () => {
-    const { base, presets } = await serve(new Map([["org-withdrawn", "withdrawn"]]));
+  it("lists imported file presets", async () => {
+    const { base, presets } = await serve();
     expect(await (await fetch(`${base}/api/bot-presets`)).json()).toEqual({ presets: [] });
     presets.register(library(), { source: "file", installId: "file-1" });
-    const org = { adminOrigin: "https://admin.example.com", organizationId: "o", packageId: "p", ref: "acme/sales-skills", sha256: "a".repeat(64),
-      publisher: { organizationId: "org-acme", slug: "acme", name: "Acme Partners" } };
-    presets.register(library(), { source: "org", installId: "org-1", org: { ...org, installId: "org-1" } });
-    presets.register(library(), { source: "org", installId: "org-withdrawn", org: { ...org, installId: "org-withdrawn" } });
     const listed = ((await (await fetch(`${base}/api/bot-presets`)).json()) as { presets: Array<{ source: string; publisherName?: string }> }).presets;
-    expect(listed.map((preset) => [preset.source, preset.publisherName])).toEqual([["org", "Acme Partners"], ["file", undefined]]);
+    expect(listed.map((preset) => [preset.source, preset.publisherName])).toEqual([["file", undefined]]);
   });
 
-  it("removes an imported preset, refuses an organization's, and leaves other paths to the next handler", async () => {
+  it("removes an imported preset and leaves other paths to the next handler", async () => {
     const { base, presets } = await serve();
     const file = presets.register(library(), { source: "file", installId: "file-1" }).added[0]!.id;
-    const org = presets.register(library(), { source: "org", installId: "org-1", org: { adminOrigin: "a", organizationId: "o", packageId: "p", ref: "acme/sales-skills",
-      sha256: "a".repeat(64), installId: "org-1", publisher: { organizationId: "x", slug: "acme", name: "Acme" } } }).added[0]!.id;
     const remove = async (id: string) => { const response = await fetch(`${base}/api/bot-presets/${id}`, { method: "DELETE" }); return [response.status, await response.json()]; };
-    expect(await remove(org)).toEqual([409, { error: "Presets from your organization are managed in Admin." }]);
     expect(await remove(file)).toEqual([200, { ok: true }]);
     expect(await remove(file)).toEqual([404, { error: "That preset is no longer available. Choose another starting role." }]);
-    expect(presets.list().map((row) => row.id)).toEqual([org]);
+    expect(presets.list().map((row) => row.id)).toEqual([]);
     expect(await (await fetch(`${base}/api/bot-presets`, { method: "POST" })).json()).toEqual({ from: "inline routes" });
     expect(await (await fetch(`${base}/api/bot-presets/x/y`, { method: "DELETE" })).json()).toEqual({ from: "inline routes" });
   });

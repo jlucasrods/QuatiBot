@@ -220,7 +220,6 @@ import { createCloudMoveRoutes, workspaceShared } from "./cloud-move-http.ts";
 import { RESTART_EXIT_CODE } from "./restart.ts";
 import { holdIncludedServices } from "./included-services.ts";
 
-
 import type { ProviderInstance } from "./contracts.ts";
 import { readyToRun, selectDefaultModelSelection, withNewBotEffort, type SelectableInstance } from "./default-model-selection.ts";
 import { threadModelFallback, type ThreadEngine } from "./thread-model.ts";
@@ -303,7 +302,6 @@ import {
   readSkillFile,
   rejectStagedSkillWrite,
   setSkillEnabled,
-  skillPackageStamps,
   skillsSystemPrompt,
   expandSkillCommandTurnText,
   stageSkillWrite,
@@ -398,7 +396,6 @@ import {
   createPresetStore, DEFAULTS_PRESET_KEY,
   presetFromDefaults,
 } from "./presets.ts";
-import { OrgLibrary } from "./org-library.ts";
 import { autoLocalVmAttachable, type ContainerComputerStatus } from "./container-computer.ts";
 import { lazyClaimRetryText, settledWithin, startAutoVmClaim, type AutoVmClaimTable } from "./auto-vm-claims.ts";
 import { CONTROL_ACT_WITHIN_MS, CONTROL_BUSY, CONTROL_HANDED_BACK, CONTROL_WAIT_MS, CONTROL_WAITED, controlRefusal, type ControlState } from "./control-client.ts";
@@ -1283,7 +1280,7 @@ function adminAuditPlan(method: string, path: string): AuditPlan | null {
   if (path.startsWith("/api/internal/") || path.startsWith("/api/testing/")) return null;
   const plan: AuditPlan = {
     config: requiredScope(method, path, { sharedComputers: lendingEnabled() }) === "admin",
-    createsBots: method === "POST" && (path === "/api/bots" || path === "/api/teams/import" || path === "/api/org-library/add"),
+    createsBots: method === "POST" && (path === "/api/bots" || path === "/api/teams/import"),
     createsWebhook: method === "POST" && path === "/api/webhooks",
     pairing: method === "POST" && path === "/api/auth/pairing",
   };
@@ -1552,18 +1549,6 @@ function computerPlaceRefusal(kind: "thisComputer" | "localVm" | "box" | "vps"):
   const cloudHome = CLOUD_HOME ? cloudHomePlaceRefusal(kind === "thisComputer" ? "local" : kind === "localVm" ? "vm" : "cloud") : undefined;
   if (cloudHome) return { message: cloudHome, code: "cloud_home" };
 }
-// A relay that arrives before the library exists waits for it; the acknowledgement does not.
-let orgLibrary: OrgLibrary | null = null;
-let pendingOrgLibraryRelay: { library: unknown } | null = null;
-utilityParentPort?.on("message", event => {
-  const message = event.data as { type?: unknown; requestId?: unknown; library?: unknown } | undefined;
-  if (message?.type !== "quatibot:managed-library") return;
-  const requestId = typeof message.requestId === "string" && message.requestId.length <= 100 ? message.requestId : undefined;
-  let ok = true;
-  if (orgLibrary) ok = orgLibrary.applyRelay(message.library ?? null).ok;
-  else pendingOrgLibraryRelay = { library: message.library ?? null };
-  utilityParentPort.postMessage({ type: "quatibot:managed-desktop-result", requestId, ok });
-});
 
 // Identity, source thread, depth and route family come from this server-side record; caller fields are assertions, never authority.
 type InternalCapability = {
@@ -8659,20 +8644,6 @@ if (CLOUD_HOME && CLOUD_OWNER_KEY && cloudRoutineAuthors) {
 }
 // Only now: an earlier owner key is the owner's once settled.
 routines.clearFrozenResultsThreads();
-orgLibrary = new OrgLibrary({
-  dataDir: DATA_DIR,
-  store,
-  routines: routines!,
-  skills: { list: listSkills, stamps: skillPackageStamps, setEnabled: setSkillEnabled, installOrg: installOrgSkill },
-  presets: presetStore,
-  postState: (message) => utilityParentPort?.postMessage(message),
-});
-{
-  // Set by the port listener above, which TypeScript cannot see run first.
-  const early = pendingOrgLibraryRelay as { library: unknown } | null;
-  if (early) orgLibrary.applyRelay(early.library);
-  pendingOrgLibraryRelay = null;
-}
 // Separate durable stores: after a crash between the two writes, the correlated RoutineRun's terminal state wins.
 const recoveredRoutineGoalRuns = new Map(
   routines.listRuns().filter((run) => run.target === "room-goal").map((run) => [run.id, run]),
@@ -12055,8 +12026,7 @@ const cloudMoveRoutes = createCloudMoveRoutes({
 
 // `workspaceAccess` is assigned at boot, after this line: read it per request.
 ROUTES.push(createHostedSlackRoutes({ bot: (id) => store.bot(id), hostedReady: () => Boolean(workspaceAccess) && entitled("admin") }));
-const orgInstallStatuses = () => orgLibrary?.installStatuses() ?? new Map();
-ROUTES.push(createBotPresetRoutes({ presets: presetStore, orgStatuses: orgInstallStatuses }));
+ROUTES.push(createBotPresetRoutes({ presets: presetStore }));
 // `routines` is assigned at boot, so it is read per request.
 ROUTES.push(createBotMessageRoutes({
   store, registry, handoffs, directTurnDispatchClaims, groupSpeakers,
@@ -12081,7 +12051,7 @@ ROUTES.push(createThreadRoutes({
   botComputerControlSnapshot: botId => computerControl.snapshot(botId), messageFileRootsForThread, viewerFor, visibleTo, coordinator, groupThreadIsWorking,
 }));
 ROUTES.push(createBotCreateRoutes({
-  store, cfg, presetStore, orgInstallStatuses,
+  store, cfg, presetStore,
   hostedWorkspace: HOSTED_WORKSPACE, hostedFullAccessRefusal: HOSTED_FULL_ACCESS_REFUSAL, desktopManaged: DESKTOP_MANAGED,
   maxWorkspaceBots: MAX_WORKSPACE_BOTS, cloudOwnerKey: CLOUD_OWNER_KEY, cloudRoutineAuthors,
   routines: () => routines,
@@ -12143,7 +12113,7 @@ ROUTES.push(createRoomHoldRoutes({
     return updated ? publicGroupState(updated) : null;
   },
 }));
-// `routines` and `orgLibrary` are assigned at boot, after this line: read them per request.
+
 ROUTES.push(createGroupRoutes({
   store,
   cloudHome: Boolean(CLOUD_HOME),
@@ -12229,10 +12199,8 @@ ROUTES.push(createTeamRoutes({
   store,
   cfg,
   routines: () => routines,
-  orgLibrary: () => orgLibrary,
   broadcast,
   publicBot,
-  publicGroupState,
   groupWithThread,
   defaultSelection,
   defaultsPresetFor,
@@ -12721,19 +12689,6 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       const revoked = sessions.revoke(m[1]);
       if (auth.kind === "session" && auth.session.id === m[1]) res.setHeader("set-cookie", clearSessionCookie(SESSION_COOKIE));
       return json(res, revoked ? 200 : 404, revoked ? { ok: true } : { error: "no such session" });
-    }
-    // Test-only routes exist only when the launcher sets a high-entropy test key, which production builds never set.
-    if (method === "POST" && path === "/api/testing/org-library") {
-      const expected = Buffer.from(process.env.QUATI_TEST_ORG_LIBRARY_KEY ?? "");
-      const header = req.headers["x-quatibot-test-org-library"];
-      const actual = Buffer.from(Array.isArray(header) ? "" : String(header ?? ""));
-      if (expected.length < 32 || actual.length !== expected.length || !timingSafeEqual(actual, expected) || !orgLibrary) {
-        return json(res, 404, { error: "not found" });
-      }
-      const body = await readBody(req);
-      const applied = orgLibrary.applyRelay(body?.library ?? null);
-      await orgLibrary.settled();
-      return json(res, applied.ok ? 200 : 400, { ...applied, report: orgLibrary.lastReport() });
     }
     if (method === "POST" && path === "/api/testing/internal-capability") {
       const expected = process.env.QUATI_TEST_INTERNAL_CAPABILITY_KEY ?? "";

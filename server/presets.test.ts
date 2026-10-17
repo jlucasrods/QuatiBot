@@ -121,65 +121,25 @@ describe("preset store", () => {
     expect(app.presetStore.list()).toHaveLength(1);
   });
 
-  it("stores organization presets with their provenance, and refreshes an install's rows in place when it is added again", async () => {
-    const app = await installation();
-    const org = app.org();
-    const document = app.orgDocument("library-only.v2.json");
-    const result = app.importer.importPackageDocument(document, { trust: "org", mode: "add", org }, app.deps);
-    if (result.alreadyAdded) throw new Error("unexpected");
-    expect(result.installId).toBe(org.installId);
-    expect(app.presetStore.list()).toEqual([expect.objectContaining({
-      source: "org", installId: org.installId, publisherName: "Acme Partners", publisher: org.publisher, ref: "acme/sales-skills", sha256: org.sha256,
-    })]);
-    const [first] = app.presetStore.list();
-    const again = app.importer.importPackageDocument(document, { trust: "org", mode: "add", org }, app.deps);
-    if (again.alreadyAdded) throw new Error("unexpected");
-    expect(again.presets).toEqual([{ id: first!.id, key: "support", name: "Support agent" }]);
-    expect(app.presetStore.list()).toEqual([first]);
-    const next = fixture("library-only.v2.json");
-    next.package.release = "2.1.0";
-    next.package.presets[0].name = "Support lead";
-    next.package.presets.push({ ...next.package.presets[0], key: "closer", name: "Closer" });
-    const nextDocument = app.parsePackageDocument(next, { trust: "org" });
-    nextDocument.package.publisher = { organization: "acme", name: "Acme Partners" };
-    app.importer.importPackageDocument(nextDocument, { trust: "org", mode: "add", org: { ...org, sha256: "b".repeat(64) } }, app.deps);
-    expect(app.presetStore.list().map((row) => [row.id === first!.id, row.key, row.name, row.release, row.sha256])).toEqual([
-      [true, "support", "Support lead", "2.1.0", "b".repeat(64)],
-      [false, "closer", "Closer", "2.1.0", "b".repeat(64)],
-    ]);
-    const without = fixture("library-only.v2.json");
-    without.package.presets = without.package.presets.filter((preset: { key: string }) => preset.key === "support");
-    const withoutDocument = app.parsePackageDocument(without, { trust: "org" });
-    withoutDocument.package.publisher = { organization: "acme", name: "Acme Partners" };
-    app.importer.importPackageDocument(withoutDocument, { trust: "org", mode: "add", org }, app.deps);
-    expect(app.presetStore.list().map((row) => [row.id === first!.id, row.key, row.release])).toEqual([[true, "support", "2.0.1"]]);
-    expect(app.presetStore.removeFilePreset(app.presetStore.list()[0]!.id)).toBe("organization");
-    expect(app.presetStore.removeFilePreset("missing")).toBe("not_found");
-  });
-
-  it("offers organization presets first, hides withdrawn or removed installs, and never lists a tampered row", async () => {
+  it("lists file presets and rejects tampered starter notes", async () => {
     const app = await installation();
     app.importer.importPackageDocument(app.parsePackageDocument(fixture("library-only.v2.json")), { trust: "file", mode: "add" }, app.deps);
-    const org = app.org();
-    app.importer.importPackageDocument(app.orgDocument("library-only.v2.json"), { trust: "org", mode: "add", org }, app.deps);
-    const listed = app.presets.listBotPresets(app.presetStore, new Map());
+    const listed = app.presets.listBotPresets(app.presetStore);
     expect(listed.map((preset) => [preset.source, preset.name, preset.publisherName, preset.skillsEnabled])).toEqual([
-      ["org", "Support agent", "Acme Partners", true],
       ["file", "Support agent", undefined, false],
     ]);
-    expect(listed[1]).toMatchObject({ packageName: "Sales skills", release: "2.0.1", bot: { name: "Sky", title: "Support", appearance: { color: "blue" } },
+    expect(listed[0]).toMatchObject({ packageName: "Sales skills", release: "2.0.1", bot: { name: "Sky", title: "Support", appearance: { color: "blue" } },
       skills: [{ name: "objection-handling", description: "Answer common objections." }], playbooks: [], notes: [] });
-    expect(app.presets.listBotPresets(app.presetStore, new Map([[org.installId, "withdrawn" as const]])).map((preset) => preset.source)).toEqual(["file"]);
-    expect(app.presets.listBotPresets(app.presetStore, new Map([[org.installId, "removed" as const]])).map((preset) => preset.source)).toEqual(["file"]);
 
     const stored = JSON.parse(readFileSync(app.presetFile, "utf8"));
     Object.assign(stored.presets[0].bot, { approvalMode: "full", modelSelection: { instanceId: "x", model: "y" }, cwd: "/", computer: "vm" });
-    stored.presets[1].seed = { memory: { "memory/log/2026-09-24.md": "chat" } };
     writeFileSync(app.presetFile, JSON.stringify(stored));
-    const after = app.presets.listBotPresets(app.presetStore, new Map());
+    const after = app.presets.listBotPresets(app.presetStore);
     expect(after).toHaveLength(1);
     expect(JSON.stringify(after)).not.toMatch(/approvalMode|modelSelection|cwd|computer/);
-    expect(app.presetStore.resolve(stored.presets[1].id)).toBeNull();
+    stored.presets[0].seed = { memory: { "memory/log/2026-09-24.md": "chat" } };
+    writeFileSync(app.presetFile, JSON.stringify(stored));
+    expect(app.presetStore.resolve(stored.presets[0].id)).toBeNull();
   });
 });
 
@@ -205,27 +165,6 @@ describe("creating a bot from a preset", () => {
     for (const field of ["approvalMode", "autoApprove", "computer", "cwd", "composio", "mcpServers", "browser"] as const) {
       expect(record).not.toHaveProperty(field);
     }
-  });
-
-  it("adds an organization preset's skills switched on, under the organization's own source, stamped for updates", async () => {
-    const app = await installation();
-    const org = app.org();
-    const document = app.orgDocument("library-only.v2.json");
-    const imported = app.importer.importPackageDocument(document, { trust: "org", mode: "add", org }, app.deps);
-    if (imported.alreadyAdded) throw new Error("unexpected");
-    const bot = app.store.createBot({ name: "Sky", modelSelection: { instanceId: "claude", model: "default-model" } });
-    app.presets.applyPresetToBot(bot.id, app.presetStore.resolve(imported.presets![0]!.id)!, app.applyDeps);
-    expect(app.skills.listSkills(bot.id)).toEqual([expect.objectContaining({ name: "objection-handling", enabled: true, source: "org:acme/sales-skills@2.0.1" })]);
-    const stored = JSON.parse(readFileSync(app.presetFile, "utf8")).content[org.installId].skills
-      .find((skill: { name: string }) => skill.name === "objection-handling").instructions as string;
-    expect(stored).toBe(document.package.skills!.entries.find((skill) => skill.name === "objection-handling")!.instructions);
-    const written = app.skills.readSkillFile(bot.id, "objection-handling")!;
-    expect(app.skills.skillPackageStamps(bot.id)).toEqual([{ name: "objection-handling", enabled: true, stamp: {
-      installId: org.installId, key: "objection-handling", release: "2.0.1", r: app.parts.partHash(stored), w: app.parts.partHash(written), via: "preset",
-    } }]);
-    expect(JSON.stringify(app.skills.listSkills(bot.id))).not.toMatch(/"via"|"package"/);
-    expect(app.store.bot(bot.id)!.installedPackage).toEqual({ id: "sales-skills", name: "Sales skills", release: "2.0.1", requiredApps: [],
-      source: "org", installId: org.installId, presetKey: "support", publisher: org.publisher, ref: "acme/sales-skills", sha256: org.sha256 });
   });
 });
 
