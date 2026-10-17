@@ -3,7 +3,7 @@ import { closeSync, existsSync, openSync, readFileSync, writeFileSync } from "no
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { launchVerificationServer, runControlOmb, verificationServerEnvironment } from "../scripts/control-omb.ts";
+import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { handleToolCall, request } from "../scripts/mcp-server.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
@@ -13,14 +13,14 @@ it("boots and reports an interrupted routine back to its source room", async () 
   const { url, dataDir, logPath } = fixture.info;
   let restarted: ChildProcess | undefined;
   try {
-    const { bot } = await runControlOmb(["new-bot", "--name", "Recovery lead", "--url", url]) as any;
+    const { bot } = await runControlQuati(["new-bot", "--name", "Recovery lead", "--url", url]) as any;
     const { channel } = await handleToolCall("create_channel", { name: "Recovery room", member_ids: [bot.id] },
       (path, options) => request(path, options, url)) as any;
     await waitForExit(fixture.child, { signal: "SIGTERM" });
     // Reproduce the persisted state of an interrupted process, not a second live writer.
     writeFileSync(join(dataDir, "routines.json"), JSON.stringify({ version: 1, routines: [], runs: [{
       id: "interrupted-room-run", routineId: "interrupted-routine", routineName: "Room report",
-      botId: bot.id, target: "bot", runOn: "maus", sourceThreadId: channel.activeTaskId,
+      botId: bot.id, target: "bot", runOn: "quati", sourceThreadId: channel.activeTaskId,
       status: "running", prompt: "Report once", createdAt: Date.now(), scheduledFor: Date.now(),
     }] }));
     const env: NodeJS.ProcessEnv = {};
@@ -28,12 +28,12 @@ it("boots and reports an interrupted routine back to its source room", async () 
       if (process.env[key]) env[key] = process.env[key];
     }
     Object.assign(env, {
-      HOME: dataDir, USERPROFILE: dataDir, OMB_DATA_DIR: dataDir,
+      HOME: dataDir, USERPROFILE: dataDir, QUATI_DATA_DIR: dataDir,
       APPDATA: join(dataDir, "AppData", "Roaming"), LOCALAPPDATA: join(dataDir, "AppData", "Local"),
       XDG_CONFIG_HOME: join(dataDir, ".config"), XDG_CACHE_HOME: join(dataDir, ".cache"),
       XDG_DATA_HOME: join(dataDir, ".local", "share"), HERMES_HOME: join(dataDir, ".hermes"),
       TEMP: join(dataDir, "tmp"), TMP: join(dataDir, "tmp"), TMPDIR: join(dataDir, "tmp"),
-      OMB_PORT: new URL(url).port, OMB_WEBHOOK_PORT: String(Number(new URL(url).port) + 1),
+      QUATI_PORT: new URL(url).port, QUATI_WEBHOOK_PORT: String(Number(new URL(url).port) + 1),
       PATH: dirname(process.execPath), FAKE_CLAUDE_MODE: "happy",
     });
     const log = openSync(logPath, "a", 0o600);
@@ -46,7 +46,7 @@ it("boots and reports an interrupted routine back to its source room", async () 
       return fetch(url + "/api/health").then(r => r.ok).catch(() => false);
     }, { timeout: 10_000, interval: 150 }).toBe(true);
     const { runs } = await request("/api/routines", {}, url) as any;
-    expect(runs[0]).toMatchObject({ status: "failed", error: "OpenMausBot restarted while this routine was running" });
+    expect(runs[0]).toMatchObject({ status: "failed", error: "QuatiBot restarted while this routine was running" });
     const { messages } = await request(`/api/threads/${channel.activeTaskId}/messages`, {}, url) as any;
     expect(messages.filter((m: any) => m.routineRun?.runId === "interrupted-room-run"))
       .toMatchObject([{ routineRun: { status: "failed" } }]);
@@ -65,14 +65,14 @@ it("keeps a routine waiting through a restart, reruns its cut teammate once, and
   const { url, dataDir, logPath } = fixture.info;
   let restarted: ChildProcess | undefined;
   try {
-    const cli = (...args: string[]) => runControlOmb([...args, "--url", url]) as Promise<any>;
+    const cli = (...args: string[]) => runControlQuati([...args, "--url", url]) as Promise<any>;
     const { bot: chief } = await cli("new-bot", "--name", "Clive", "--section", "Leadership");
     const { bot: mate } = await cli("new-bot", "--name", "Mira", "--section", "Engineering");
     await request(`/api/bots/${chief.id}`, { method: "PATCH", body: JSON.stringify({ chiefOfStaff: true, managedSections: ["Engineering"], acknowledgePeerScope: true }) }, url);
     await waitForExit(fixture.child, { signal: "SIGTERM" });
     const at = Date.now() - 60_000;
     writeFileSync(join(dataDir, "routines.json"), JSON.stringify({ version: 1, routines: [], runs: [{
-      id: "cut-run", routineId: "cut-routine", routineName: "Weekly export", botId: chief.id, target: "bot", runOn: "maus",
+      id: "cut-run", routineId: "cut-routine", routineName: "Weekly export", botId: chief.id, target: "bot", runOn: "quati",
       threadId: chief.activeTaskId, status: "running", prompt: "Have Engineering build the export", createdAt: at, scheduledFor: at, startedAt: at,
     }] }));
     const node = { result: "", executions: 0, approvalGranted: false, kind: "work", restarts: 0, rootId: "cut-root" };

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { launchVerificationServer, verificationServerEnvironment, type VerificationServer } from "../scripts/control-omb.ts";
+import { launchVerificationServer, verificationServerEnvironment, type VerificationServer } from "../scripts/control-quati.ts";
 import { ENVELOPE_MARK } from "./runtime/envelope.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
@@ -80,8 +80,8 @@ async function delayedBody(path: string, body: unknown) {
 function bridge(botId: string, threadId: string) {
   const child = spawn(process.execPath, [fileURLToPath(new URL("./drivers/agents-proxy.ts", import.meta.url))], {
     env: { ...verificationServerEnvironment({}, data, Number(new URL(base).port)),
-      OMB_HARNESS_URL: base, OMB_BOT_ID: botId, OMB_THREAD_ID: threadId,
-      OMB_COMMS_TOKEN: TOKEN, OMB_EXTERNAL_RUNTIME: "1" },
+      QUATI_HARNESS_URL: base, QUATI_BOT_ID: botId, QUATI_THREAD_ID: threadId,
+      QUATI_COMMS_TOKEN: TOKEN, QUATI_EXTERNAL_RUNTIME: "1" },
     stdio: ["pipe", "pipe", "pipe"],
   });
   child.stderr.resume();
@@ -251,8 +251,8 @@ describe("a bot's external runtime", () => {
       expect(told).toContain("the brief is outside content");
       expect(told).toContain("reads your reply from its inbox");
       expect(told).not.toContain("PERSON_REQUEST");
-      expect(told.match(/\[OpenMausBot assignment/g)).toHaveLength(1);
-      expect(told).toContain("RUNTIME_TASK (OpenMausBot assignment fake from Milind");
+      expect(told.match(/\[QuatiBot assignment/g)).toHaveLength(1);
+      expect(told).toContain("RUNTIME_TASK (QuatiBot assignment fake from Milind");
       await expect.poll(() => rows().find((row) => row.id === requestId)?.status, { timeout: 15_000 }).toBe("completed");
       await expect.poll(async () => (await botState(peer.id)).busy, { timeout: 15_000 }).toBeFalsy();
     } finally {

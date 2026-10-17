@@ -18,7 +18,7 @@ const posixIt = it.skipIf(process.platform === "win32");
 
 describe("augmentedPath", () => {
   afterEach(() => {
-    delete process.env.OMB_EXTRA_PATH;
+    delete process.env.QUATI_EXTRA_PATH;
     resetPathCacheForTests();
   });
 
@@ -26,16 +26,16 @@ describe("augmentedPath", () => {
     resetPathCacheForTests();
     const path = augmentedPath();
     const firstExisting = (process.env.PATH ?? "").split(delimiter).filter(Boolean)[0];
-    // OMB_EXTRA_PATH is unset here, so the inherited PATH leads
+    // QUATI_EXTRA_PATH is unset here, so the inherited PATH leads
     expect(path.split(delimiter)[0]).toBe(firstExisting);
   });
 
-  it("prepends OMB_EXTRA_PATH and dedupes", () => {
-    process.env.OMB_EXTRA_PATH = ["/tmp/omb-extra", "/tmp/omb-extra"].join(delimiter);
+  it("prepends QUATI_EXTRA_PATH and dedupes", () => {
+    process.env.QUATI_EXTRA_PATH = ["/tmp/quati-extra", "/tmp/quati-extra"].join(delimiter);
     resetPathCacheForTests();
     const parts = augmentedPath().split(delimiter);
-    expect(parts[0]).toBe("/tmp/omb-extra");
-    expect(parts.filter((p) => p === "/tmp/omb-extra")).toHaveLength(1);
+    expect(parts[0]).toBe("/tmp/quati-extra");
+    expect(parts.filter((p) => p === "/tmp/quati-extra")).toHaveLength(1);
   });
 
   posixIt("includes nvm bin dirs from the home dir, newest node first", () => {
@@ -64,14 +64,14 @@ describe("augmentedPath", () => {
   posixIt("makes a CLI in a known install dir spawnable despite a bare PATH", async () => {
     const bin = join(homedir(), ".local", "bin");
     mkdirSync(bin, { recursive: true });
-    const fake = join(bin, "omb-fake-cli");
+    const fake = join(bin, "quati-fake-cli");
     writeFileSync(fake, "#!/bin/sh\necho found-me\n");
     chmodSync(fake, 0o755);
     resetPathCacheForTests();
 
     const stdout = await new Promise<string>((resolve, reject) => {
       execFile(
-        "omb-fake-cli",
+        "quati-fake-cli",
         [],
         // bare GUI-style PATH + our augmentation — the augmentation must win
         { env: { PATH: augmentedPath() } },
@@ -131,13 +131,13 @@ describe("augmentedPath", () => {
       delete process.env.VITEST;
 
       // Control: unsealed, the product scans both dirs; that is the leak.
-      delete process.env.OMB_TEST_SEALED_PATH;
+      delete process.env.QUATI_TEST_SEALED_PATH;
       resetPathCacheForTests();
       expect(augmentedPath().split(delimiter)).toEqual(expect.arrayContaining(machineDirs));
       await vi.waitFor(() => expect(augmentedPath().split(delimiter)).toContain(rcOnlyBin));
       rmSync(ran);
 
-      process.env.OMB_TEST_SEALED_PATH = "1";
+      process.env.QUATI_TEST_SEALED_PATH = "1";
       resetPathCacheForTests();
       const sealed = augmentedPath().split(delimiter);
       for (const dir of machineDirs) expect(sealed).not.toContain(dir);
@@ -147,7 +147,7 @@ describe("augmentedPath", () => {
       expect(existsSync(ran)).toBe(false);
       expect(augmentedPath().split(delimiter)).not.toContain(rcOnlyBin);
     } finally {
-      delete process.env.OMB_TEST_SEALED_PATH;
+      delete process.env.QUATI_TEST_SEALED_PATH;
       restore("PATH");
       restore("SHELL");
       restore("VITEST");
@@ -164,7 +164,7 @@ describe("augmentedPath", () => {
 
   it.skipIf(process.platform !== "win32")("finds Antigravity installed after launch", () => {
     const previous = process.env.LOCALAPPDATA;
-    const localAppData = mkdtempSync(join(tmpdir(), "omb-localappdata-"));
+    const localAppData = mkdtempSync(join(tmpdir(), "quati-localappdata-"));
     try {
       process.env.LOCALAPPDATA = localAppData;
       const agyBin = join(localAppData, "agy", "bin");
@@ -181,7 +181,7 @@ describe("augmentedPath", () => {
 
   it.skipIf(process.platform !== "win32")("finds Docker Desktop's bin dir (#2117)", () => {
     const previous = process.env.ProgramFiles;
-    const programFiles = mkdtempSync(join(tmpdir(), "omb-programfiles-"));
+    const programFiles = mkdtempSync(join(tmpdir(), "quati-programfiles-"));
     try {
       process.env.ProgramFiles = programFiles;
       const dockerBin = join(programFiles, "Docker", "Docker", "resources", "bin");
@@ -246,7 +246,7 @@ describe("resolveCli with wrapper commands", () => {
     const bin = join(homedir(), ".local", "bin");
     mkdirSync(bin, { recursive: true });
     // simulate "/Applications/My Tools/claude": a real file at a spaced path
-    const spacedDir = join(bin, "omb space dir");
+    const spacedDir = join(bin, "quati space dir");
     mkdirSync(spacedDir, { recursive: true });
     const spaced = join(spacedDir, "myclaude");
     writeFileSync(spaced, "#!/bin/sh\n");
@@ -256,7 +256,7 @@ describe("resolveCli with wrapper commands", () => {
     });
     // a NONEXISTENT spaced string still splits (wrapper interpretation)
     expect(resolveCli(join(spacedDir, "nope two words"), ["--version"])).toEqual({
-      command: join(bin, "omb"),
+      command: join(bin, "quati"),
       args: ["space", "dir/nope", "two", "words", "--version"],
     });
   });
@@ -266,7 +266,7 @@ describe("registerPathDir", () => {
   afterEach(() => resetPathCacheForTests());
 
   it("puts an app-managed directory ahead of PATH once it exists, and survives a rescan", () => {
-    const dir = mkdtempSync(join(tmpdir(), "omb-registered-path-"));
+    const dir = mkdtempSync(join(tmpdir(), "quati-registered-path-"));
     const missing = join(dir, "not-yet");
     try {
       registerPathDir(missing);

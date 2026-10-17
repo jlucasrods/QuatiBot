@@ -1,5 +1,5 @@
 // Actual Sidebar against a disposable fake-engine server; never the live app.
-import { launchVerificationServer, runControlOmb } from "./control-omb.ts";
+import { launchVerificationServer, runControlQuati } from "./control-quati.ts";
 import { fixtureApi, mountPreview, parkUntilSignal, type MountedPreview } from "./testing/preview-fixture.ts";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +9,7 @@ const fixture = await launchVerificationServer();
 let ui: MountedPreview | undefined;
 try {
   for (const name of ["Sidebar Atlas", "Sidebar Juniper"]) {
-    await runControlOmb(["new-bot", "--name", name, "--url", fixture.info.url]);
+    await runControlQuati(["new-bot", "--name", name, "--url", fixture.info.url]);
   }
   // Opt-in bulk-read case. Only the fixture's synthetic provider and data
   // are used; never seed or run work in a person's installed workspace.

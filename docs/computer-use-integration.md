@@ -1,6 +1,6 @@
-# Computer use & browser use in OpenMausBot
+# Computer use & browser use in QuatiBot
 
-Decision doc, 2026-08-12. How bots in OpenMausBot get local computer use and
+Decision doc, 2026-08-12. How bots in QuatiBot get local computer use and
 browser use. macOS and packaged Ubuntu x64 builds use an out-of-the-box,
 release-pinned provider; source/dev Ubuntu may use a separately installed provider. Based
 on a survey of OSS chat-app MCP hosts, macOS control servers,
@@ -64,8 +64,8 @@ GNOME/Wayland additionally requires WinRects v8 plus the exact Cua health-report
 
 1. **Spawn from the Electron main process, never from the server/gateway
    layer.** macOS TCC attributes a spawned child to its "responsible process".
-   Spawned from Electron main → the grant is OpenMausBot's, users see ONE
-   prompt named OpenMausBot, and the bundled driver inherits it. Spawned from
+   Spawned from Electron main → the grant is QuatiBot's, users see ONE
+   prompt named QuatiBot, and the bundled driver inherits it. Spawned from
    a Node gateway/daemon → the identity silently becomes the gateway's and
    `check_permissions` cannot detect the misattribution. The harness must ask
    Electron main for the driver socket path over IPC, not spawn the driver.
@@ -82,7 +82,7 @@ GNOME/Wayland additionally requires WinRects v8 plus the exact Cua health-report
 
 ### macOS packaging target
 
-- Ship the binary at `OpenMausBot.app/Contents/Resources/cua-driver`,
+- Ship the binary at `QuatiBot.app/Contents/Resources/cua-driver`,
   **outside the ASAR**, executable bit preserved (electron-builder
   `extraResources`).
 - **Re-sign it with our Team ID** before signing + notarizing the app (the

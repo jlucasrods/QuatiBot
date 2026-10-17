@@ -7,9 +7,9 @@ import { DEFAULT_RESULT_BUDGET } from "./mcp-trim.ts";
 import { REMOTE_MCP_CONFIG_ENV, remoteMcpSpec } from "./mcp-http.ts";
 import { SPAWNED_PROXIES } from "./proxy-paths.ts";
 
-/** `OMB_MCP_RESULT_BUDGET=0` mounts bot servers directly, for a bot that needs whole payloads. */
+/** `QUATI_MCP_RESULT_BUDGET=0` mounts bot servers directly, for a bot that needs whole payloads. */
 export function resultBudget(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env.OMB_MCP_RESULT_BUDGET;
+  const raw = env.QUATI_MCP_RESULT_BUDGET;
   if (raw === undefined || raw === "") return DEFAULT_RESULT_BUDGET;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_RESULT_BUDGET;
@@ -103,8 +103,8 @@ export function mcpStdioServer(server: unknown, options: StdioServerOptions = {}
     directory = JSON.stringify({ name: options.directory.name, ...(scope.scope ? { toolScope: scope.scope } : {}) });
   }
   const settings = {
-    OMB_REMOTE_MCP_SERVER: JSON.stringify(remote),
-    ...(directory ? { OMB_REMOTE_MCP_DIRECTORY: directory } : {}),
+    QUATI_REMOTE_MCP_SERVER: JSON.stringify(remote),
+    ...(directory ? { QUATI_REMOTE_MCP_DIRECTORY: directory } : {}),
   };
   return {
     command: options.execPath ?? process.execPath,
@@ -152,14 +152,14 @@ export function gateServer(input: {
   // whatever the turn decided earlier.
   const upstream = scoped && name === "agents" ? unbridgedServer(spec) : spec;
   const env = {
-    OMB_GATE_NAME: name,
-    OMB_GATE_UPSTREAM: JSON.stringify({ command: upstream.command, args: upstream.args ?? [], env: upstream.env ?? {} }),
-    OMB_GATE_SPILL_DIR: spillDir(input.threadId),
-    OMB_GATE_BUDGET: String(budget),
-    ...(scoped ? { OMB_GATE_TOOL_SCOPE: JSON.stringify(parsed.scope) } : {}),
-    ...(directory ? { OMB_GATE_DIRECTORY: "1" } : {}),
+    QUATI_GATE_NAME: name,
+    QUATI_GATE_UPSTREAM: JSON.stringify({ command: upstream.command, args: upstream.args ?? [], env: upstream.env ?? {} }),
+    QUATI_GATE_SPILL_DIR: spillDir(input.threadId),
+    QUATI_GATE_BUDGET: String(budget),
+    ...(scoped ? { QUATI_GATE_TOOL_SCOPE: JSON.stringify(parsed.scope) } : {}),
+    ...(directory ? { QUATI_GATE_DIRECTORY: "1" } : {}),
   };
-  if (input.configEnvName && (!scoped || !/^OMB_GATE_CONFIG_[a-f0-9]{64}$/.test(input.configEnvName))) {
+  if (input.configEnvName && (!scoped || !/^QUATI_GATE_CONFIG_[a-f0-9]{64}$/.test(input.configEnvName))) {
     throw new Error("Invalid private MCP gate configuration.");
   }
   return {

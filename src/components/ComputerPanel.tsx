@@ -59,7 +59,7 @@ const computerControlSnapshotSchema = z.object({
     helpReason: z.string().nullable().optional().default(null),
     help: z.unknown().optional().transform(parseComputerHelp),
 }).passthrough();
-const PANEL_WIDTH_KEY = "omb-computer-panel-width";
+const PANEL_WIDTH_KEY = "quati-computer-panel-width";
 const PANEL_MIN_WIDTH = 360;
 const PANEL_MAX_WIDTH = 960;
 const PANEL_DEFAULT_WIDTH = 400;
@@ -658,7 +658,7 @@ export function ComputerPanel({ bot: profileBot }: {
         }
     };
     const openVmSettings = () => {
-        window.sessionStorage.setItem("openmausbot.settings.section", "computer");
+        window.sessionStorage.setItem("quatibot.settings.section", "computer");
         dispatch({ type: "toggleAppSettings", open: true });
     };
     const browserCanTurnOn = browserAvailableHere || state.config?.browserEngine?.installable === true;
@@ -792,7 +792,7 @@ export function ComputerPanel({ bot: profileBot }: {
       </div>
 
       {panelView === "routines" ? (<div {...tabPanelProps("routines")} className={cn("min-h-0 flex-1 overflow-y-auto px-4 pb-4", TAB_PANEL_FOCUS)}>
-          <RoutinesSection key={bot.id} bot={bot} routines={botRoutines} runs={state.routineRuns} defaultRunOn="maus"/>
+          <RoutinesSection key={bot.id} bot={bot} routines={botRoutines} runs={state.routineRuns} defaultRunOn="quati"/>
         </div>) : panelView === "browser" && browserEnabled ? (<div {...tabPanelProps("browser")} className={cn("flex min-h-0 flex-1 flex-col px-4 pb-4", TAB_PANEL_FOCUS)}>
           {browserSwitchRow}
           {signInHelp?.place === "browser" && <div className="-mt-1 mb-3">{signInBanner()}</div>}

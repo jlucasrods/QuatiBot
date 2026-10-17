@@ -129,7 +129,7 @@ describe("SecretRequestCard credential persistence", () => {
 
   it("saves a voice key over the desktop bridge once, even when only the resume is retried", async () => {
     const setCredential = vi.fn().mockResolvedValue({ tts: { configured: true } });
-    vi.stubGlobal("window", { ogb: { setCredential } });
+    vi.stubGlobal("window", { quati: { setCredential } });
     fixture.api.mockRejectedValueOnce(new Error("resume failed")).mockResolvedValueOnce({ ok: true });
     await submit("ttsKey");
     card("ttsKey").find((node) => node.type === "form")!.props.onSubmit!({ preventDefault: () => {} });
@@ -140,7 +140,7 @@ describe("SecretRequestCard credential persistence", () => {
 
   it("keeps the error and does not resume when saving the credential fails", async () => {
     const error = new Error("The voice provider rejected that key");
-    vi.stubGlobal("window", { ogb: { setCredential: vi.fn().mockRejectedValue(error) } });
+    vi.stubGlobal("window", { quati: { setCredential: vi.fn().mockRejectedValue(error) } });
     await submit("ttsKey");
     expect(fixture.api).not.toHaveBeenCalled();
     expect(fixture.values).toContain(error.message);

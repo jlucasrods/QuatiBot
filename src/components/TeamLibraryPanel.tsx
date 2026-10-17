@@ -12,7 +12,7 @@ import { ShareTeamDialog } from "./ShareTeamDialog";
 import { OrgLibraryTab } from "./TeamLibraryPanelOrg";
 import { MAX_TEAM_BACKUP_BYTES, TEAM_BACKUP_EXCLUSIONS } from "../../shared/team-backup";
 import { takeImportName } from "../../shared/import-name";
-const COMMUNITY_TEAMS_REPOSITORY = "https://github.com/milind-soni/openmausbot-teams";
+const COMMUNITY_TEAMS_REPOSITORY = "https://github.com/jlucasrods/quatibot-teams";
 interface TeamCatalogEntry {
     slug: string;
     name: string;
@@ -733,7 +733,7 @@ export function TeamLibraryPanel({ onClose, onImported, returnFocusRef, initialU
                 </div>)}
 
               {tab === "import" && (<div>
-                  <input ref={fileInputRef} type="file" accept=".md,.json,.mausbackup.json,.mausteam.json,text/markdown,application/json" className="hidden" onChange={(event) => {
+                  <input ref={fileInputRef} type="file" accept=".md,.json,.quatibackup.json,.quatiteam.json,text/markdown,application/json" className="hidden" onChange={(event) => {
                     const file = event.currentTarget.files?.[0];
                     event.currentTarget.value = "";
                     if (!file)
@@ -754,7 +754,7 @@ export function TeamLibraryPanel({ onClose, onImported, returnFocusRef, initialU
                 }} className={cn("flex min-h-56 flex-col items-center justify-center rounded-2xl border border-dashed px-6 text-center transition-colors", dragging ? "border-accent bg-accent/5" : "border-hairline/60 bg-raised/20 hover:bg-raised/35")}>
                       <UploadCloud size={27} className="text-accent"/>
                       <span className="mt-3 text-[14px] font-medium text-ink">Choose a backup or team file</span>
-                      <span className="mt-1 text-[12.5px] text-ink-secondary">Drop a .mausbackup.json, BotMRR .md or legacy .mausteam.json here. You’ll preview it before anything is added.</span>
+                      <span className="mt-1 text-[12.5px] text-ink-secondary">Drop a .quatibackup.json, BotMRR .md or legacy .quatiteam.json here. You’ll preview it before anything is added.</span>
                     </button>
 
                     <div className="flex min-h-56 flex-col justify-center rounded-2xl bg-raised/25 px-6">

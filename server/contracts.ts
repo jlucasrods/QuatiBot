@@ -81,7 +81,7 @@ export type RequestOutcome = "allowed-once" | "rejected" | "answered" | "unavail
 
 // Sessions start implicitly on the first turn; resumeCursor carries the provider-native continuation (e.g. a Claude session id).
 export interface SendTurnInput {
-  /** Native global MCP activation overrides, applied only to this MausBot engine process. */
+  /** Native global MCP activation overrides, applied only to this Quati engine process. */
   openCodeMcp?: Record<string, boolean>;
   threadId: ThreadId;
   /** Drivers namespace process-level resources (broker socket, CLI session) by botId too: threadIds may coincide across bots. */

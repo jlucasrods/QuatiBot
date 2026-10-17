@@ -17,7 +17,7 @@ describe("profile identity", () => {
 
 describe("profile menu", () => {
   it.each([
-    [true, "OpenMausBot Cloud", ["usage", "apps", "shortcuts", "about", "settings", "account"]],
+    [true, "QuatiBot Cloud", ["usage", "apps", "shortcuts", "about", "settings", "account"]],
     [false, null, ["apps", "shortcuts", "about", "settings"]],
   ] as const)("offers the available local actions (usage: %s, account: %s)", (usage, account, keys) => {
     const actions = { onUsage: vi.fn(), onApps: vi.fn(), onSettings: vi.fn(), onShortcuts: vi.fn(), onAbout: vi.fn(), onAccount: vi.fn() };

@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { StoreProvider, type Group, type Message } from "@/state/store";
-// Replaced whole: its context default reads window.ogb at import time.
+// Replaced whole: its context default reads window.quati at import time.
 vi.mock("./DesktopCapabilities", () => ({
     useDesktopCapabilities: () => ({ capabilities: { dictation: { available: false } } }),
     useCaptionChrome: () => ({}),
@@ -58,7 +58,7 @@ describe("room header", () => {
         createdAt: 1, setupCompletedAt: 1, messages: [],
     };
     it("wraps into a name line and a control line when the column is narrow", () => {
-        vi.stubGlobal("window", { ogb: undefined });
+        vi.stubGlobal("window", { quati: undefined });
         let markup: string;
         try {
             markup = renderToStaticMarkup(createElement(StoreProvider, null, createElement(GroupView, { group: room })));

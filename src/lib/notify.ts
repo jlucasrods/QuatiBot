@@ -21,7 +21,7 @@ export interface NotificationBotIdentity {
 }
 
 export function buildNotificationOptions(bot: NotificationBotIdentity): NotificationOptions {
-  return { tag: `openmausbot:${bot.id}`, icon: bot.avatarUrl ?? undefined };
+  return { tag: `quatibot:${bot.id}`, icon: bot.avatarUrl ?? undefined };
 }
 
 export function showNotification(
@@ -44,7 +44,7 @@ export function showNotification(
     const options: NotificationOptions = {
       body: frame.body,
       ...buildNotificationOptions({ id: frame.botId, avatarUrl }),
-      ...(spend ? { tag: "openmausbot:spend", icon: undefined } : {}),
+      ...(spend ? { tag: "quatibot:spend", icon: undefined } : {}),
       ...(notificationSoundsEnabled() ? {} : { silent: true }),
     };
     new Notification(frame.title, options).onclick = open;

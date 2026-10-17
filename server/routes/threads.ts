@@ -217,7 +217,7 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
           // Only a client that asks for listings gets one; older clients keep the 400.
           if (body?.listFolder !== true || folderEntry || code !== "directory") throw error;
           const listing = await listMessageFolder(href, roots);
-          res.setHeader("x-openmausbot-folder", "1");
+          res.setHeader("x-quatibot-folder", "1");
           res.setHeader("cache-control", "private, no-store");
           return json(res, 200, listing);
         }

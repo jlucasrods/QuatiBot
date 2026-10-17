@@ -2,7 +2,7 @@ import { CURSOR_STATES, type CursorState } from "@/components/CursorAvatar";
 import { botShowsUnread } from "./bot-unread";
 import { lastNonReceipt } from "./receipts";
 
-export type MausState = CursorState;
+export type QuatiState = CursorState;
 export const MAUS_STATES = CURSOR_STATES;
 
 /** CursorAvatar ships French group labels; these mirror its STATE_GROUPS memberships exactly. */
@@ -42,7 +42,7 @@ export const STATE_GROUPS = {
     "bouncing",
     "powering-down",
   ],
-} satisfies Record<string, MausState[]>;
+} satisfies Record<string, QuatiState[]>;
 
 export const MAUS_COLOR_NAMES = [
   "green",
@@ -57,7 +57,7 @@ export const MAUS_COLOR_NAMES = [
   "coral",
 ] as const;
 
-export type MausColor = (typeof MAUS_COLOR_NAMES)[number];
+export type QuatiColor = (typeof MAUS_COLOR_NAMES)[number];
 
 export const MAUS_COLORS = {
   green: "#009957",
@@ -70,7 +70,7 @@ export const MAUS_COLORS = {
   yellow: "#D8A729",
   teal: "#01A492",
   coral: "#E5634E",
-} satisfies Record<MausColor, string>;
+} satisfies Record<QuatiColor, string>;
 
 export const MAUS_MOTIONS = [
   "arrive",
@@ -87,10 +87,10 @@ export const MAUS_MOTIONS = [
   "failure",
 ] as const;
 
-export type MausMotion = "none" | (typeof MAUS_MOTIONS)[number];
+export type QuatiMotion = "none" | (typeof MAUS_MOTIONS)[number];
 
 interface LegacyStates {
-  [state: string]: MausState;
+  [state: string]: QuatiState;
 }
 
 const LEGACY_STATES: LegacyStates = {
@@ -108,13 +108,13 @@ const LEGACY_STATES: LegacyStates = {
 
 const KNOWN_STATES = new Set<string>(MAUS_STATES);
 
-export function normalizeState(value: string | null | undefined): MausState | null {
+export function normalizeState(value: string | null | undefined): QuatiState | null {
   if (!value) return null;
-  if (KNOWN_STATES.has(value)) return value as MausState;
+  if (KNOWN_STATES.has(value)) return value as QuatiState;
   return LEGACY_STATES[value] ?? null;
 }
 
-export const PICKABLE_STATES: MausState[] = [
+export const PICKABLE_STATES: QuatiState[] = [
   "idle",
   "happy",
   "curious",
@@ -143,7 +143,7 @@ export type MascotBotProfile = {
   messages?: MascotMessage[];
 };
 
-export function stateForBot(bot: MascotBotProfile): MausState {
+export function stateForBot(bot: MascotBotProfile): QuatiState {
   const pinned = normalizeState(bot.mascotExpression);
   if (pinned) return pinned;
 

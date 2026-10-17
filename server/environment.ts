@@ -1,4 +1,4 @@
-// Served without auth at /.well-known/openmausbot/environment, so a saved connection can check it still reaches the same server.
+// Served without auth at /.well-known/quatibot/environment, so a saved connection can check it still reaches the same server.
 import { randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -25,7 +25,7 @@ export interface EnvironmentDescriptor {
     remoteSessions: true;
     /** Only while the maintainer flag `features.sharedComputers` is on; otherwise absent, like a build without the feature. */
     sharedComputers?: true;
-    /** A person's own OMB Cloud home. */
+    /** A person's own QUATI Cloud home. */
     cloudHome?: true;
     /** Who can update the server: the desktop app that runs it, or the operator. */
     selfUpdate: "desktop-managed" | "operator";
@@ -100,7 +100,7 @@ export function loadEnvironmentId(dataDir: string): string {
 }
 
 export function serverVersion(): string {
-  const fromEnv = process.env.OMB_APP_VERSION?.trim();
+  const fromEnv = process.env.QUATI_APP_VERSION?.trim();
   if (fromEnv) return fromEnv;
   try {
     const pkg: unknown = JSON.parse(readFileSync(join(SERVER_ROOT, "..", "package.json"), "utf8"));
@@ -114,7 +114,7 @@ export function serverVersion(): string {
 export function environmentDescriptor(input: { environmentId: string; desktopManaged: boolean; emailSignIn?: boolean; sharedComputers?: boolean; cloudHome?: boolean }): EnvironmentDescriptor {
   return {
     environmentId: input.environmentId,
-    label: process.env.OMB_ENVIRONMENT_LABEL?.trim() || hostname(),
+    label: process.env.QUATI_ENVIRONMENT_LABEL?.trim() || hostname(),
     platform: process.platform,
     version: serverVersion(),
     capabilities: {

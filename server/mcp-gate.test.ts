@@ -52,7 +52,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     if (delayedList) { send(delayedList.id, catalog()); delayedList = undefined; }
     return;
   }
-  send(msg.id, { scope: process.env.OMB_GATE_TOOL_SCOPE ?? null, upstreamOnly: process.env.UPSTREAM_ONLY });
+  send(msg.id, { scope: process.env.QUATI_GATE_TOOL_SCOPE ?? null, upstreamOnly: process.env.UPSTREAM_ONLY });
 });
 `;
 
@@ -71,9 +71,9 @@ describe("mcp-gate", () => {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
-        OMB_GATE_NAME: "shop",
-        OMB_GATE_SPILL_DIR: join(scratch, "spill"),
-        OMB_GATE_UPSTREAM: JSON.stringify({
+        QUATI_GATE_NAME: "shop",
+        QUATI_GATE_SPILL_DIR: join(scratch, "spill"),
+        QUATI_GATE_UPSTREAM: JSON.stringify({
           command: process.execPath,
           args: [upstreamJs],
           env: { SCRIPT: script, UPSTREAM_ONLY: "yes" },
@@ -113,7 +113,7 @@ describe("mcp-gate", () => {
   };
 
   beforeEach(() => {
-    scratch = mkdtempSync(join(tmpdir(), "omb-gate-test-"));
+    scratch = mkdtempSync(join(tmpdir(), "quati-gate-test-"));
     lines = [];
     waiting = [];
   });
@@ -134,8 +134,8 @@ describe("mcp-gate", () => {
     expect(JSON.parse(await nextLine())).toEqual({ jsonrpc: "2.0", id: 7, result: { echoed: "tools/list", params: null } });
   });
 
-  it.each([undefined, "not-json", "{}", '{"OMB_GATE_NAME":"notes","OMB_GATE_TOOL_SCOPE":"{}"}'])("refuses missing or corrupt private gate settings before spawning upstream: %s", value => {
-    const key = `OMB_GATE_CONFIG_${"a".repeat(64)}`;
+  it.each([undefined, "not-json", "{}", '{"QUATI_GATE_NAME":"notes","QUATI_GATE_TOOL_SCOPE":"{}"}'])("refuses missing or corrupt private gate settings before spawning upstream: %s", value => {
+    const key = `QUATI_GATE_CONFIG_${"a".repeat(64)}`;
     start({}, value === undefined ? {} : { [key]: value }, SCOPED_UPSTREAM, ["--config-env", key]);
     return once(gate!, "close").then(([code]) => {
       expect(code).toBe(1);
@@ -158,7 +158,7 @@ describe("mcp-gate", () => {
     const answer = await call("search_products");
     const text = answer.result.content[0].text;
     expect(text.length).toBeLessThan(full.length / 10);
-    expect(text.startsWith("⚠️ TRUNCATED by OpenMausBot:")).toBe(true);
+    expect(text.startsWith("⚠️ TRUNCATED by QuatiBot:")).toBe(true);
 
     const spillDir = join(scratch, "spill");
     const [file] = readdirSync(spillDir);
@@ -202,7 +202,7 @@ describe("mcp-gate", () => {
 
   it("honours a budget the harness sets", async () => {
     const products = Array.from({ length: 300 }, (_, i) => ({ id: `p${i}`, blurb: "x".repeat(300) }));
-    start({ content: [{ type: "text", text: JSON.stringify({ products }) }], structuredContent: undefined }, { OMB_GATE_BUDGET: "2000" });
+    start({ content: [{ type: "text", text: JSON.stringify({ products }) }], structuredContent: undefined }, { QUATI_GATE_BUDGET: "2000" });
     const text = (await call("search_products")).result.content[0].text;
     expect(text.length).toBeLessThan(2_400);
   });
@@ -212,7 +212,7 @@ describe("mcp-gate", () => {
     send({ jsonrpc: "2.0", id: 3, method: "peek" });
     await nextLine();
     // The upstream started at all, so it read SCRIPT from the env the gate passed through.
-    expect(JSON.parse(JSON.stringify(process.env.OMB_GATE_UPSTREAM ?? null))).toBe(null);
+    expect(JSON.parse(JSON.stringify(process.env.QUATI_GATE_UPSTREAM ?? null))).toBe(null);
   });
 
   it("spawns an upstream named as a bare command on PATH", async () => {
@@ -225,8 +225,8 @@ describe("mcp-gate", () => {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
-        OMB_GATE_NAME: "shop",
-        OMB_GATE_UPSTREAM: JSON.stringify({ command: "node", args: [upstreamJs], env: { SCRIPT: script } }),
+        QUATI_GATE_NAME: "shop",
+        QUATI_GATE_UPSTREAM: JSON.stringify({ command: "node", args: [upstreamJs], env: { SCRIPT: script } }),
       },
     }) as ChildProcessWithoutNullStreams;
     createInterface({ input: gate.stdout }).on("line", (line) => {
@@ -244,7 +244,7 @@ describe("mcp-gate", () => {
     expect(answer.result.someOtherShape.length).toBe(40_000);
   });
 
-  const selected = { OMB_GATE_TOOL_SCOPE: JSON.stringify({ allow: ["mcp:shop:read"] }), OMB_GATE_BUDGET: "0" };
+  const selected = { QUATI_GATE_TOOL_SCOPE: JSON.stringify({ allow: ["mcp:shop:read"] }), QUATI_GATE_BUDGET: "0" };
 
   it("filters each catalog page and rejects a withheld call before upstream execution", async () => {
     start({}, selected, SCOPED_UPSTREAM);
@@ -270,14 +270,14 @@ describe("mcp-gate", () => {
 
   it("enforces deny precedence without trimming when the result budget is zero", async () => {
     const text = "z".repeat(40_000);
-    start({ text }, { OMB_GATE_BUDGET: "0", OMB_GATE_TOOL_SCOPE: JSON.stringify({ allow: ["mcp:shop:*"], deny: ["mcp:shop:write"] }) }, SCOPED_UPSTREAM);
+    start({ text }, { QUATI_GATE_BUDGET: "0", QUATI_GATE_TOOL_SCOPE: JSON.stringify({ allow: ["mcp:shop:*"], deny: ["mcp:shop:write"] }) }, SCOPED_UPSTREAM);
     expect((await call("write")).error).toMatchObject({ code: -32602 });
     expect((await call("read", 2)).result.content[0].text).toBe(text);
     expect(existsSync(join(scratch, "spill"))).toBe(false);
   });
 
   it.each(["{", "null", '{"allow":null}'])("exits on invalid scope %s before starting the upstream", async (scope) => {
-    start({}, { OMB_GATE_TOOL_SCOPE: scope }, SCOPED_UPSTREAM);
+    start({}, { QUATI_GATE_TOOL_SCOPE: scope }, SCOPED_UPSTREAM);
     const closed = once(gate!, "close");
     gate!.stdin.end();
     const [code] = await closed;
@@ -335,20 +335,20 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   };
 
   it("checks call_tool against the tool it runs only when its upstream is the tool directory", async () => {
-    const scope = { OMB_GATE_TOOL_SCOPE: JSON.stringify({ allow: ["mcp:shop:read"] }), OMB_GATE_BUDGET: "600" };
-    start({}, { ...scope, OMB_GATE_DIRECTORY: "1" }, DIRECTORY_UPSTREAM);
+    const scope = { QUATI_GATE_TOOL_SCOPE: JSON.stringify({ allow: ["mcp:shop:read"] }), QUATI_GATE_BUDGET: "600" };
+    start({}, { ...scope, QUATI_GATE_DIRECTORY: "1" }, DIRECTORY_UPSTREAM);
     send({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     expect(JSON.parse(await nextLine()).result.tools.map((tool: { name: string }) => tool.name)).toEqual(["search_tools", "describe_tool", "call_tool", "read"]);
     expect((await callWith("call_tool", { name: "write", arguments: {} }, 2)).error).toMatchObject({ code: -32602 });
     expect(ran()).toEqual([]);
     expect((await callWith("describe_tool", { name: "read" }, 3)).result.content[0].text).toHaveLength(4_000);
     expect((await callWith("call_tool", { arguments: {} }, 4)).result.content[0].text).toHaveLength(4_000);
-    expect((await callWith("call_tool", { name: "read", arguments: {} }, 5)).result.content[0].text).toContain("TRUNCATED by OpenMausBot");
+    expect((await callWith("call_tool", { name: "read", arguments: {} }, 5)).result.content[0].text).toContain("TRUNCATED by QuatiBot");
     expect(ran()).toEqual(["describe_tool", "call_tool", "call_tool"]);
   });
 
   it("treats those names as ordinary tools for any other upstream", async () => {
-    start({}, { OMB_GATE_TOOL_SCOPE: JSON.stringify({ allow: ["mcp:shop:read"] }), OMB_GATE_BUDGET: "600" }, DIRECTORY_UPSTREAM);
+    start({}, { QUATI_GATE_TOOL_SCOPE: JSON.stringify({ allow: ["mcp:shop:read"] }), QUATI_GATE_BUDGET: "600" }, DIRECTORY_UPSTREAM);
     send({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     expect(JSON.parse(await nextLine()).result.tools.map((tool: { name: string }) => tool.name)).toEqual(["read"]);
     expect((await callWith("call_tool", { name: "read", arguments: {} }, 2)).error).toMatchObject({ code: -32602 });

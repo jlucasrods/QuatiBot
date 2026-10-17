@@ -5,7 +5,7 @@ import { api, useStore } from "@/state/store";
 import { SharedWorkspaceHint } from "./SharedWorkspaceHint";
 import { WelcomeFlow } from "./WelcomeFlow";
 /**
- * Security: a remote page the desktop app loads gets a reduced but truthy window.ogb without remoteClient, and is no
+ * Security: a remote page the desktop app loads gets a reduced but truthy window.quati without remoteClient, and is no
  * more the owner than a browser.
  */
 export function localDesktopPage(): boolean {

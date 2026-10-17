@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { recordEvents } from "../../testing/events.ts";
 import {
   catalogFromOpenCodeSession, createOpenCodeDriver, discoverOpenCodeModels, openCodeOwnedDirectories,
-  openMausOwnsWorkingFolder, preferredOpenCodeModel, probeOpenCodeSession,
+  openQuatiOwnsWorkingFolder, preferredOpenCodeModel, probeOpenCodeSession,
 } from "./opencode-go.ts";
 import { DATA_DIR } from "../../config.ts";
 
@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 function environment() {
-  const home = mkdtempSync(join(tmpdir(), "omb-opencode-v2-"));
+  const home = mkdtempSync(join(tmpdir(), "quati-opencode-v2-"));
   scratch.push(home);
   return { ...process.env, HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, "config"), XDG_DATA_HOME: join(home, "data"),
     FAKE_ACP_AGENT_NAME: "OpenCode", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_VERSION: "2.0.31",
@@ -76,8 +76,8 @@ describe("OpenCode session", () => {
   });
 
   it("keeps bot directories separate from external projects", () => {
-    expect(openMausOwnsWorkingFolder(join(DATA_DIR, "workspaces", "bot"))).toBe(true);
-    expect(openMausOwnsWorkingFolder(join(DATA_DIR, "workspaces-elsewhere", "bot"))).toBe(false);
+    expect(openQuatiOwnsWorkingFolder(join(DATA_DIR, "workspaces", "bot"))).toBe(true);
+    expect(openQuatiOwnsWorkingFolder(join(DATA_DIR, "workspaces-elsewhere", "bot"))).toBe(false);
     expect(openCodeOwnedDirectories("bot", "/external/project")).toContain(join(DATA_DIR, "workspaces", "bot"));
   });
 });

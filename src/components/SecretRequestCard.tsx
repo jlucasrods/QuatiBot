@@ -32,7 +32,7 @@ export function SecretRequestCard({ botId, threadId, message, }: {
                     ? "Saved securely. Your bot is continuing the task."
                     : "Saved securely. Your bot will continue when its current turn settles."
             : declined
-                ? "You chose not to provide this credential. OpenMausBot could not resume the bot yet."
+                ? "You chose not to provide this credential. QuatiBot could not resume the bot yet."
                 : secret.description;
     const footerLabel = stopped
         ? "Stopped"
@@ -141,7 +141,7 @@ export function SecretRequestCard({ botId, threadId, message, }: {
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-ink-tertiary">
             <span className="flex items-center gap-1">
-              <LockKeyhole size={11}/> Stored securely by OpenMausBot and never added to chat.
+              <LockKeyhole size={11}/> Stored securely by QuatiBot and never added to chat.
             </span>
             <a href={secret.helpUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent-text hover:underline">
               Where to get this key <ExternalLink size={11}/>

@@ -12,7 +12,7 @@ type PaletteEntry =
   | { kind: "room"; group: Group }
   | { kind: "message"; hit: SearchHit };
 
-const OPEN_EVENT = "omb:open-command-palette";
+const OPEN_EVENT = "quati:open-command-palette";
 
 export function openCommandPalette() {
   window.dispatchEvent(new Event(OPEN_EVENT));

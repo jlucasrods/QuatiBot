@@ -1,12 +1,12 @@
 // The "agents" MCP server inside a bot's agent process: stdio JSON-RPC 2.0 (no MCP SDK), every tool
 // routed through the harness. Env, set by the harness:
-//   OMB_HARNESS_URL  base URL of the harness (http://127.0.0.1:8799)
-//   OMB_BOT_ID  the calling bot's id
-//   OMB_COMMS_TOKEN  shared secret for the localhost-only internal endpoints
-//   OMB_TURN_DEPTH  this turn's comms depth (the harness refuses recursion)
-//   OMB_EXTERNAL_RUNTIME  "1" for a standing process: oversized results are cut instead of cached
-//   OMB_CHIEF_OF_STAFF  "1" for a Chief of Staff, the only bot shown the Chief-only tools
-//   OMB_AGENTS_TOOL_BRIDGE  "1" lists a few tools and puts the rest behind find_tool and use_tool
+//   QUATI_HARNESS_URL  base URL of the harness (http://127.0.0.1:8799)
+//   QUATI_BOT_ID  the calling bot's id
+//   QUATI_COMMS_TOKEN  shared secret for the localhost-only internal endpoints
+//   QUATI_TURN_DEPTH  this turn's comms depth (the harness refuses recursion)
+//   QUATI_EXTERNAL_RUNTIME  "1" for a standing process: oversized results are cut instead of cached
+//   QUATI_CHIEF_OF_STAFF  "1" for a Chief of Staff, the only bot shown the Chief-only tools
+//   QUATI_AGENTS_TOOL_BRIDGE  "1" lists a few tools and puts the rest behind find_tool and use_tool
 // scripts/bundle-server.mjs inlines agents-catalog/-call/-client/-bridge into this file, which the harness spawns.
 import readline from "node:readline";
 
@@ -35,7 +35,7 @@ async function handle(msg: Json) {
       ok(id, {
         protocolVersion: (params.protocolVersion as string) ?? "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "openmausbot-agents", version: "0.1.0" },
+        serverInfo: { name: "quatibot-agents", version: "0.1.0" },
       });
       return;
     case "notifications/initialized":

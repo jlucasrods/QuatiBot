@@ -47,9 +47,9 @@ describe("which engine runs a session", () => {
   });
 
   it("gives a bot its own profile, a shared profile's bots one profile, and a temporary browser its session's", () => {
-    expect(profileKey("a", "omb-a", { guest: false, partitionId: null })).toBe("bot:a");
-    expect(profileKey("a", "omb-p", { guest: false, partitionId: "p1" })).toBe("shared:p1");
-    expect(profileKey("a", "omb-a-guest-1", { guest: true, partitionId: null })).toBe("temp:omb-a-guest-1");
+    expect(profileKey("a", "quati-a", { guest: false, partitionId: null })).toBe("bot:a");
+    expect(profileKey("a", "quati-p", { guest: false, partitionId: "p1" })).toBe("shared:p1");
+    expect(profileKey("a", "quati-a-guest-1", { guest: true, partitionId: null })).toBe("temp:quati-a-guest-1");
   });
 });
 

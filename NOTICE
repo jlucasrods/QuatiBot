@@ -1,6 +1,11 @@
 OpenMausBot
 Copyright 2026 Milind Soni and OpenMausBot contributors
 
+QuatiBot is an independently modified fork. Its changes include the Linux web
+runtime, OpenCode V2-only integration, server-side credential encryption,
+browser/VM recording tools, service removals and the QuatiBot identity.
+The upstream proprietary enterprise directory is not distributed with this fork.
+
 OpenMausBot was relicensed from the MIT License to the Apache License,
 Version 2.0, with the consent of all contributors whose copyright was
 incorporated before the transition.

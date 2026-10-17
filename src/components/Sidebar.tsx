@@ -16,7 +16,7 @@ import { copyText } from "@/lib/copy-text";
 import type { LocaleKey } from "@/locales";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { BulkSelectFilters, ThreadListFooter, deleteThreadsInBulk, useBulkSelect } from "./BulkSelectBar";
-import { StackedMauses } from "./StackedMauses";
+import { StackedAvatars } from "./StackedAvatars";
 import { WorkingDots } from "./WorkingIndicator";
 import { nextRename } from "@/lib/rename";
 import { MIN_QUERY, SearchResults } from "./SearchResults";
@@ -117,7 +117,7 @@ export function GroupListItem({ group, density, quiet = false, query = "", onMen
             const rect = e.currentTarget.getBoundingClientRect();
             onMenu({ groupId: group.id, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
         }} className={cn("relative flex w-full items-center rounded-md text-left outline-none focus-visible:ring-1 focus-visible:ring-accent/60", density === "icons" ? "justify-center px-1 py-1.5" : density === "compact" ? "gap-1.5 py-1 pl-6 pr-9" : "gap-2 py-1.5 pl-6 pr-9", selected && !expanded ? "bg-raised/70" : "hover:bg-raised/40")} title={density === "icons" ? group.name : undefined} aria-label={density === "icons" ? group.name : undefined}>
-      <StackedMauses members={members} density={density}/>
+      <StackedAvatars members={members} density={density}/>
       <div className={cn("min-w-0 flex-1", density === "icons" && "hidden")}>
         <div className="flex items-baseline justify-between gap-2">
           <span className="truncate text-[14px] font-semibold text-ink">{group.name}</span>
@@ -1499,7 +1499,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
         if (event.dataTransfer.types.includes(FOLDER_DRAG_TYPE))
             return;
         event.preventDefault();
-        const from = event.dataTransfer.getData("application/x-openmausbot-sidebar-section") ||
+        const from = event.dataTransfer.getData("application/x-quatibot-sidebar-section") ||
             event.dataTransfer.getData("text/plain") ||
             sectionDragRef.current.from;
         const over = sectionDragRef.current.over;
@@ -1690,7 +1690,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
                         setTeamMenu({ name: sectionName, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 266)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 190)) });
                     } : undefined} collapsed={collapsed} attention={attention} onToggle={layoutInteractive ? () => toggleSection(id) : undefined} reorderable={layoutInteractive && sectionIds.length > 1} dragging={draggingSectionId === id} onDragStart={(event) => {
                         event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setData("application/x-openmausbot-sidebar-section", id);
+                        event.dataTransfer.setData("application/x-quatibot-sidebar-section", id);
                         event.dataTransfer.setData("text/plain", id);
                         sectionDragRef.current = { from: id, over: null };
                         setDraggingSectionId(id);

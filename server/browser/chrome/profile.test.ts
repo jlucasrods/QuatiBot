@@ -8,7 +8,7 @@ import { browserRoot, compareVersions, downgradeRefusal, ensureProfile, markClea
 
 const dirs: string[] = [];
 const scratch = () => {
-  const dir = mkdtempSync(join(tmpdir(), "omb-chrome-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "quati-chrome-test-"));
   dirs.push(dir);
   return dir;
 };

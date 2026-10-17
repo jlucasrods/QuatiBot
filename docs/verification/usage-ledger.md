@@ -28,7 +28,7 @@ a period, group it, or **Export CSV**.
 pnpm exec vitest run --no-file-parallelism server/usage-ledger-api.test.ts server/usage-attribution.e2e.test.ts
 ```
 
-The test launches a fresh `control-omb` fixture with the repository's fake
+The test launches a fresh `control-quati` fixture with the repository's fake
 engine, creates a bot, sends one turn as the owner through the control surface
 and one as a paired device with a label, waits for both to settle, then checks
 the month file has exactly two rows with the right triggers and no message
@@ -52,10 +52,10 @@ second turn's result says 0.02, and both rows must still read 0.01.
 For the same by hand:
 
 ```sh
-node --experimental-strip-types scripts/control-omb.ts launch
-pnpm control:omb new-bot --name Probe --url http://127.0.0.1:PORT
-pnpm control:omb send --bot BOT_ID --text "hello" --url http://127.0.0.1:PORT
-pnpm control:omb wait --bot BOT_ID --timeout 30 --url http://127.0.0.1:PORT
+node --experimental-strip-types scripts/control-quati.ts launch
+pnpm control:quati new-bot --name Probe --url http://127.0.0.1:PORT
+pnpm control:quati send --bot BOT_ID --text "hello" --url http://127.0.0.1:PORT
+pnpm control:quati wait --bot BOT_ID --timeout 30 --url http://127.0.0.1:PORT
 cat DATA_DIR/usage/$(date -u +%Y-%m).jsonl
 ```
 
@@ -67,7 +67,7 @@ the turn appears under **Bot** and under **Person** as "This computer".
 The chat header's input/output breakdown has a separate real-renderer fixture:
 
 ```sh
-OMB_UI_E2E=1 pnpm exec vitest run scripts/testing/usage-details-ui.e2e.test.ts
+QUATI_UI_E2E=1 pnpm exec vitest run scripts/testing/usage-details-ui.e2e.test.ts
 ```
 
 It launches a disposable app, sends one scripted-engine turn through the composer,

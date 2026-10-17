@@ -19,5 +19,5 @@ export const SPAWNED_PROXIES = {
   mcpGate: resolveProxy("mcp-gate"),
   mcpRemote: resolveProxy("mcp-remote-proxy"),
   phone: resolveProxy("drivers/phone-proxy"),
-  hook: resolveProxy("hooks/omb-hook"),
+  hook: resolveProxy("hooks/quati-hook"),
 } as const;

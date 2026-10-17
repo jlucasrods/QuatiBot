@@ -62,7 +62,7 @@ export interface CalibrateOptions {
  */
 export async function calibrateIdentity(options: CalibrateOptions): Promise<CalibratedIdentity> {
   const fingerprint = chromeFingerprint(options.executablePath);
-  const userDataDir = mkdtempSync(join(options.tmpRoot ?? tmpdir(), "omb-calibrate-"));
+  const userDataDir = mkdtempSync(join(options.tmpRoot ?? tmpdir(), "quati-calibrate-"));
   const page = await loopbackPage();
   const chrome = await launchChrome({
     executablePath: options.executablePath,

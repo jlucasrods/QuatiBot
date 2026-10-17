@@ -147,7 +147,7 @@ export function AvatarImageGenerator({ botLabel, disabled, generating, onGenerat
             <input value={customModel} disabled={busy} onChange={(event) => setModelDraft(event.target.value)} placeholder="Model ID from your image provider" autoComplete="off" className={`${INPUT_CLASS} mt-1`}/>
           </label>
           <p className="text-[11px] leading-relaxed text-ink-secondary">
-            OpenAI-compatible Images API. localhost refers to the OpenMausBot server, including when you open this page remotely.
+            OpenAI-compatible Images API. localhost refers to the QuatiBot server, including when you open this page remotely.
           </p>
         </>)}
       <label className="block text-[11.5px] text-ink-secondary">

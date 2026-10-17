@@ -36,7 +36,7 @@ const controlReady = controlToken ? Promise.resolve() : new Promise<void>((resol
 parentPort?.on("message", ({ data }) => {
   if (!data || typeof data !== "object") return;
   const message = data as Record<string, unknown>;
-  if (message.type !== "openmausbot:companion-mutation-token") return;
+  if (message.type !== "quatibot:companion-mutation-token") return;
   if (typeof message.token === "string" && /^[A-Za-z0-9_-]{43}$/.test(message.token)) {
     mutationToken = message.token;
   }
@@ -52,13 +52,13 @@ const num = (value: string | undefined, fallback: number): number => {
   return Number.isInteger(parsed) && parsed > 0 && parsed < 65536 ? parsed : fallback;
 };
 
-const HARNESS_PORT = num(process.env.OMB_PORT, 8799);
-const WEBHOOK_PORT = num(process.env.OMB_WEBHOOK_PORT, HARNESS_PORT + 1);
-const COMPANION_PORT = num(process.env.OMB_COMPANION_PORT, 8810);
-const CONTROL_PORT = num(process.env.OMB_CONTROL_PORT, 8811);
-const SERVICE_TYPE = "_openmausbot._tcp";
-let hostedUrl = hostedCompanionUrl(process.env.OMB_COMPANION_HOSTED_URL);
-const PRIVATE_ORIGIN = companionOriginSocket(process.env.OMB_COMPANION_INTERNAL_ORIGIN);
+const HARNESS_PORT = num(process.env.QUATI_PORT, 8799);
+const WEBHOOK_PORT = num(process.env.QUATI_WEBHOOK_PORT, HARNESS_PORT + 1);
+const COMPANION_PORT = num(process.env.QUATI_COMPANION_PORT, 8810);
+const CONTROL_PORT = num(process.env.QUATI_CONTROL_PORT, 8811);
+const SERVICE_TYPE = "_quatibot._tcp";
+let hostedUrl = hostedCompanionUrl(process.env.QUATI_COMPANION_HOSTED_URL);
+const PRIVATE_ORIGIN = companionOriginSocket(process.env.QUATI_COMPANION_INTERNAL_ORIGIN);
 
 /** Checked up front: the collision is a race, and the loser's error surfaces
  * nowhere near here. */
@@ -72,11 +72,11 @@ const conflict = (name: string, port: number): string | null => {
   return owner ? `${name} is set to port ${port}, which is ${owner}` : null;
 };
 
-/** OMB_COMPANION_NAME wins; otherwise the harness's profile name, read once at
+/** QUATI_COMPANION_NAME wins; otherwise the harness's profile name, read once at
  * startup. Failures fall back: no part of pairing depends on the name. */
-let cachedName = process.env.OMB_COMPANION_NAME?.trim() || "";
+let cachedName = process.env.QUATI_COMPANION_NAME?.trim() || "";
 
-const machineName = (): string => cachedName || "OpenMausBot";
+const machineName = (): string => cachedName || "QuatiBot";
 
 async function refreshMachineName(): Promise<void> {
   if (cachedName) return;
@@ -160,7 +160,7 @@ const listen = (server: ReturnType<typeof createServer>, port: number, host: str
     const onError = (error: NodeJS.ErrnoException) => {
       server.removeListener("listening", onListening);
       const hint = ` — another copy of the companion may already be running; ${
-        port === COMPANION_PORT ? "OMB_COMPANION_PORT" : "OMB_CONTROL_PORT"
+        port === COMPANION_PORT ? "QUATI_COMPANION_PORT" : "QUATI_CONTROL_PORT"
       } chooses a different one`;
       reject(
         error.code === "EADDRINUSE"
@@ -184,13 +184,13 @@ const listen = (server: ReturnType<typeof createServer>, port: number, host: str
 
 async function main(): Promise<void> {
   const clash =
-    conflict("OMB_COMPANION_PORT", COMPANION_PORT) ?? conflict("OMB_CONTROL_PORT", CONTROL_PORT);
+    conflict("QUATI_COMPANION_PORT", COMPANION_PORT) ?? conflict("QUATI_CONTROL_PORT", CONTROL_PORT);
   if (clash) throw new Error(`${clash}. Pick another port.`);
 
   // 127.0.0.1 and 0.0.0.0 on one port collide; name it rather than EADDRINUSE.
   if (COMPANION_PORT === CONTROL_PORT) {
     throw new Error(
-      `OMB_COMPANION_PORT and OMB_CONTROL_PORT are both port ${COMPANION_PORT}, and they cannot share one: ` +
+      `QUATI_COMPANION_PORT and QUATI_CONTROL_PORT are both port ${COMPANION_PORT}, and they cannot share one: ` +
         `the first is open to your network and the second must never be. Pick another port.`,
     );
   }

@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { launchVerificationServer, runControlOmb } from "./control-omb.ts";
+import { launchVerificationServer, runControlQuati } from "./control-quati.ts";
 import { fixtureApi, mountPreview, parkUntilSignal, type MountedPreview } from "./testing/preview-fixture.ts";
 import { waitForExit } from "../server/testing/cleanup.ts";
 
@@ -24,7 +24,7 @@ async function until(check: () => boolean | Promise<boolean>) {
   }
 }
 try {
-  const control = (args: string[]) => runControlOmb([...args, "--url", fixture.info.url]);
+  const control = (args: string[]) => runControlQuati([...args, "--url", fixture.info.url]);
   await control(["doctor"]);
   await control(["new-bot", "--name", "Pepper"]);
   await control(["new-bot", "--name", "Miso"]);
@@ -38,7 +38,7 @@ try {
     "#!/usr/bin/env node",
     'import { existsSync, readFileSync } from "node:fs";',
     'const at = process.argv.indexOf("--mcp-config");',
-    'const bot = at < 0 ? null : JSON.parse(readFileSync(process.argv[at + 1], "utf8")).mcpServers?.agents?.env?.OMB_BOT_ID;',
+    'const bot = at < 0 ? null : JSON.parse(readFileSync(process.argv[at + 1], "utf8")).mcpServers?.agents?.env?.QUATI_BOT_ID;',
     `process.env.FAKE_CLAUDE_MODE = bot === ${JSON.stringify(miso.id)} ? "exit-early" : existsSync(${JSON.stringify(gate)}) ? "happy" : "slow";`,
     `process.env.FAKE_CLAUDE_SLOW_FINISH_GATE = ${JSON.stringify(gate)};`,
     `await import(${JSON.stringify(pathToFileURL(join(root, "server/testing/fake-claude-cli.ts")).href)});`,
@@ -75,7 +75,7 @@ try {
   } finally { await waitForExit(proxy, { signal: "SIGTERM" }); }
   writeFileSync(gate, "finish the isolated setup turn");
   await control(["wait", "--bot", pepper.id, "--timeout", "15"]);
-  const { project: resultsFolder } = await api("POST", `/api/bots/${pepper.id}/projects`, { name: "OMB management", emoji: "🛠️" });
+  const { project: resultsFolder } = await api("POST", `/api/bots/${pepper.id}/projects`, { name: "QUATI management", emoji: "🛠️" });
   const { task: resultsTask } = await api("POST", `/api/bots/${pepper.id}/tasks`, { title: "Fleet health reports", projectId: resultsFolder.id });
   await api("POST", `/api/bots/${pepper.id}/tasks/${pepper.threadId}`, {});
   const manual = await api("POST", "/api/routines", {
@@ -97,7 +97,7 @@ try {
     enabled: true, schedule: { type: "once", at: Date.now() + 12_000 },
   });
   ui = await mountPreview(fixture, {
-    entry: "/scripts/testing/threads-preview.tsx", route: "/__routines.html", title: "Isolated OpenMaus Routines",
+    entry: "/scripts/testing/threads-preview.tsx", route: "/__routines.html", title: "Isolated Quati Routines",
   });
   console.log(JSON.stringify({ ...fixture.info, previewUrl: ui.previewUrl, pepperId: pepper.id, misoId: miso.id, scheduledRoutineId: scheduled.routine.id, manualRoutineId: manual.routine.id, resultsThreadId: resultsTask.threadId, resultsFolderId: resultsFolder.id }));
   await parkUntilSignal();

@@ -37,8 +37,8 @@ afterEach(() => {
 
 // The module reads DATA_DIR at import time, so the env var must be set
 // before the import is evaluated.
-const DATA_ROOT = mkdtempSync(join(tmpdir(), "omb-attachments-"));
-process.env.OMB_DATA_DIR = join(DATA_ROOT, "data");
+const DATA_ROOT = mkdtempSync(join(tmpdir(), "quati-attachments-"));
+process.env.QUATI_DATA_DIR = join(DATA_ROOT, "data");
 
 const {
   ATTACHMENTS_DIR,
@@ -289,8 +289,8 @@ describe("aggregate attachment storage", () => {
 
   it("cleans only stale upload partials, never committed or active-looking files", () => {
     saveImage(Buffer.from("kept"), "image/png", UPLOAD_A);
-    const stale = `${ATTACHMENTS_DIR}/.openmaus-upload-${UPLOAD_A}-${UPLOAD_B}.partial`;
-    const fresh = `${ATTACHMENTS_DIR}/.openmaus-upload-${UPLOAD_B}-${UPLOAD_A}.partial`;
+    const stale = `${ATTACHMENTS_DIR}/.quati-upload-${UPLOAD_A}-${UPLOAD_B}.partial`;
+    const fresh = `${ATTACHMENTS_DIR}/.quati-upload-${UPLOAD_B}-${UPLOAD_A}.partial`;
     const unrelated = `${ATTACHMENTS_DIR}/notes.partial`;
     writeFileSync(stale, "stale");
     writeFileSync(fresh, "fresh");
@@ -310,7 +310,7 @@ describe("aggregate attachment storage", () => {
     const existing = saveImage(Buffer.from("x"), "image/png");
     truncateSync(existing.path, ATTACHMENTS_MAX_BYTES - 2);
     __resetAttachmentAccountingForTests();
-    const orphan = `${ATTACHMENTS_DIR}/.openmaus-upload-${UPLOAD_A}-${UPLOAD_B}.partial`;
+    const orphan = `${ATTACHMENTS_DIR}/.quati-upload-${UPLOAD_A}-${UPLOAD_B}.partial`;
     writeFileSync(orphan, "xx");
 
     expect(() => saveImage(Buffer.from("y"), "image/png")).toThrow(/storage is full/);
@@ -325,7 +325,7 @@ describe("aggregate attachment storage", () => {
     const existing = saveImage(Buffer.from("x"), "image/png");
     truncateSync(existing.path, ATTACHMENTS_MAX_BYTES - 3);
     __resetAttachmentAccountingForTests();
-    const orphan = `${ATTACHMENTS_DIR}/.openmaus-upload-${UPLOAD_A}-${UPLOAD_B}.partial`;
+    const orphan = `${ATTACHMENTS_DIR}/.quati-upload-${UPLOAD_A}-${UPLOAD_B}.partial`;
     writeFileSync(orphan, "old");
 
     const saved = await saveFile((async function* () {

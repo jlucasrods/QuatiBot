@@ -39,7 +39,7 @@ async function mintTestCapability(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-openmausbot-test-capability": TEST_CAPABILITY_KEY,
+      "x-quatibot-test-capability": TEST_CAPABILITY_KEY,
     },
     body: JSON.stringify({
       botId,
@@ -125,17 +125,17 @@ let browserRegisterDelayMs = 0;
 
 const managedBoatNameForFixture = (botId: string): string => {
   // boat.ts scopes provider names to the server installation, whose HOME differs from this process's: derive the row from its id.
-  const environmentId = readFileSync(join(home, ".openmausbot", "environment-id"), "utf8").trim();
+  const environmentId = readFileSync(join(home, ".quatibot", "environment-id"), "utf8").trim();
   const environmentScope = createHash("sha256").update(environmentId).digest("hex").slice(0, 12);
   const botPrefix = botId.slice(0, 8).toLowerCase().replace(/[^a-z0-9]/g, "") || "bot";
   const botHash = createHash("sha256").update(botId).digest("hex").slice(0, 6);
-  return `ogb-${environmentScope}-${botPrefix}-${botHash}`;
+  return `quati-${environmentScope}-${botPrefix}-${botHash}`;
 };
 
 const managedVpsNameForFixture = (botId: string): string => {
   const botPrefix = botId.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12) || "bot";
   const botHash = createHash("sha256").update(botId).digest("hex").slice(0, 12);
-  return `openmausbot-vps-${botPrefix}-${botHash}`;
+  return `quatibot-vps-${botPrefix}-${botHash}`;
 };
 
 const expectStoppedTestServerCleanly = (serverChild: ChildProcess, capturedStderr: string): void => {
@@ -166,7 +166,7 @@ const waitForIsolatedServer = async (
       if (response.status === 200) {
         const health = await response.json() as { app?: unknown; pid?: unknown; static?: unknown };
         lastObservedHealth = JSON.stringify(health);
-        if (health.app === "openmausbot" && health.pid === serverChild.pid && health.static === true) return;
+        if (health.app === "quatibot" && health.pid === serverChild.pid && health.static === true) return;
       }
     } catch {
     }
@@ -275,7 +275,7 @@ const delayedJsonBody = async (
 
 const claudePrompts = (file = fakeClaudePrompts): string[] =>
   existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean) : [];
-const COMPUTER_FREE_NOTE = "OpenMausBot computer update: the computer this conversation waited for is free again. Continue the task that parked waiting for it.";
+const COMPUTER_FREE_NOTE = "QuatiBot computer update: the computer this conversation waited for is free again. Continue the task that parked waiting for it.";
 
 const readJsonFileWhenReady = async <T = unknown>(file: string, timeout = 5_000): Promise<T> => {
   let parsed: unknown;
@@ -291,7 +291,7 @@ const readJsonFileWhenReady = async <T = unknown>(file: string, timeout = 5_000)
 };
 
 const storedMessageCount = (threadId: string): number => {
-  const db = new DatabaseSync(join(home, ".openmausbot", "messages.db"), { readOnly: true });
+  const db = new DatabaseSync(join(home, ".quatibot", "messages.db"), { readOnly: true });
   try {
     const row = z.object({ count: z.number() }).parse(
       db.prepare("SELECT COUNT(*) AS count FROM messages WHERE thread_id = ?").get(threadId),
@@ -326,7 +326,7 @@ const statusWithHeaders = (headers: Record<string, string>): Promise<number> =>
   });
 
 beforeAll(async () => {
-  home = mkdtempSync(join(tmpdir(), "omb-api-test-"));
+  home = mkdtempSync(join(tmpdir(), "quati-api-test-"));
   writeFileSync(join(home, "fake-agent-browser"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   staticDir = join(home, "static");
   fakeClaudeDump = join(home, "fake-claude-dump.json");
@@ -336,9 +336,9 @@ beforeAll(async () => {
   oneShotTextDump = join(home, "fake-claude-one-shot-dump.json");
   const fakeDockerDir = join(home, "fake-docker-bin");
   const fakeDockerProgram = join(fakeDockerDir, "docker-empty.mjs");
-  fakeDockerFixture = join(home, ".openmausbot", "fake-unmanaged-container");
-  fakeVpsFixture = join(home, ".openmausbot", "fake-vps-container.json");
-  fakeDockerLog = join(home, ".openmausbot", "fake-docker-calls.log");
+  fakeDockerFixture = join(home, ".quatibot", "fake-unmanaged-container");
+  fakeVpsFixture = join(home, ".quatibot", "fake-vps-container.json");
+  fakeDockerLog = join(home, ".quatibot", "fake-docker-calls.log");
   mkdirSync(fakeDockerDir, { recursive: true });
   writeFileSync(fakeDockerProgram, [
     'import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";',
@@ -351,7 +351,7 @@ beforeAll(async () => {
     '  const spec = JSON.parse(readFileSync(vpsFixture, "utf8"));',
     '  if (args[2] === "container" && args[3] === "ls") { process.stdout.write(`${spec.id.slice(0, 12)}\\n`); process.exit(0); }',
     '  if (args[2] === "container" && args[3] === "inspect") {',
-    '    process.stdout.write(JSON.stringify([{ Id: spec.id, Name: `/${spec.name}`, Config: { Labels: { "com.openmausbot.vps": "1", "com.openmausbot.container": spec.name } }, State: { Status: "exited", Running: false } }]));',
+    '    process.stdout.write(JSON.stringify([{ Id: spec.id, Name: `/${spec.name}`, Config: { Labels: { "com.quatibot.vps": "1", "com.quatibot.container": spec.name } }, State: { Status: "exited", Running: false } }]));',
     '    process.exit(0);',
     '  }',
     '  if (args[2] === "rm" && args[3] === "-f" && args[4] === spec.id) { rmSync(vpsFixture, { force: true }); process.exit(0); }',
@@ -364,7 +364,7 @@ beforeAll(async () => {
     '  const expected = spec?.name ?? raw;',
     '  if (args[0] === "info") { process.stdout.write("29\\n"); process.exit(0); }',
     '  if (args[0] === "inspect" && args[1] === expected) {',
-    '    const labels = spec?.managed ? { "com.openmausbot.local-vm": "1", "com.openmausbot.workspace": "1", "com.openmausbot.local-vm-target": spec.targetLabel } : {};',
+    '    const labels = spec?.managed ? { "com.quatibot.local-vm": "1", "com.quatibot.workspace": "1", "com.quatibot.local-vm-target": spec.targetLabel } : {};',
     '    process.stdout.write(JSON.stringify([{ Config: { Image: "fixture", Labels: labels }, State: { Running: false }, Mounts: spec?.workspace ? [{ Type: "bind", Source: spec.workspace, Destination: "/home/cua/workspace", RW: true }] : [] }]));',
     '    process.exit(0);',
     '  }',
@@ -389,13 +389,13 @@ beforeAll(async () => {
     chmodSync(join(fakeDockerDir, "docker"), 0o755);
   }
   // a fleet of exactly one unknown driver: no CLI probes, no network
-  mkdirSync(join(home, ".openmausbot"), { recursive: true });
+  mkdirSync(join(home, ".quatibot"), { recursive: true });
   mkdirSync(join(staticDir, "assets"), { recursive: true });
-  writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>Packaged OpenMausBot</title>");
+  writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>Packaged QuatiBot</title>");
   writeFileSync(join(staticDir, "manifest.webmanifest"), '{"name":"Fixture web app","display":"standalone","start_url":"/"}');
   writeFileSync(join(staticDir, "assets", "smoke.css"), "body { color: white; }");
   writeFileSync(
-    join(home, ".openmausbot", "config.json"),
+    join(home, ".quatibot", "config.json"),
     JSON.stringify({
       // generated titles are opt-in; this suite owns the one-shot's reply file (FAKE_CLAUDE_TEXT_FILE below)
       features: { llmThreadTitles: true, browser: false },
@@ -410,7 +410,7 @@ beforeAll(async () => {
     }),
   );
   writeFileSync(
-    join(home, ".openmausbot", "groups.json"),
+    join(home, ".quatibot", "groups.json"),
     JSON.stringify([
       {
         id: "test-dm",
@@ -481,7 +481,7 @@ beforeAll(async () => {
     ]),
   );
   writeFileSync(
-    join(home, ".openmausbot", "bots.json"),
+    join(home, ".quatibot", "bots.json"),
     JSON.stringify([
       {
         id: "test-bot-seed",
@@ -534,7 +534,7 @@ beforeAll(async () => {
     ]),
   );
   writeFileSync(
-    join(home, ".openmausbot", "messages-test-bot-seed-thread.json"),
+    join(home, ".quatibot", "messages-test-bot-seed-thread.json"),
     JSON.stringify({
       activeLeafId: "test-bot-seed-greeting",
       messages: [{
@@ -548,10 +548,10 @@ beforeAll(async () => {
     }),
   );
 
-  const linkedWorkspace = join(home, ".openmausbot", "workspaces", "test-bot-a");
+  const linkedWorkspace = join(home, ".quatibot", "workspaces", "test-bot-a");
   const linkedFile = join(linkedWorkspace, "phone report.md");
   const linkedImage = join(linkedWorkspace, "preview.png");
-  const privateAttachments = join(home, ".openmausbot", "attachments");
+  const privateAttachments = join(home, ".quatibot", "attachments");
   const userAttachment = join(privateAttachments, "shared-notes.pdf");
   const generatedImage = join(privateAttachments, "generated.png");
   mkdirSync(linkedWorkspace, { recursive: true });
@@ -567,7 +567,7 @@ beforeAll(async () => {
   writeFileSync(outsideImage, "outside photo bytes");
   writeFileSync(deliveredImage, "delivered photo bytes");
   writeFileSync(
-    join(home, ".openmausbot", "messages-test-linked-file-room-thread.json"),
+    join(home, ".quatibot", "messages-test-linked-file-room-thread.json"),
     JSON.stringify({
       activeLeafId: "user-outside-file-message",
       messages: [
@@ -652,7 +652,7 @@ beforeAll(async () => {
 
   // Goal orchestration is process-local: this durable card stands for a goal whose process exited before it settled.
   writeFileSync(
-    join(home, ".openmausbot", "messages-test-goal-restart-thread.json"),
+    join(home, ".quatibot", "messages-test-goal-restart-thread.json"),
     JSON.stringify({
       activeLeafId: "settled-routine-goal-card",
       messages: [
@@ -696,7 +696,7 @@ beforeAll(async () => {
     }),
   );
   writeFileSync(
-    join(home, ".openmausbot", "routines.json"),
+    join(home, ".quatibot", "routines.json"),
     JSON.stringify({
       version: 1,
       routines: [],
@@ -709,7 +709,7 @@ beforeAll(async () => {
         goalStatus: "completed",
         groupId: "test-goal-restart-room",
         botId: "test-bot-a",
-        runOn: "maus",
+        runOn: "quati",
         scheduledFor: 5,
         status: "completed",
         manual: false,
@@ -725,7 +725,7 @@ beforeAll(async () => {
 
   // An approval that outlived its turn: the card is durable, but busyBotId is in-memory only.
   writeFileSync(
-    join(home, ".openmausbot", "messages-test-stranded-room-thread.json"),
+    join(home, ".quatibot", "messages-test-stranded-room-thread.json"),
     JSON.stringify({
       activeLeafId: "stranded-card",
       messages: [
@@ -751,7 +751,7 @@ beforeAll(async () => {
 
   // An unanswered approval, so "Cancel turn" has something open to close.
   writeFileSync(
-    join(home, ".openmausbot", "messages-test-cancel-room-thread.json"),
+    join(home, ".quatibot", "messages-test-cancel-room-thread.json"),
     JSON.stringify({
       activeLeafId: "cancel-question-card",
       messages: [
@@ -1118,7 +1118,7 @@ beforeAll(async () => {
     const spawn = childProcess.spawn;
     const base = ${JSON.stringify(home)};
     childProcess.spawn = function(command, args, options) {
-      if (command !== process.env.OMB_AGENT_BROWSER_PATH) return spawn(command, args, options);
+      if (command !== process.env.QUATI_AGENT_BROWSER_PATH) return spawn(command, args, options);
       const program = 'const fs = require("node:fs"); const path = require("node:path"); '
         + 'const base = ' + JSON.stringify(base) + '; '
         + 'fs.appendFileSync(path.join(base, "browser-calls.jsonl"), JSON.stringify({args: process.argv.slice(1), session: process.env.AGENT_BROWSER_SESSION}) + "\\\\n"); '
@@ -1136,20 +1136,20 @@ beforeAll(async () => {
       ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
       HOME: home,
       USERPROFILE: home,
-      OMB_PORT: String(PORT),
-      OMB_WEBHOOK_PORT: String(WEBHOOK_PORT),
-      OMB_EXTRA_PATH: fakeDockerDir,
-      OMB_BOAT_API: `http://127.0.0.1:${boatStubPort}`,
-      OMB_COMPOSIO_API: `http://127.0.0.1:${boatStubPort}/api/v3.1`,
-      OMB_COMPOSIO_TOOLKITS_API: `http://127.0.0.1:${boatStubPort}/api/v3`,
+      QUATI_PORT: String(PORT),
+      QUATI_WEBHOOK_PORT: String(WEBHOOK_PORT),
+      QUATI_EXTRA_PATH: fakeDockerDir,
+      QUATI_BOAT_API: `http://127.0.0.1:${boatStubPort}`,
+      QUATI_COMPOSIO_API: `http://127.0.0.1:${boatStubPort}/api/v3.1`,
+      QUATI_COMPOSIO_TOOLKITS_API: `http://127.0.0.1:${boatStubPort}/api/v3`,
       // A managed connected-apps broker on the stub, so relayed MCP frames are observable without any network.
-      OMB_COMPOSIO_BROKER_URL: `http://127.0.0.1:${boatStubPort}/broker`,
-      OMB_COMPOSIO_BROKER_TOKEN: "a".repeat(64),
-      OMB_STATIC_DIR: staticDir,
+      QUATI_COMPOSIO_BROKER_URL: `http://127.0.0.1:${boatStubPort}/broker`,
+      QUATI_COMPOSIO_BROKER_TOKEN: "a".repeat(64),
+      QUATI_STATIC_DIR: staticDir,
       // A stand-in binary the fake engines never run: the turn only has to mount it.
-      OMB_AGENT_BROWSER_PATH: join(home, "fake-agent-browser"),
+      QUATI_AGENT_BROWSER_PATH: join(home, "fake-agent-browser"),
       // Production uses 15 s; the real timer path stays, but fast.
-      OMB_SSE_HEARTBEAT_MS: "50",
+      QUATI_SSE_HEARTBEAT_MS: "50",
       FAKE_CLAUDE_MODE: "hang",
       FAKE_CLAUDE_DUMP: fakeClaudeDump,
       FAKE_CLAUDE_PROMPTS: fakeClaudePrompts,
@@ -1159,7 +1159,7 @@ beforeAll(async () => {
       FAKE_CLAUDE_TEXT_DUMP: oneShotTextDump,
       // the real CLI runs Manual for these even when asked for auto
       FAKE_CLAUDE_AUTO_UNAVAILABLE_MODELS: "claude-haiku-4-5",
-      OMB_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,
+      QUATI_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -1239,8 +1239,8 @@ describe("harness HTTP API", () => {
   });
 
   it("restores a live unanswered provider question after a server restart", async () => {
-    const isolatedHome = mkdtempSync(join(tmpdir(), "omb-question-restart-"));
-    const isolatedData = join(isolatedHome, ".openmausbot");
+    const isolatedHome = mkdtempSync(join(tmpdir(), "quati-question-restart-"));
+    const isolatedData = join(isolatedHome, ".quatibot");
     const isolatedStatic = join(isolatedHome, "static");
     const isolatedDump = join(isolatedHome, "fake-claude-dump.json");
     const isolatedFinishGate = join(isolatedHome, "fake-claude-finish-gate");
@@ -1266,9 +1266,9 @@ describe("harness HTTP API", () => {
           ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
           HOME: isolatedHome,
           USERPROFILE: isolatedHome,
-          OMB_PORT: String(isolatedPort),
-          OMB_WEBHOOK_PORT: String(isolatedPort + 1),
-          OMB_STATIC_DIR: isolatedStatic,
+          QUATI_PORT: String(isolatedPort),
+          QUATI_WEBHOOK_PORT: String(isolatedPort + 1),
+          QUATI_STATIC_DIR: isolatedStatic,
           FAKE_CLAUDE_MODE: "hang",
           FAKE_CLAUDE_DUMP: isolatedDump,
           FAKE_CLAUDE_FINISH_GATE: isolatedFinishGate,
@@ -1311,9 +1311,9 @@ describe("harness HTTP API", () => {
         .find((candidate: { id: string }) => candidate.id === bot.id)?.busy, { timeout: 5_000 }).toBe(true);
 
       const dump = z.object({
-        mcpConfig: z.object({ mcpServers: z.object({ ogb: z.object({ args: z.array(z.string()) }) }) }),
+        mcpConfig: z.object({ mcpServers: z.object({ quati: z.object({ args: z.array(z.string()) }) }) }),
       }).parse(await readJsonFileWhenReady(isolatedDump));
-      questionSocket = connect(dump.mcpConfig.mcpServers.ogb.args[1]!);
+      questionSocket = connect(dump.mcpConfig.mcpServers.quati.args[1]!);
       questionSocket.on("data", (chunk) => {
         socketBuffer += chunk.toString();
         const newline = socketBuffer.indexOf("\n");
@@ -1473,10 +1473,10 @@ describe("harness HTTP API", () => {
     expect(room.messages.find(
       (message: { id: string }) => message.id === "restarted-goal-card",
     )).toMatchObject({
-      text: "Goal failed: OpenMausBot restarted before this goal finished.",
+      text: "Goal failed: QuatiBot restarted before this goal finished.",
       goalRun: {
         status: "failed",
-        detail: "OpenMausBot restarted before this goal finished.",
+        detail: "QuatiBot restarted before this goal finished.",
         turnCount: 2,
         finishedAt: expect.any(Number),
       },
@@ -1560,7 +1560,7 @@ describe("harness HTTP API", () => {
       req.end();
     });
     expect(probe.status).toBe(200);
-    expect(probe.body).toEqual({ app: "openmausbot" });
+    expect(probe.body).toEqual({ app: "quatibot" });
     const brand = await new Promise<{ status: number; body: unknown }>((resolve, reject) => {
       const req = request({ hostname: "127.0.0.1", port: PORT, path: "/api/brand", headers: { host: "example.com" } }, (res) => {
         let raw = "";
@@ -1571,7 +1571,7 @@ describe("harness HTTP API", () => {
       req.end();
     });
     expect(brand.status).toBe(200);
-    expect(Reflect.get(Object(Reflect.get(Object(brand.body), "brand")), "name")).toBe("OpenMausBot");
+    expect(Reflect.get(Object(Reflect.get(Object(brand.body), "brand")), "name")).toBe("QuatiBot");
     expect(await statusWithHeaders({ origin: "https://example.com" })).toBe(403);
     expect(await statusWithHeaders({ host: `127.0.0.2:${PORT}` })).toBe(200);
     expect(await statusWithHeaders({ host: `[::1]:${PORT}` })).toBe(200);
@@ -1589,7 +1589,7 @@ describe("harness HTTP API", () => {
   it("identifies itself on /api/health", async () => {
     const { status, body } = await api("GET", "/api/health");
     expect(status).toBe(200);
-    expect(body.app).toBe("openmausbot");
+    expect(body.app).toBe("quatibot");
     expect(typeof body.pid).toBe("number");
     expect(body.static).toBe(true);
   });
@@ -1602,9 +1602,9 @@ describe("harness HTTP API", () => {
       env: {
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-        OMB_DATA_DIR: join(home, ".openmausbot"),
-        OMB_PORT: String(contenderPort),
-        OMB_STATIC_DIR: staticDir,
+        QUATI_DATA_DIR: join(home, ".quatibot"),
+        QUATI_PORT: String(contenderPort),
+        QUATI_STATIC_DIR: staticDir,
       },
       stdio: ["ignore", "ignore", "pipe"],
     });
@@ -1633,7 +1633,7 @@ describe("harness HTTP API", () => {
     expect(root.status).toBe(200);
     expect(root.headers.get("content-type")).toBe("text/html");
     expect(root.headers.get("cache-control")).toBe("no-cache");
-    expect(await root.text()).toContain("Packaged OpenMausBot");
+    expect(await root.text()).toContain("Packaged QuatiBot");
 
     const index = await fetch(`${BASE}/index.html`);
     expect(index.headers.get("cache-control")).toBe("no-cache");
@@ -1656,7 +1656,7 @@ describe("harness HTTP API", () => {
     expect(spa.status).toBe(200);
     expect(spa.headers.get("content-type")).toBe("text/html");
     expect(spa.headers.get("cache-control")).toBe("no-cache");
-    expect(await spa.text()).toContain("Packaged OpenMausBot");
+    expect(await spa.text()).toContain("Packaged QuatiBot");
 
     const missingChunk = await fetch(`${BASE}/assets/missing-abc123.js`);
     expect(missingChunk.status).toBe(200);
@@ -1768,7 +1768,7 @@ describe("harness HTTP API", () => {
       target: "room-goal",
       groupId: room.id,
       botId: lead.id,
-      runOn: "maus",
+      runOn: "quati",
       enabled: true,
       schedule: { type: "daily", time: "10:00", weekdays: [1, 2, 3, 4, 5] },
     });
@@ -2379,11 +2379,11 @@ describe("harness HTTP API", () => {
       const dump = z.object({
         mcpConfig: z.object({
           mcpServers: z.object({
-            agents: z.object({ env: z.object({ OMB_COMMS_TOKEN: z.string() }) }),
+            agents: z.object({ env: z.object({ QUATI_COMMS_TOKEN: z.string() }) }),
           }),
         }),
       }).parse(await readJsonFileWhenReady(fakeClaudeDump));
-      expect(dump.mcpConfig.mcpServers.agents.env.OMB_COMMS_TOKEN).toMatch(/^[a-f0-9]{48}$/);
+      expect(dump.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN).toMatch(/^[a-f0-9]{48}$/);
       expect((await api("POST", `/api/bots/${chief.id}/interrupt`)).status).toBe(200);
 
       const createOperator = async (fromThreadId: string, name: string, fromBotId = chief.id) => {
@@ -2638,7 +2638,7 @@ describe("harness HTTP API", () => {
         });
         return { status: response.status, body: await response.json() as { id?: string; error?: string } };
       };
-      const folder = mkdtempSync(join(tmpdir(), "omb-create-cwd-"));
+      const folder = mkdtempSync(join(tmpdir(), "quati-create-cwd-"));
       const landed = await create(`Folder operator ${chief.id}`, folder) as { status: number; body: { requestId?: string; state?: string; detail?: string } };
       expect(landed.body).toMatchObject({ state: "pending" });
       expect(landed.body.detail).toContain(`Working folder: "${folder}"`);
@@ -2667,7 +2667,7 @@ describe("harness HTTP API", () => {
     const chief = (await api("POST", "/api/bots")).body.bot;
     try {
       expect((await api("PATCH", `/api/bots/${chief.id}`, { chiefOfStaff: true, approvalMode: "ask" })).status).toBe(200);
-      const grants = ["create_bot", "mcp__agents__create_bot", "mcp__openmausbot__create_bot", "propose_team_setup", "set_up_team"];
+      const grants = ["create_bot", "mcp__agents__create_bot", "mcp__quatibot__create_bot", "propose_team_setup", "set_up_team"];
       expect((await api("PATCH", `/api/bots/${chief.id}`, { alwaysAllow: grants })).status).toBe(200);
       const granted = (await api("GET", "/api/bots?messages=0")).body.bots.find((bot: { id: string }) => bot.id === chief.id);
       expect(granted.alwaysAllow).toEqual(grants);
@@ -3081,7 +3081,7 @@ describe("harness HTTP API", () => {
       expect((await api("PATCH", "/api/config", { browserProfiles: [{ id, name: "Cleanup fixture" }] })).status).toBe(200);
       expect((await api("PATCH", `/api/bots/${bot.id}`, { browserProfile: id })).status).toBe(200);
     }
-    const key = join(home, ".openmausbot", "browser-engine-key");
+    const key = join(home, ".quatibot", "browser-engine-key");
     const backup = `${key}.fixture-backup`;
     const failureMarker = join(home, "browser-clear-fails");
     const hadKey = existsSync(key);
@@ -3091,7 +3091,7 @@ describe("harness HTTP API", () => {
     } else {
       writeFileSync(failureMarker, "fail");
     }
-    const journal = () => JSON.parse(readFileSync(join(home, ".openmausbot", "browser-cleanups.json"), "utf8")) as Array<{ id: string; phase: string }>;
+    const journal = () => JSON.parse(readFileSync(join(home, ".quatibot", "browser-cleanups.json"), "utf8")) as Array<{ id: string; phase: string }>;
     try {
       const deleted = target === "bot"
         ? await api("DELETE", `/api/bots/${bot.id}`)
@@ -3226,7 +3226,7 @@ describe("harness HTTP API", () => {
       expect(await record()).toMatchObject({ id: requestId, name: "Build machine", section: null, problem: expect.stringMatching(/fixture refused create/) });
       expect(managedBoatCreateBodies).toHaveLength(1);
       expect(managedBoatCreateBodies[0]).toMatchObject({ noEnv: true });
-      const persisted = JSON.parse(readFileSync(join(home, ".openmausbot", "team-computers.json"), "utf8"));
+      const persisted = JSON.parse(readFileSync(join(home, ".quatibot", "team-computers.json"), "utf8"));
       expect(persisted.computers).toContainEqual(expect.objectContaining({ id: requestId, name: "Build machine", section: null }));
       expect((await api("POST", "/api/team-computers", { requestId, name: "Different machine", acknowledgeCost: true })).status).toBe(409);
       expect((await api("POST", `/api/team-computers/${requestId}/provision`, {})).status).toBe(400);
@@ -3267,7 +3267,7 @@ describe("harness HTTP API", () => {
       expect((await api("PATCH", `/api/team-computers/${requestId}`, { section, acknowledgeSharedAccess: true })).status).toBe(200);
       expect(await record()).toMatchObject({ id: requestId, section, state: "idle" });
       expect((await api("GET", "/api/bots?messages=0")).body.bots.find((entry: { id: string }) => entry.id === bot.id)).toMatchObject({ computer: "off", section });
-      const saved = JSON.parse(readFileSync(join(home, ".openmausbot", "team-computers.json"), "utf8"));
+      const saved = JSON.parse(readFileSync(join(home, ".quatibot", "team-computers.json"), "utf8"));
       expect(saved.computers).toContainEqual(expect.objectContaining({ id: requestId, section }));
       expect((await api("POST", `/api/team-computers/${requestId}/join`, {})).status).toBe(409);
       expect((await api("POST", `/api/team-computers/${requestId}/control`, { action: "take" })).status).toBe(200);
@@ -3546,8 +3546,8 @@ describe("harness HTTP API", () => {
     const requestId = randomUUID();
     const section = `Park machine ${requestId.slice(0, 8)}`;
     // The main fixture runs the production ceiling (minutes); this test boots its own server with a seconds-scale cap.
-    const isolatedHome = mkdtempSync(join(tmpdir(), "omb-computer-wait-park-"));
-    const isolatedData = join(isolatedHome, ".openmausbot");
+    const isolatedHome = mkdtempSync(join(tmpdir(), "quati-computer-wait-park-"));
+    const isolatedData = join(isolatedHome, ".quatibot");
     const isolatedStatic = join(isolatedHome, "static");
     const isolatedPort = await freePortBlock([0, 1]);
     mkdirSync(join(isolatedStatic, "assets"), { recursive: true });
@@ -3567,14 +3567,14 @@ describe("harness HTTP API", () => {
         ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
         HOME: isolatedHome,
         USERPROFILE: isolatedHome,
-        OMB_PORT: String(isolatedPort),
-        OMB_WEBHOOK_PORT: String(isolatedPort + 1),
-        OMB_STATIC_DIR: isolatedStatic,
-        OMB_BOAT_API: `http://127.0.0.1:${boatStubPort}`,
+        QUATI_PORT: String(isolatedPort),
+        QUATI_WEBHOOK_PORT: String(isolatedPort + 1),
+        QUATI_STATIC_DIR: isolatedStatic,
+        QUATI_BOAT_API: `http://127.0.0.1:${boatStubPort}`,
         FAKE_CLAUDE_MODE: "hang",
         FAKE_CLAUDE_PROMPTS: join(isolatedHome, "desktop-prompts.jsonl"),
         // seconds, not minutes: the point of this test is the computer cap firing
-        OMB_COMPUTER_WAIT_MAX_MS: "2000",
+        QUATI_COMPUTER_WAIT_MAX_MS: "2000",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -3733,20 +3733,20 @@ describe("harness HTTP API", () => {
     const requestId = randomUUID();
     const section = `Park goal machine ${requestId.slice(0, 8)}`;
     // An isolated server with a seconds-scale computer wait ceiling, plus scripted coordinator replies.
-    const isolatedHome = mkdtempSync(join(tmpdir(), "omb-computer-wait-goal-"));
-    const isolatedData = join(isolatedHome, ".openmausbot");
+    const isolatedHome = mkdtempSync(join(tmpdir(), "quati-computer-wait-goal-"));
+    const isolatedData = join(isolatedHome, ".quatibot");
     const isolatedStatic = join(isolatedHome, "static");
     const isolatedPort = await freePortBlock([0, 1]);
     const leadReplies = [
       [
         "Parker should do the desktop work.",
-        '<openmaus-goal>{"status":"continue",',
-        '"next":"Parker","instruction":"Use the shared desktop","detail":"Delegated to Parker"}</openmaus-goal>',
+        '<quati-goal>{"status":"continue",',
+        '"next":"Parker","instruction":"Use the shared desktop","detail":"Delegated to Parker"}</quati-goal>',
       ].join("\n"),
       [
         "The desktop stayed busy, so I finished without it.",
-        '<openmaus-goal>{"status":"completed",',
-        '"detail":"Parker parked at the computer; the lead finished the goal directly."}</openmaus-goal>',
+        '<quati-goal>{"status":"completed",',
+        '"detail":"Parker parked at the computer; the lead finished the goal directly."}</quati-goal>',
       ].join("\n"),
     ];
     mkdirSync(join(isolatedStatic, "assets"), { recursive: true });
@@ -3792,11 +3792,11 @@ describe("harness HTTP API", () => {
         ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
         HOME: isolatedHome,
         USERPROFILE: isolatedHome,
-        OMB_PORT: String(isolatedPort),
-        OMB_WEBHOOK_PORT: String(isolatedPort + 1),
-        OMB_STATIC_DIR: isolatedStatic,
-        OMB_BOAT_API: `http://127.0.0.1:${boatStubPort}`,
-        OMB_COMPUTER_WAIT_MAX_MS: "2000",
+        QUATI_PORT: String(isolatedPort),
+        QUATI_WEBHOOK_PORT: String(isolatedPort + 1),
+        QUATI_STATIC_DIR: isolatedStatic,
+        QUATI_BOAT_API: `http://127.0.0.1:${boatStubPort}`,
+        QUATI_COMPUTER_WAIT_MAX_MS: "2000",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -4826,8 +4826,8 @@ describe("harness HTTP API", () => {
     // Seeded the way the voice-note route saves one, under a generated-style name.
     const audio = Buffer.from("0123456789abcdefghij");
     const audioName = "voice-note-range-fixture.mp3";
-    mkdirSync(join(home, ".openmausbot", "attachments"), { recursive: true });
-    writeFileSync(join(home, ".openmausbot", "attachments", audioName), audio);
+    mkdirSync(join(home, ".quatibot", "attachments"), { recursive: true });
+    writeFileSync(join(home, ".quatibot", "attachments", audioName), audio);
     const size = audio.byteLength;
 
     const bounded = await fetch(`${BASE}/api/attachments/${audioName}`, { headers: { range: "bytes=2-7" } });
@@ -5331,8 +5331,8 @@ describe("harness HTTP API", () => {
   });
 
   it("carries a Full bot's access across engines silently, and keeps Custom bots on Codex", async () => {
-    const isolatedHome = mkdtempSync(join(tmpdir(), "omb-trusted-mode-model-"));
-    const isolatedData = join(isolatedHome, ".openmausbot");
+    const isolatedHome = mkdtempSync(join(tmpdir(), "quati-trusted-mode-model-"));
+    const isolatedData = join(isolatedHome, ".quatibot");
     const isolatedStatic = join(isolatedHome, "static");
     const isolatedPort = await freePortBlock([0, 1]);
     mkdirSync(join(isolatedStatic, "assets"), { recursive: true });
@@ -5379,9 +5379,9 @@ describe("harness HTTP API", () => {
         ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
         HOME: isolatedHome,
         USERPROFILE: isolatedHome,
-        OMB_PORT: String(isolatedPort),
-        OMB_WEBHOOK_PORT: String(isolatedPort + 1),
-        OMB_STATIC_DIR: isolatedStatic,
+        QUATI_PORT: String(isolatedPort),
+        QUATI_WEBHOOK_PORT: String(isolatedPort + 1),
+        QUATI_STATIC_DIR: isolatedStatic,
         FAKE_CLAUDE_MODE: "hang",
         FAKE_CLAUDE_DUMP: join(isolatedHome, "fake-claude-dump.json"),
       },
@@ -5527,7 +5527,7 @@ describe("harness HTTP API", () => {
       .map((bot: { name: string }) => bot.name);
     const exported = await api("POST", "/api/teams/export", { name: "Field Team" });
     expect(exported.status).toBe(200);
-    expect(exported.body).toMatchObject({ format: "openmaus.team", version: 2, team: { name: "Field Team" } });
+    expect(exported.body).toMatchObject({ format: "quati.team", version: 2, team: { name: "Field Team" } });
     expect(exported.body.team.members.map((member: { name: string }) => member.name)).toEqual(visibleNames);
     expect(exported.body.team.members).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "mira", name: "Mira", title: "Project Lead", appearance: { color: "purple", mascotExpression: "focused" } }),
@@ -5542,7 +5542,7 @@ describe("harness HTTP API", () => {
     expect(markdownExport.body.markdown).toContain("Give this file to your Chief of Staff");
     expect(markdownExport.body.markdown).not.toMatch(/Archived|autoApprove|alwaysAllow|modelSelection|threadId/);
     expect((await api("GET", "/api/bots")).body.groups).toHaveLength(roomsBefore);
-    expect((await api("POST", "/api/teams/export", {})).body.team.name).toBe("My OpenMaus Team");
+    expect((await api("POST", "/api/teams/export", {})).body.team.name).toBe("My Quati Team");
 
     const stream = await openSse(`${BASE}/api/events`);
     try {
@@ -5603,7 +5603,7 @@ describe("harness HTTP API", () => {
     expect(exported.body.team).not.toHaveProperty("room");
 
     const roomsBefore = (await api("GET", "/api/bots")).body.groups.length;
-    const folder = mkdtempSync(join(tmpdir(), "omb-project-"));
+    const folder = mkdtempSync(join(tmpdir(), "quati-project-"));
 
     const stream = await openSse(`${BASE}/api/events`);
     try {
@@ -5652,7 +5652,7 @@ describe("harness HTTP API", () => {
     try {
       for (const suffix of [3, 4]) {
         const imported = await api("POST", "/api/teams/import", {
-          format: "openmaus.team", version: 2,
+          format: "quati.team", version: 2,
           team: { name: `${stem} long template name`, members: [{ key: "helper", name: "Template helper", section: "Must not choose destination", appearance: { color: "blue" } }] },
         });
         expect(imported.status).toBe(201);
@@ -5671,7 +5671,7 @@ describe("harness HTTP API", () => {
 
   it("installs a complete bot package with a Chief, room, playbook, connector intent, and paused routine", async () => {
     const packageFile = {
-      format: "openmaus.package",
+      format: "quati.package",
       version: 1,
       package: {
         id: "signal-desk",
@@ -5680,7 +5680,7 @@ describe("harness HTTP API", () => {
         tagline: "Find and explain the signal.",
         summary: "A complete two-bot signal workflow.",
         category: "Research",
-        author: { name: "OpenMausBot" },
+        author: { name: "QuatiBot" },
         license: "MIT",
         outcomes: ["Produce a concise signal brief."],
         setupMinutes: 4,
@@ -5720,7 +5720,7 @@ describe("harness HTTP API", () => {
           name: "Morning signals",
           agent: "scout",
           prompt: "Prepare the approved morning signal brief.",
-          runOn: "maus",
+          runOn: "quati",
           schedule: { type: "daily", time: "09:00", weekdays: [1, 2, 3, 4, 5] },
           durationMinutes: 30,
           enabledAfterInstall: false,
@@ -5808,7 +5808,7 @@ describe("harness HTTP API", () => {
   });
 
   it("the scout reads a folder, proposes an importable team, and creates nothing until the human imports", async () => {
-    const folder = mkdtempSync(join(tmpdir(), "omb-scout-"));
+    const folder = mkdtempSync(join(tmpdir(), "quati-scout-"));
     writeFileSync(join(folder, "README.md"), "# Demo Shop\n\nA storefront demo.\n");
     writeFileSync(
       join(folder, "package.json"),
@@ -5866,7 +5866,7 @@ describe("harness HTTP API", () => {
     const room = (await api("POST", "/api/groups", { memberIds: [trusted.id], name: "War Room" })).body.group;
 
     const smuggled = {
-      format: "openmaus.team",
+      format: "quati.team",
       version: 2,
       team: {
         name: "Trap Team",
@@ -5925,7 +5925,7 @@ describe("harness HTTP API", () => {
     expect(after.bots.filter((bot: { chiefOfStaff?: boolean }) => bot.chiefOfStaff).map((bot: { id: string }) => bot.id).sort()).toEqual(chiefsBefore);
 
     const legacy = await api("POST", "/api/teams/import", {
-      format: "openmaus.team",
+      format: "quati.team",
       version: 1,
       team: {
         name: "Trap Team Legacy",
@@ -6045,9 +6045,9 @@ describe("harness HTTP API", () => {
       rmSync(fakeClaudeDump, { force: true });
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "stay active" })).status).toBe(202);
       const dump = await readJsonFileWhenReady<{
-        mcpConfig: { mcpServers: { agents: { env: { OMB_COMMS_TOKEN: string } } } };
+        mcpConfig: { mcpServers: { agents: { env: { QUATI_COMMS_TOKEN: string } } } };
       }>(fakeClaudeDump);
-      const token = dump.mcpConfig.mcpServers.agents.env.OMB_COMMS_TOKEN;
+      const token = dump.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
       const requested = await fetch(`${BASE}/api/internal/request-credential`, {
         method: "POST",
         headers: {
@@ -6069,7 +6069,7 @@ describe("harness HTTP API", () => {
         .find((message: { id: string }) => message.id === messageId);
       expect(directCard).toMatchObject({
         kind: "secret",
-        text: "Securely provide the OpenAI API key from OpenMausBot on your phone or computer. It is never added to chat.",
+        text: "Securely provide the OpenAI API key from QuatiBot on your phone or computer. It is never added to chat.",
       });
       expect(directCard.secret.description).toContain(
         `${bot.name} can use it but never read it back.`,
@@ -6102,8 +6102,8 @@ describe("harness HTTP API", () => {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-openmausbot-companion": "1",
-            "x-openmausbot-companion-device": "phone-1",
+            "x-quatibot-companion": "1",
+            "x-quatibot-companion-device": "phone-1",
           },
           body: JSON.stringify(encryptedEnvelope),
         },
@@ -6210,7 +6210,7 @@ describe("harness HTTP API", () => {
       expect((await card(firstCard.messageId)).signIn).toMatchObject({ site: "example.com", superseded: true });
       expect(await card(secondCard.messageId)).toMatchObject({
         kind: "signin",
-        text: `${bot.name} needs you to sign in to example.com. Open this conversation in OpenMausBot to sign in, then press Done.`,
+        text: `${bot.name} needs you to sign in to example.com. Open this conversation in QuatiBot to sign in, then press Done.`,
         signIn: { url: "https://www.example.com/", site: "example.com", place: "browser", reason: "Still behind a login." },
       });
       expect((await card(secondCard.messageId)).signIn.superseded).toBeUndefined();
@@ -6364,7 +6364,7 @@ describe("harness HTTP API", () => {
       expect(listed.body.onePassword).toEqual({ connected: false });
 
       const transcript = JSON.stringify((await api("GET", `/api/threads/${bot.threadId}/messages`)).body);
-      const sealed = readFileSync(join(home, ".openmausbot", "logins.json.enc"));
+      const sealed = readFileSync(join(home, ".quatibot", "logins.json.enc"));
       for (const secret of [password, twoFactorKey]) {
         for (const answer of answers) expect(answer).not.toContain(secret);
         expect(transcript).not.toContain(secret);
@@ -6496,7 +6496,7 @@ describe("harness HTTP API", () => {
       const firstCard = (await first.json()) as { messageId: string };
 
       // A second connection holds the database write lock, so the fresh card's append fails mid-request.
-      const lockDb = new DatabaseSync(join(home, ".openmausbot", "messages.db"));
+      const lockDb = new DatabaseSync(join(home, ".quatibot", "messages.db"));
       lockDb.exec("BEGIN IMMEDIATE");
       try {
         const failed = await request("needed for the second task");
@@ -6537,7 +6537,7 @@ describe("harness HTTP API", () => {
         prompt: "look at the cloud desktop",
         target: "bot",
         botId: bot.id,
-        runOn: "maus",
+        runOn: "quati",
         enabled: true,
         schedule: { type: "daily", time: "10:00", weekdays: [1, 2, 3, 4, 5] },
       });
@@ -6587,7 +6587,7 @@ describe("harness HTTP API", () => {
         modelSelection: { instanceId: "ghost", model: "ghost-1", effort: "high" },
       });
       expect(bot.messages[0].text).toContain("Pathfinder");
-      expect(bot.messages[0].text).not.toContain("Maus");
+      expect(bot.messages[0].text).not.toContain("Quati");
     } finally {
       await api("DELETE", `/api/bots/${bot.id}`);
     }
@@ -7488,7 +7488,7 @@ describe("harness HTTP API", () => {
         (candidate: { id: string }) => candidate.id === botId,
       );
       expect(bot).not.toHaveProperty("voice");
-      const disk = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+      const disk = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
       expect(disk.tts).toMatchObject({ provider, voice: "" });
     } finally {
       if (botId) await api("DELETE", `/api/bots/${botId}`).catch(() => undefined);
@@ -7511,7 +7511,7 @@ describe("harness HTTP API", () => {
       expect(away.body.tts).not.toHaveProperty("fishModel");
       const back = await api("PUT", "/api/config", { tts: { provider: "fish" } });
       expect(back.body.tts).toMatchObject({ provider: "fish", fishModel: "s2.1-pro-free" });
-      const disk = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+      const disk = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
       expect(disk.tts).toMatchObject({ provider: "fish", fishModel: "s2.1-pro-free" });
     } finally {
       await api("PUT", "/api/config", { tts: { provider: "elevenlabs", voice: "", fishModel: "s2.1-pro" } }).catch(() => undefined);
@@ -7520,7 +7520,7 @@ describe("harness HTTP API", () => {
 
   it("does not switch voice providers when per-agent voices cannot be cleared", async () => {
     let botId = "";
-    const botsPath = join(home, ".openmausbot", "bots.json");
+    const botsPath = join(home, ".quatibot", "bots.json");
     const backupPath = `${botsPath}.voice-switch-test`;
     let blocked = false;
     try {
@@ -7612,7 +7612,7 @@ describe("harness HTTP API", () => {
       expect(rotated.status).toBe(200);
       expect(rotated.body.box).toEqual({ configured: true });
       if (provisioned) {
-        const journal = readFileSync(join(home, ".openmausbot", "box-create-requests.json"), "utf8");
+        const journal = readFileSync(join(home, ".quatibot", "box-create-requests.json"), "utf8");
         expect(journal).toContain(managedBoatCreateId);
       }
     } finally {
@@ -7644,7 +7644,7 @@ describe("harness HTTP API", () => {
       managedBoatRows = [];
       managedBoatCreatedIds.delete(managedBoatCreateId);
       expect((await api("PUT", "/api/config", { box: { token: "" } })).status).toBe(200);
-      const journal = JSON.parse(readFileSync(join(home, ".openmausbot", "box-create-requests.json"), "utf8"));
+      const journal = JSON.parse(readFileSync(join(home, ".quatibot", "box-create-requests.json"), "utf8"));
       expect(journal.requests.some((entry: { botId?: string }) => entry.botId === bot.id)).toBe(false);
 
       expect((await api("PUT", "/api/config", { box: { token: "box_route" } })).status).toBe(200);
@@ -7857,7 +7857,7 @@ describe("harness HTTP API", () => {
 
     const enabled = await api("PATCH", "/api/mcp/servers/fixture", { enabled: true });
     expect(enabled.body.servers[0].enabled).toBe(true);
-    const disk = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+    const disk = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
     expect(disk.mcpServers.fixture.env).toEqual({ FIXTURE_TOKEN: secret, NEXT: "fresh" });
 
     const reserved = await api("POST", "/api/mcp/servers", { name: "computer", command: "evil" });
@@ -7875,7 +7875,7 @@ describe("harness HTTP API", () => {
     const secret = "bot-filed-secret-that-must-never-render";
     const headerSecret = "bot-header-secret-that-must-never-render";
     const oauthSecret = "bot-oauth-secret-that-must-never-render";
-    const configFile = join(home, ".openmausbot", "config.json");
+    const configFile = join(home, ".quatibot", "config.json");
     const fileServer = (body: unknown) => fetch(`${BASE}/api/internal/mcp-servers`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -8004,7 +8004,7 @@ describe("harness HTTP API", () => {
     const after = await api("GET", "/api/config");
     expect(after.body.rooms).toEqual({ turnTimeoutMinutes: 20 });
 
-    const disk = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+    const disk = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
     expect(disk.rooms).toEqual({ turnTimeoutMinutes: 20 });
 
     await api("PUT", "/api/config", { rooms: { turnTimeoutMinutes: 5 } });
@@ -8028,9 +8028,9 @@ describe("harness HTTP API", () => {
       rmSync(fakeClaudeDump, { force: true });
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "count my notes" })).status).toBe(202);
       const dump = z.object({
-        mcpConfig: z.object({ mcpServers: z.object({ ogb: z.object({ args: z.array(z.string()) }) }) }),
+        mcpConfig: z.object({ mcpServers: z.object({ quati: z.object({ args: z.array(z.string()) }) }) }),
       }).parse(await readJsonFileWhenReady(fakeClaudeDump));
-      const socketPath = dump.mcpConfig.mcpServers.ogb.args[1];
+      const socketPath = dump.mcpConfig.mcpServers.quati.args[1];
       const raise = async (
         id: string,
         command: string,
@@ -8141,7 +8141,7 @@ describe("harness HTTP API", () => {
       })).status).toBe(202);
       const seen = await readJsonFileWhenReady<{ systemPrompt?: string }>(fakeClaudeDump, 15_000);
       const system = seen.systemPrompt ?? "";
-      expect(system).toContain('<openmaus-skill id="create-verification-skill"');
+      expect(system).toContain('<quati-skill id="create-verification-skill"');
       expect(system).toContain("skill_manage");
     } finally {
       await api("POST", `/api/bots/${bot.id}/interrupt`);
@@ -8160,8 +8160,8 @@ describe("harness HTTP API", () => {
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "hello" })).status).toBe(202);
       const seen = await readJsonFileWhenReady<{ systemPrompt?: string }>(fakeClaudeDump, 15_000);
       const system: string = seen.systemPrompt ?? "";
-      expect(system.startsWith("You are Kiwi, a personal bot in OpenMausBot. Role: Tracker.")).toBe(true);
-      const persona = "You are Kiwi, a personal bot in OpenMausBot. Role: Tracker.";
+      expect(system.startsWith("You are Kiwi, a personal bot in QuatiBot. Role: Tracker.")).toBe(true);
+      const persona = "You are Kiwi, a personal bot in QuatiBot. Role: Tracker.";
       const afterPersona = system.slice(persona.length);
       expect(afterPersona.startsWith("\n\nYour standing instructions follow.")).toBe(true);
       expect(system).toContain("--- BEGIN STANDING INSTRUCTIONS (SOUL.md, 28 bytes) ---\nFile bugs. Never file noise.\n--- END STANDING INSTRUCTIONS ---");
@@ -8189,7 +8189,7 @@ describe("harness HTTP API", () => {
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "hello" })).status).toBe(202);
       const system = (await readJsonFileWhenReady<{ systemPrompt: string }>(fakeClaudeDump, 15_000)).systemPrompt;
       expect(system).toContain(roster);
-      expect(system).not.toContain("OPENMAUSBOT STATUS");
+      expect(system).not.toContain("QUATIBOT STATUS");
     } finally {
       await api("POST", `/api/bots/${bot.id}/interrupt`);
       await api("DELETE", `/api/bots/${bot.id}`);
@@ -8256,7 +8256,7 @@ describe("harness HTTP API", () => {
       rmSync(fakeClaudeDump, { force: true });
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "hello" })).status).toBe(202);
       let system = (await readJsonFileWhenReady<{ systemPrompt: string }>(fakeClaudeDump, 15_000)).systemPrompt;
-      expect(system.startsWith("You are Blank, a personal bot in OpenMausBot.")).toBe(true);
+      expect(system.startsWith("You are Blank, a personal bot in QuatiBot.")).toBe(true);
       expect(system).not.toContain("at most four questions");
       expect(system).toContain("propose_profile");
 
@@ -8356,7 +8356,7 @@ describe("harness HTTP API", () => {
         soul: "Record text.",
       })).status).toBe(200);
       // An edit made directly to the mirror file, bypassing the app entirely.
-      writeFileSync(join(home, ".openmausbot", "bots", bot.id, "SOUL.md"), "File text.");
+      writeFileSync(join(home, ".quatibot", "bots", bot.id, "SOUL.md"), "File text.");
       rmSync(fakeClaudeDump, { force: true });
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "hello" })).status).toBe(202);
       const seen = await readJsonFileWhenReady<{ systemPrompt?: string }>(fakeClaudeDump, 15_000);
@@ -8390,8 +8390,8 @@ describe("harness HTTP API", () => {
       })).status).toBe(202);
       let seen = await readJsonFileWhenReady<{ systemPrompt?: string }>(fakeClaudeDump);
       let system = seen.systemPrompt ?? "";
-      expect(system).toContain('<openmaus-skill id="create-verification-skill"');
-      expect(system).toContain('<openmaus-skill id="phone-harness"');
+      expect(system).toContain('<quati-skill id="create-verification-skill"');
+      expect(system).toContain('<quati-skill id="phone-harness"');
       expect((await api("POST", `/api/groups/${room.id}/interrupt`, {})).status).toBe(200);
       await expect.poll(async () => {
         const state = (await api("GET", "/api/bots?messages=0")).body;
@@ -8404,8 +8404,8 @@ describe("harness HTTP API", () => {
       })).status).toBe(202);
       seen = await readJsonFileWhenReady<{ systemPrompt?: string }>(fakeClaudeDump);
       system = seen.systemPrompt ?? "";
-      expect(system).not.toContain('<openmaus-skill id="create-verification-skill"');
-      expect(system).toContain('<openmaus-skill id="phone-harness"');
+      expect(system).not.toContain('<quati-skill id="create-verification-skill"');
+      expect(system).toContain('<quati-skill id="phone-harness"');
     } finally {
       if (room) {
         expect((await api("POST", `/api/groups/${room.id}/interrupt`, {})).status).toBe(200);
@@ -8429,7 +8429,7 @@ describe("harness HTTP API", () => {
     const before = await api("GET", "/api/config");
     expect(before.status).toBe(200);
     expect(before.body.features).toEqual({ browser: false, skillAuthoring: true, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, routinesInConversation: false, sharedComputers: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true });
-    const untouched = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+    const untouched = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
     expect(untouched.features?.skillAuthoring).toBeUndefined();
     expect(untouched.features?.skillReview).toBeUndefined();
     expect(untouched.features?.sharedComputers).toBeUndefined();
@@ -8440,7 +8440,7 @@ describe("harness HTTP API", () => {
     expect(saved.status).toBe(200);
     expect(saved.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, routinesInConversation: false, sharedComputers: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true });
 
-    const disk = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+    const disk = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
     // Earlier browser coverage may have persisted its own toggle: opting out must preserve sibling settings.
     expect(disk.features).toEqual({ ...untouched.features, skillAuthoring: false });
 
@@ -8626,7 +8626,7 @@ describe("harness HTTP API", () => {
       name: "Deletion safety routine",
       prompt: "Keep running until interrupted.",
       botId: bot.id,
-      runOn: "maus",
+      runOn: "quati",
       enabled: false,
       schedule: { type: "daily", time: "10:00", weekdays: [1] },
     })).body.routine;
@@ -8686,7 +8686,7 @@ describe("harness HTTP API", () => {
         name: "Emergency stop routine",
         prompt: "Keep running until interrupted.",
         botId: bot.id,
-        runOn: "maus",
+        runOn: "quati",
         enabled: false,
         schedule: { type: "daily", time: "10:00", weekdays: [1] },
       });
@@ -8815,8 +8815,8 @@ describe("harness HTTP API", () => {
       const browser = dump.mcpConfig.mcpServers.browser;
       expect(browser.command).toBe(process.execPath);
       expect(browser.args).toEqual([expect.stringMatching(/harness-mcp-proxy\.(?:ts|js|mjs)$/), "browser"]);
-      expect(browser.env.OMB_MCP_TOKEN_BROWSER).toEqual(expect.any(String));
-      expect(browser.env.OMB_HARNESS_URL).toBe(BASE);
+      expect(browser.env.QUATI_MCP_TOKEN_BROWSER).toEqual(expect.any(String));
+      expect(browser.env.QUATI_HARNESS_URL).toBe(BASE);
       expect(browser.env.AGENT_BROWSER_SESSION).toBeUndefined();
       expect(browser.env.AGENT_BROWSER_RESTORE).toBeUndefined();
       expect(browser.env.AGENT_BROWSER_ENCRYPTION_KEY).toBeUndefined();
@@ -8956,8 +8956,8 @@ describe("harness HTTP API", () => {
     }
   }, 60_000);
   it("reconciles a committed crash-stale bot reference before ACK and profile-id reuse", async () => {
-    const isolatedHome = mkdtempSync(join(tmpdir(), "omb-browser-cleanup-restart-"));
-    const isolatedData = join(isolatedHome, ".openmausbot");
+    const isolatedHome = mkdtempSync(join(tmpdir(), "quati-browser-cleanup-restart-"));
+    const isolatedData = join(isolatedHome, ".quatibot");
     const isolatedStatic = join(isolatedHome, "static");
     const isolatedPort = await freePortBlock([0, 1]);
     mkdirSync(join(isolatedStatic, "assets"), { recursive: true });
@@ -9001,7 +9001,7 @@ describe("harness HTTP API", () => {
           postMessage(message) {
             if (message?.requestId && /browser-(?:bot|profile)-deleted/.test(message.type ?? "")) {
               queueMicrotask(() => messages.emit("message", { data: {
-                type: "openmausbot:browser-lifecycle-result",
+                type: "quatibot:browser-lifecycle-result",
                 requestId: message.requestId,
                 ok: true,
               } }));
@@ -9021,11 +9021,11 @@ describe("harness HTTP API", () => {
           ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
           HOME: isolatedHome,
           USERPROFILE: isolatedHome,
-          OMB_PORT: String(isolatedPort),
-          OMB_WEBHOOK_PORT: String(isolatedPort + 1),
-          OMB_STATIC_DIR: isolatedStatic,
+          QUATI_PORT: String(isolatedPort),
+          QUATI_WEBHOOK_PORT: String(isolatedPort + 1),
+          QUATI_STATIC_DIR: isolatedStatic,
           // macOS caps socket paths at 103 bytes, so a real agent-browser cannot name its socket under this HOME.
-          OMB_AGENT_BROWSER_PATH: join(isolatedHome, "missing-agent-browser"),
+          QUATI_AGENT_BROWSER_PATH: join(isolatedHome, "missing-agent-browser"),
           FAKE_CLAUDE_MODE: "hang",
           FAKE_CLAUDE_DUMP: join(isolatedHome, "fake-claude-dump.json"),
         },
@@ -9071,7 +9071,7 @@ describe("harness HTTP API", () => {
         browserProfiles: [{ id: "client", name: "Client" }],
       })).status).toBe(200);
       expect((await api("PATCH", `/api/bots/${bot.id}`, { browserProfile: "client" })).body.bot.browserProfile).toBe("client");
-      const config = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+      const config = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
       const profile = config.browserProfiles.find((entry: { id: string }) => entry.id === "client");
       rmSync(join(home, "browser-calls.jsonl"), { force: true });
       expect((await api("PATCH", "/api/config", { browserProfiles: [] })).status).toBe(200);
@@ -9338,7 +9338,7 @@ describe("harness HTTP API", () => {
     expect(invalid.status).toBe(400);
     expect(invalid.body.error).toContain("localVm.maxInstances");
 
-    const disk = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+    const disk = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
     expect(disk.localVm).toEqual({ mode: "per-bot", maxInstances: 5, idleTimeoutMinutes: 480 });
     await api("PATCH", "/api/config", { localVm: { mode: "shared", maxInstances: 2 } });
   });
@@ -9362,7 +9362,7 @@ describe("harness HTTP API", () => {
       expect((await api("GET", "/api/config")).body.localVm.idleTimeoutMinutes).toBe(30);
       expect((await api("GET", "/api/local-computer")).body.idle_timeout_ms).toBe(30 * 60_000);
 
-      const disk = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+      const disk = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
       expect(disk.localVm).toMatchObject({ idleTimeoutMinutes: 30 });
 
       expect((await api("PATCH", "/api/config", { localVm: { mode: "per-bot" } })).status).toBe(200);
@@ -9394,7 +9394,7 @@ describe("harness HTTP API", () => {
 
       const removed = await api("POST", `/api/bots/${bot.id}/local-computer/remove`, {});
       expect(removed.status).toBe(409);
-      expect(removed.body.error).toMatch(/not created by OpenMausBot.*remove it manually/i);
+      expect(removed.body.error).toMatch(/not created by QuatiBot.*remove it manually/i);
       expect(readFileSync(fakeDockerLog, "utf8").split("\n")).not.toContain(
         `rm -f ${status.body.container_name}`,
       );
@@ -9602,9 +9602,9 @@ describe("harness HTTP API", () => {
       expect((await api("POST", `/api/groups/${room.id}/messages`, { text: "start the lead" })).status).toBe(202);
       const firstDump = await readJsonFileWhenReady<{
         pid: number;
-        mcpConfig: { mcpServers: { agents: { env: { OMB_COMMS_TOKEN: string } } } };
+        mcpConfig: { mcpServers: { agents: { env: { QUATI_COMMS_TOKEN: string } } } };
       }>(fakeClaudeDump);
-      expect(firstDump.mcpConfig.mcpServers.agents.env.OMB_COMMS_TOKEN).toMatch(/^[a-f0-9]{48}$/);
+      expect(firstDump.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN).toMatch(/^[a-f0-9]{48}$/);
       const token = await mintTestCapability(BASE, second.id, room.threadId);
 
       const requested = await fetch(`${BASE}/api/internal/request-credential`, {
@@ -9628,7 +9628,7 @@ describe("harness HTTP API", () => {
         .find((message: { id: string }) => message.id === messageId);
       expect(roomCard).toMatchObject({
         kind: "secret",
-        text: "Securely provide the OpenAI API key from OpenMausBot on your phone or computer. It is never added to chat.",
+        text: "Securely provide the OpenAI API key from QuatiBot on your phone or computer. It is never added to chat.",
         from: { botId: second.id, name: second.name, color: second.color },
       });
 
@@ -9642,8 +9642,8 @@ describe("harness HTTP API", () => {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-openmausbot-companion": "1",
-            "x-openmausbot-companion-device": "phone-1",
+            "x-quatibot-companion": "1",
+            "x-quatibot-companion-device": "phone-1",
           },
           body: JSON.stringify({
             version: 1,
@@ -9722,9 +9722,9 @@ describe("harness HTTP API", () => {
       rmSync(fakeClaudeDump, { force: true });
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "prepare a routine" })).status).toBe(202);
       const dump = await readJsonFileWhenReady<{
-        mcpConfig: { mcpServers: { agents: { env: { OMB_COMMS_TOKEN: string } } } };
+        mcpConfig: { mcpServers: { agents: { env: { QUATI_COMMS_TOKEN: string } } } };
       }>(fakeClaudeDump);
-      expect(dump.mcpConfig.mcpServers.agents.env.OMB_COMMS_TOKEN).toMatch(/^[a-f0-9]{48}$/);
+      expect(dump.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN).toMatch(/^[a-f0-9]{48}$/);
       expect((await api("POST", `/api/bots/${bot.id}/interrupt`)).status).toBe(200);
       await expect.poll(async () => {
         const state = (await api("GET", "/api/bots")).body;
@@ -9778,7 +9778,7 @@ describe("harness HTTP API", () => {
               time: "09:00",
               weekdays: ["monday", "tuesday", "wednesday", "thursday", "friday"],
             },
-            runOn: "maus",
+            runOn: "quati",
             durationMinutes: 30,
           },
         }),
@@ -9831,7 +9831,7 @@ describe("harness HTTP API", () => {
             name: "Nowhere brief",
             instructions: "Should never be scheduled.",
             schedule: { type: "weekly", time: "09:00", weekdays: ["monday"] },
-            runOn: "maus",
+            runOn: "quati",
           },
         }),
       });
@@ -9851,7 +9851,7 @@ describe("harness HTTP API", () => {
             name: "Teammate brief",
             instructions: "Summarize for the teammate every weekday.",
             schedule: { type: "weekly", time: "08:30", weekdays: ["monday"] },
-            runOn: "maus",
+            runOn: "quati",
             durationMinutes: 30,
           },
         }),
@@ -10026,7 +10026,7 @@ describe("harness HTTP API", () => {
             name: "Orphan-safe brief",
             instructions: "Summarize without recreating the deleted source.",
             schedule: { type: "weekly", time: "09:00", weekdays: ["monday"] },
-            runOn: "maus",
+            runOn: "quati",
           },
         }),
       });
@@ -10053,7 +10053,7 @@ describe("harness HTTP API", () => {
         runOnStartup: true,
         prompt: `${fakeSecret}\n${"Review the archive. ".repeat(180)}`,
         botId: bot.id,
-        runOn: "maus",
+        runOn: "quati",
         enabled: false,
         schedule: {
           type: "interval",
@@ -10132,7 +10132,7 @@ describe("harness HTTP API", () => {
         name: "Teammate digest",
         prompt: "Summarize the teammate's queue.",
         botId: teammate.id,
-        runOn: "maus",
+        runOn: "quati",
         enabled: true,
         schedule: { type: "daily", time: "07:30", weekdays: [1, 2, 3, 4, 5] },
       })).body.routine;
@@ -10140,7 +10140,7 @@ describe("harness HTTP API", () => {
         name: "Chief digest",
         prompt: "Summarize the chief's queue.",
         botId: chief.id,
-        runOn: "maus",
+        runOn: "quati",
         enabled: true,
         schedule: { type: "daily", time: "08:00", weekdays: [1] },
       })).body.routine;
@@ -10243,7 +10243,7 @@ describe("harness HTTP API", () => {
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify({ fromBotId: bot.id, fromThreadId: bot.threadId, ...body }),
       });
-      const routine = (name: string) => ({ name, instructions: `Run ${name}.`, schedule: { type: "weekly", time: "09:00", weekdays: ["monday"] }, runOn: "maus" });
+      const routine = (name: string) => ({ name, instructions: `Run ${name}.`, schedule: { type: "weekly", time: "09:00", weekdays: ["monday"] }, runOn: "quati" });
       for (let index = 0; index < 8; index += 1) {
         expect((await post({ action: "create", forBotId: teammate.id, routine: routine(`Teammate ${index}`) })).status).toBe(201);
       }
@@ -10263,7 +10263,7 @@ describe("harness HTTP API", () => {
   });
 
   it("applies a bot's own profile change at once, records history, and undoes it from its receipt", async () => {
-    const soulFileOf = (botId: string) => join(home, ".openmausbot", "bots", botId, "SOUL.md");
+    const soulFileOf = (botId: string) => join(home, ".quatibot", "bots", botId, "SOUL.md");
     const bot = (await api("POST", "/api/bots", { name: "Scout" })).body.bot;
     try {
       await api("PATCH", `/api/bots/${bot.id}`, { approvalMode: "ask", modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } });
@@ -10485,7 +10485,7 @@ describe("harness HTTP API", () => {
       expect(card.skillRequest.references).toEqual([{ path: "references/edge-cases.md", content: "# Edge cases\n\n- one more rule\n" }]);
       expect(card.skillRequest.referencesSha256).toMatch(/^[a-f0-9]{64}$/);
       expect(card.subtitle).toContain("1 reference file");
-      const reference = join(home, ".openmausbot", "workspaces", bot.id, ".agents", "skills", "expense-rules", "references", "edge-cases.md");
+      const reference = join(home, ".quatibot", "workspaces", bot.id, ".agents", "skills", "expense-rules", "references", "edge-cases.md");
       expect(readFileSync(reference, "utf8")).toContain("one more rule");
 
       // Undo puts back the version without references.
@@ -10511,9 +10511,9 @@ describe("harness HTTP API", () => {
       rmSync(fakeClaudeDump, { force: true });
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "prepare a skill" })).status).toBe(202);
       const dump = await readJsonFileWhenReady<{
-        mcpConfig: { mcpServers: { agents: { env: { OMB_COMMS_TOKEN: string } } } };
+        mcpConfig: { mcpServers: { agents: { env: { QUATI_COMMS_TOKEN: string } } } };
       }>(fakeClaudeDump);
-      expect(dump.mcpConfig.mcpServers.agents.env.OMB_COMMS_TOKEN).toMatch(/^[a-f0-9]{48}$/);
+      expect(dump.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN).toMatch(/^[a-f0-9]{48}$/);
       const token = await mintTestCapability(BASE, bot.id, bot.threadId, { skillAuthoring: true });
       const internalHeaders = {
         authorization: `Bearer ${token}`,
@@ -10578,7 +10578,7 @@ describe("harness HTTP API", () => {
       expect(await undo(updated.requestId)).toMatchObject({ status: 200, body: { alreadyUndone: true } });
 
       const edited = await stage("reviewed-skill-one", "This version is edited by hand next.\n", "update", "A version edited by hand.");
-      const skillPath = join(home, ".openmausbot", "workspaces", bot.id, ".agents", "skills", "reviewed-skill-one", "SKILL.md");
+      const skillPath = join(home, ".quatibot", "workspaces", bot.id, ".agents", "skills", "reviewed-skill-one", "SKILL.md");
       const handEdit = edited.skillRequest.preview.replace("edited by hand next", "changed by hand");
       writeFileSync(skillPath, handEdit);
       expect(await undo(edited.requestId)).toMatchObject({ status: 409, body: { code: "changed-since" } });
@@ -10665,7 +10665,7 @@ describe("harness HTTP API", () => {
     expect(saved.body.profile).toEqual({ name: "External Store", email: "", aboutMe: "" });
     expect(JSON.stringify(saved.body)).not.toContain("ak_good");
 
-    const disk = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+    const disk = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
     expect(disk.composio).toMatchObject({ apiKey: "", sessionId: "trs_config_test" });
     expect(disk.opencodeGo).toEqual({ apiKey: "" });
     expect(disk.profile).toEqual({ name: "External Store" });
@@ -10765,7 +10765,7 @@ describe("harness HTTP API", () => {
       }
       const requests = connectorLinkRequests.slice(before);
       expect(requests).toHaveLength(3);
-      for (const request of requests) expect(request).toEqual({ toolkit: "slack", alias: expect.stringMatching(/^omb-retry-[0-9a-f-]{36}$/) });
+      for (const request of requests) expect(request).toEqual({ toolkit: "slack", alias: expect.stringMatching(/^quati-retry-[0-9a-f-]{36}$/) });
       expect(new Set(requests.map((request) => request.alias)).size).toBe(3);
       expect(connectorAccounts.map((account) => account.alias)).toEqual(["original", "expired"]);
 
@@ -11109,7 +11109,7 @@ describe("harness HTTP API", () => {
   });
 
   it.skipIf(process.platform === "win32")("stores the credentials file with owner-only permissions", () => {
-    expect(statSync(join(home, ".openmausbot", "config.json")).mode & 0o777).toBe(0o600);
+    expect(statSync(join(home, ".quatibot", "config.json")).mode & 0o777).toBe(0o600);
   });
 
   it("stores and echoes the user profile (not write-only, unlike keys)", async () => {
@@ -11127,7 +11127,7 @@ describe("harness HTTP API", () => {
       name: "Incoming build",
       prompt: "Review the incoming build event",
       botId: bots.body.bots[0].id,
-      runOn: "maus",
+      runOn: "quati",
     });
     expect(created.status).toBe(201);
     expect(created.body.ingress).toMatchObject({ available: true, baseUrl: WEBHOOK_BASE });
@@ -11169,7 +11169,7 @@ describe("harness HTTP API", () => {
     expect((await api("DELETE", `/api/webhooks/${created.body.webhook.id}`)).status).toBe(200);
     expect((await api("GET", "/api/webhooks")).body.webhooks).toHaveLength(0);
     if (process.platform !== "win32") {
-      expect(statSync(join(home, ".openmausbot", "webhooks.json")).mode & 0o777).toBe(0o600);
+      expect(statSync(join(home, ".quatibot", "webhooks.json")).mode & 0o777).toBe(0o600);
     }
   });
 
@@ -11211,9 +11211,9 @@ describe("harness HTTP API", () => {
         openaiConfigured: true, xaiConfigured: false, customKeyConfigured: true });
       for (const secret of ["openai-avatar-fixture", "custom-avatar-fixture"]) {
         expect(JSON.stringify(saved.body)).not.toContain(secret);
-        expect(readFileSync(join(home, ".openmausbot", "config.json"), "utf8")).not.toContain(secret);
+        expect(readFileSync(join(home, ".quatibot", "config.json"), "utf8")).not.toContain(secret);
       }
-      const disk = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+      const disk = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
       expect(disk.imageGen).toMatchObject({ key: "", customApiKey: "", provider: "custom" });
 
       const preset = await api("PUT", "/api/config", { imageGen: { provider: "openai" } });
@@ -11336,7 +11336,7 @@ describe("section context API", () => {
 });
 
 describe("bot memory API", () => {
-  const workspaceOf = (botId: string) => join(home, ".openmausbot", "workspaces", botId);
+  const workspaceOf = (botId: string) => join(home, ".quatibot", "workspaces", botId);
 
   it("lets a bot attach a file it made, and serves it only through that message", async () => {
     const bot = (await api("POST", "/api/bots", {})).body.bot;
@@ -11648,7 +11648,7 @@ describe("bot memory API", () => {
       })).status).toBe(202);
       const dump = await readJsonFileWhenReady<{
         systemPrompt?: string;
-        mcpConfig: { mcpServers: { agents: { env: { OMB_COMMS_TOKEN: string } } } };
+        mcpConfig: { mcpServers: { agents: { env: { QUATI_COMMS_TOKEN: string } } } };
       }>(fakeClaudeDump);
       expect(dump.systemPrompt ?? "").toContain("session_search");
       // A capability is bound to one bot and thread, minted per turn: each search mints its own.
@@ -11909,7 +11909,7 @@ describe("bot memory API", () => {
     }
   });
 
-  const soulFileOf = (botId: string) => join(home, ".openmausbot", "bots", botId, "SOUL.md");
+  const soulFileOf = (botId: string) => join(home, ".quatibot", "bots", botId, "SOUL.md");
 
   it("round-trips soul through both PATCH routes and mirrors it to SOUL.md", async () => {
     const bot = (await api("POST", "/api/bots")).body.bot;
@@ -11932,12 +11932,12 @@ describe("bot memory API", () => {
     } finally {
       await api("DELETE", `/api/bots/${bot.id}`);
     }
-    expect(existsSync(join(home, ".openmausbot", "bots", bot.id))).toBe(false);
+    expect(existsSync(join(home, ".quatibot", "bots", bot.id))).toBe(false);
   });
 
   it("keeps mixed-request runtime revocations effective when profile persistence fails", async () => {
     const bot = (await api("POST", "/api/bots", { name: "Mixed profile safety" })).body.bot;
-    const botsFile = join(home, ".openmausbot", "bots.json");
+    const botsFile = join(home, ".quatibot", "bots.json");
     let saved: string | undefined;
     try {
       expect((await api("PATCH", `/api/bots/${bot.id}`, { soul: "old", browser: true, browserProfile: "guest" })).status).toBe(200);
@@ -12052,7 +12052,7 @@ describe("bot memory API", () => {
 
   it("refuses redacted history restores without changing SOUL and still restores exact safe text", async () => {
     const bot = (await api("POST", "/api/bots", { name: "Redacted history" })).body.bot;
-    const file = join(home, ".openmausbot", "bots", bot.id, "history.ndjson");
+    const file = join(home, ".quatibot", "bots", bot.id, "history.ndjson");
     const exact = "  Be brief.\n\nKeep this whitespace.  \n";
     const current = "Current instructions.";
     try {
@@ -12124,7 +12124,7 @@ describe("bot memory API", () => {
       expect(before.body.sections[0]).toEqual({
         id: "persona",
         label: "Identity",
-        text: "You are Kiwi, a personal bot in OpenMausBot. Role: Tracker. About: Files bugs.",
+        text: "You are Kiwi, a personal bot in QuatiBot. Role: Tracker. About: Files bugs.",
         bytes: 78,
       });
       expect(before.body.sections.map((s: { id: string }) => s.id)).not.toContain("soul");
@@ -12352,7 +12352,7 @@ describe("message pages", () => {
 
   it("downloads only a file linked by the exact stored bot message", async () => {
     const threadId = "test-linked-file-room-thread";
-    const linkedFile = join(home, ".openmausbot", "workspaces", "test-bot-a", "phone report.md");
+    const linkedFile = join(home, ".quatibot", "workspaces", "test-bot-a", "phone report.md");
     const response = await fetch(
       `${BASE}/api/threads/${threadId}/messages/linked-file-message/file`,
       {
@@ -12377,7 +12377,7 @@ describe("message pages", () => {
     expect((await api(
       "POST",
       `/api/threads/${threadId}/messages/linked-file-message/file`,
-      { path: join(home, ".openmausbot", "workspaces", "test-bot-a", "other.md") },
+      { path: join(home, ".quatibot", "workspaces", "test-bot-a", "other.md") },
     )).status).toBe(403);
     expect((await fetch(`${BASE}/api/threads/${threadId}/messages/no-such-message/file`, {
       method: "POST",
@@ -12387,7 +12387,7 @@ describe("message pages", () => {
   });
 
   it("downloads a structured generated image from an image-only reply", async () => {
-    const image = join(home, ".openmausbot", "attachments", "generated.png");
+    const image = join(home, ".quatibot", "attachments", "generated.png");
     const response = await fetch(`${BASE}/api/threads/test-linked-file-room-thread/messages/generated-image-message/file`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: image }),
     });
@@ -12397,17 +12397,17 @@ describe("message pages", () => {
   });
 
   it("confines structured generated images to their message and private image files", async () => {
-    const image = join(home, ".openmausbot", "attachments", "generated.png");
+    const image = join(home, ".quatibot", "attachments", "generated.png");
     const route = (id: string) => `/api/threads/test-linked-file-room-thread/messages/${id}/file`;
     expect((await api("POST", route("prose-file-message"), { path: image })).status).toBe(403);
-    expect((await api("POST", route("generated-image-message"), { path: join(home, ".openmausbot", "attachments", "other.png") })).status).toBe(403);
-    expect((await api("POST", route("outside-generated-image-message"), { path: join(home, ".openmausbot", "workspaces", "test-bot-a", "preview.png") })).status).toBe(403);
-    expect((await api("POST", route("not-image-attachment-message"), { path: join(home, ".openmausbot", "attachments", "shared-notes.pdf") })).status).toBe(415);
+    expect((await api("POST", route("generated-image-message"), { path: join(home, ".quatibot", "attachments", "other.png") })).status).toBe(403);
+    expect((await api("POST", route("outside-generated-image-message"), { path: join(home, ".quatibot", "workspaces", "test-bot-a", "preview.png") })).status).toBe(403);
+    expect((await api("POST", route("not-image-attachment-message"), { path: join(home, ".quatibot", "attachments", "shared-notes.pdf") })).status).toBe(415);
   });
 
   it("downloads an image rendered by the exact stored bot message", async () => {
     const threadId = "test-linked-file-room-thread";
-    const linkedImage = join(home, ".openmausbot", "workspaces", "test-bot-a", "preview.png");
+    const linkedImage = join(home, ".quatibot", "workspaces", "test-bot-a", "preview.png");
     const response = await fetch(`${BASE}/api/threads/${threadId}/messages/linked-image-message/file`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -12462,7 +12462,7 @@ describe("message pages", () => {
 
   it("downloads an exact user attachment only from the private attachment store", async () => {
     const threadId = "test-linked-file-room-thread";
-    const shared = join(home, ".openmausbot", "attachments", "shared-notes.pdf");
+    const shared = join(home, ".quatibot", "attachments", "shared-notes.pdf");
     const response = await fetch(
       `${BASE}/api/threads/${threadId}/messages/user-attached-file-message/file`,
       {
@@ -12488,12 +12488,12 @@ describe("message pages", () => {
     expect((await api(
       "POST",
       `/api/threads/${threadId}/messages/user-attached-file-message/file`,
-      { path: join(home, ".openmausbot", "attachments", "different.pdf") },
+      { path: join(home, ".quatibot", "attachments", "different.pdf") },
     )).status).toBe(403);
     expect((await api(
       "POST",
       `/api/threads/${threadId}/messages/user-outside-file-message/file`,
-      { path: join(home, ".openmausbot", "workspaces", "test-bot-a", "phone report.md") },
+      { path: join(home, ".quatibot", "workspaces", "test-bot-a", "phone report.md") },
     )).status).toBe(403);
   });
 
@@ -12661,13 +12661,13 @@ describe("resumable event stream", () => {
 
 describe("instance CLI override API", () => {
   it("round-trips bounded per-instance icons without changing the driver", async () => {
-    const before = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+    const before = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
     const preset = await api("PATCH", "/api/instances/ghost/icon", { icon: { kind: "preset", preset: "deepseek" } });
     expect(preset.status).toBe(200);
     expect(preset.body.instances.find((i: any) => i.instanceId === "ghost")).toMatchObject({
       driverKind: "not-a-real-driver", icon: { kind: "preset", preset: "deepseek" },
     });
-    const savedPreset = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
+    const savedPreset = JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8"));
     expect(savedPreset.instances.ghost.icon).toEqual({ kind: "preset", preset: "deepseek" });
     expect(savedPreset.instances.claude).toEqual(before.instances.claude);
 
@@ -12684,7 +12684,7 @@ describe("instance CLI override API", () => {
     const reset = await api("PATCH", "/api/instances/ghost/icon", { icon: null });
     expect(reset.status).toBe(200);
     expect(reset.body.instances.find((i: any) => i.instanceId === "ghost").icon).toBeUndefined();
-    expect(JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8")).instances.ghost.icon).toBeUndefined();
+    expect(JSON.parse(readFileSync(join(home, ".quatibot", "config.json"), "utf8")).instances.ghost.icon).toBeUndefined();
   });
 
   it("round-trips a set, clear, and rejects bad input", async () => {

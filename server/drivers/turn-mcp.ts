@@ -9,7 +9,7 @@ export interface TurnStdioMcpServer {
   env: Record<string, string>;
 }
 
-/** Internal MausBot tools injected into the native engine session. */
+/** Internal Quati tools injected into the native engine session. */
 export function turnStdioMcpServers(turn: SendTurnInput): TurnStdioMcpServer[] {
   const servers: TurnStdioMcpServer[] = [];
   const add = (name: string, server: { command: string; args: string[]; env?: Record<string, string> } | undefined) => {

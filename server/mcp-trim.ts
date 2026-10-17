@@ -69,7 +69,7 @@ export function truncationBanner(input: {
   short?: boolean;
 }): string {
   const size = `${fmt(input.keptChars)} of ${fmt(input.originalChars)} chars`;
-  if (input.short) return `⚠️ TRUNCATED by OpenMausBot: kept ${size}; the rest was NOT shown. Narrow the call or page.`;
+  if (input.short) return `⚠️ TRUNCATED by QuatiBot: kept ${size}; the rest was NOT shown. Narrow the call or page.`;
   const counts = input.dropped
     .filter((d) => d.kept < d.total)
     .map((d) => `${d.key || "items"} ${fmt(d.kept)} of ${fmt(d.total)}`)
@@ -84,7 +84,7 @@ export function truncationBanner(input: {
   const where = input.spillHint && input.spillPath
     ? ` The whole result is at ${JSON.stringify(input.spillPath)}; reading it costs as much as not trimming, so narrow the call first.`
     : "";
-  return `⚠️ TRUNCATED by OpenMausBot: ${what} The rest was NOT shown. ${next}${where}`;
+  return `⚠️ TRUNCATED by QuatiBot: ${what} The rest was NOT shown. ${next}${where}`;
 }
 
 function wrap(body: string, banner: string): string {

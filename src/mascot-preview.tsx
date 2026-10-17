@@ -2,9 +2,9 @@ import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   EYE_SCALE,
-  MausAvatar,
+  QuatiAvatar,
   MOUTH_WEIGHT,
-  type MausAvatarHandle,
+  type QuatiAvatarHandle,
 } from "@/components/Avatar";
 import {
   MAUS_COLOR_NAMES,
@@ -12,15 +12,15 @@ import {
   MAUS_MOTIONS,
   PICKABLE_STATES,
   STATE_GROUPS,
-  type MausColor,
-  type MausMotion,
-  type MausState,
+  type QuatiColor,
+  type QuatiMotion,
+  type QuatiState,
 } from "@/lib/mascot";
 import { EXPRESSION_COUNT } from "@/components/CursorAvatar";
 import "./styles.css";
 import "./mascot-preview.css";
 
-interface ScenarioLabels extends Partial<Record<MausState, string>> {}
+interface ScenarioLabels extends Partial<Record<QuatiState, string>> {}
 
 const SCENARIOS: ScenarioLabels = {
   idle: "General / admin",
@@ -48,9 +48,9 @@ const MOTION_SCENARIOS = {
   blink: "New reply",
   surprise: "Unread update",
   failure: "Action failed",
-} satisfies Record<Exclude<MausMotion, "none">, string>;
+} satisfies Record<Exclude<QuatiMotion, "none">, string>;
 
-const MOTION_COLORS: MausColor[] = [
+const MOTION_COLORS: QuatiColor[] = [
   "green", "blue", "purple", "red", "cyan", "orange",
   "teal", "green", "pink", "yellow", "coral", "red",
 ];
@@ -96,16 +96,16 @@ function Tuner({
 }: {
   tuning: Tuning;
   setTuning: (t: Tuning) => void;
-  state: MausState;
-  setState: (s: MausState) => void;
+  state: QuatiState;
+  setState: (s: QuatiState) => void;
   expression: number | undefined;
   setExpression: (e: number | undefined) => void;
-  color: MausColor;
-  setColor: (c: MausColor) => void;
+  color: QuatiColor;
+  setColor: (c: QuatiColor) => void;
   forward: boolean;
   setForward: (v: boolean) => void;
 }) {
-  const handle = useRef<MausAvatarHandle>(null);
+  const handle = useRef<QuatiAvatarHandle>(null);
   const changed = (Object.keys(DEFAULTS) as (keyof Tuning)[]).filter(
     (k) => tuning[k] !== DEFAULTS[k],
   );
@@ -113,13 +113,13 @@ function Tuner({
   return (
     <section className="tuner">
       <div className="tuner-stage">
-        <MausAvatar
+        <QuatiAvatar
           ref={handle}
           color={color}
           state={state}
           expression={expression}
           size={300}
-          label={`${state} maus`}
+          label={`${state} quati`}
           eyeScale={tuning.eyeScale}
           mouthStroke={tuning.mouthStroke}
           spring={tuning.spring}
@@ -243,17 +243,17 @@ function MotionCard({
   replayAll,
   color,
 }: {
-  motion: Exclude<MausMotion, "none">;
+  motion: Exclude<QuatiMotion, "none">;
   index: number;
   replayAll: number;
-  color: MausColor;
+  color: QuatiColor;
 }) {
   const [replayOne, setReplayOne] = useState(0);
 
   return (
     <article className="motion-card">
       <div className="motion-stage">
-        <MausAvatar
+        <QuatiAvatar
           color={color ?? MOTION_COLORS[index]}
           state="idle"
           size={172}
@@ -279,9 +279,9 @@ function MotionCard({
 function Preview() {
   const [replayAll, setReplayAll] = useState(0);
   const [tuning, setTuning] = useState<Tuning>(DEFAULTS);
-  const [state, setState] = useState<MausState>("idle");
+  const [state, setState] = useState<QuatiState>("idle");
   const [expression, setExpression] = useState<number | undefined>(undefined);
-  const [color, setColor] = useState<MausColor>("green");
+  const [color, setColor] = useState<QuatiColor>("green");
   const [forward, setForward] = useState(true);
 
   useEffect(() => {
@@ -294,7 +294,7 @@ function Preview() {
       <header className="preview-header">
         <div>
           <p className="eyebrow">Morphing face engine · 25 expressions · 39 states</p>
-          <h1>Maus motion library</h1>
+          <h1>Quati motion library</h1>
           <p className="intro">
             The app&rsquo;s lit body with the face engine behind it. Expressions morph on a
             spring, blink on each state&rsquo;s own rhythm, and the eyes wrap around an implied
@@ -338,7 +338,7 @@ function Preview() {
             <p className="eyebrow">Identity system · 100 combinations</p>
             <h2 id="expression-heading">Colors and states</h2>
           </div>
-          <p>Move your pointer over any Maus to test the responsive eyes.</p>
+          <p>Move your pointer over any Quati to test the responsive eyes.</p>
         </div>
 
         <div className="matrix-wrap">
@@ -360,7 +360,7 @@ function Preview() {
                 </div>
                 {PICKABLE_STATES.map((s) => (
                   <div className="mascot-cell" key={`${c}-${s}`}>
-                    <MausAvatar color={c} state={s} size={86} label={`${c} ${s} maus`} />
+                    <QuatiAvatar color={c} state={s} size={86} label={`${c} ${s} quati`} />
                   </div>
                 ))}
               </div>

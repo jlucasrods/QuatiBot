@@ -10,9 +10,9 @@ const OTHER = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 const scratch: string[] = [];
 const stores: CloudSyncStore[] = [];
 function setup() {
-  const home = mkdtempSync(join(tmpdir(), "omb-sync-store-"));
+  const home = mkdtempSync(join(tmpdir(), "quati-sync-store-"));
   scratch.push(home);
-  const dataDir = join(home, ".openmausbot");
+  const dataDir = join(home, ".quatibot");
   mkdirSync(dataDir);
   const store = new CloudSyncStore({ dataDir, now: () => 1_000 });
   stores.push(store);
@@ -23,9 +23,9 @@ afterEach(() => {
   for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-it("puts synced folders beside the data folder unless OMB_SYNC_ROOT says otherwise", () => {
-  expect(syncRoot("/data/.openmausbot", {})).toBe(join("/data", "Synced"));
-  expect(syncRoot("/data/.openmausbot", { OMB_SYNC_ROOT: "/mnt/sync" })).toBe("/mnt/sync");
+it("puts synced folders beside the data folder unless QUATI_SYNC_ROOT says otherwise", () => {
+  expect(syncRoot("/data/.quatibot", {})).toBe(join("/data", "Synced"));
+  expect(syncRoot("/data/.quatibot", { QUATI_SYNC_ROOT: "/mnt/sync" })).toBe("/mnt/sync");
 });
 
 it("registers a PC folder once, under that computer's own folder, and creates it", () => {
@@ -88,9 +88,9 @@ it("lists a folder with hashes, hashing again only what changed", async () => {
 
 it("keeps a removed file in the trash for 30 days", async () => {
   let now = 1_000;
-  const home = mkdtempSync(join(tmpdir(), "omb-sync-trash-"));
+  const home = mkdtempSync(join(tmpdir(), "quati-sync-trash-"));
   scratch.push(home);
-  const store = new CloudSyncStore({ dataDir: join(home, ".openmausbot"), now: () => now });
+  const store = new CloudSyncStore({ dataDir: join(home, ".quatibot"), now: () => now });
   stores.push(store);
   const folder = store.register({ computerId: PC, computerName: "PC", pcPath: "/p", name: "P" });
   writeFileSync(join(folder.cloudPath, "a.txt"), "hello");

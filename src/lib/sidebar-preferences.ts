@@ -7,15 +7,15 @@ export type SidebarToolsLayout = "rows" | "toolbar";
 export const SIDEBAR_DENSITIES: readonly SidebarDensity[] = ["comfortable", "compact", "icons"];
 export const SIDEBAR_TOOLS_LAYOUTS: readonly SidebarToolsLayout[] = ["rows", "toolbar"];
 
-export const SIDEBAR_DENSITY_KEY = "openmausbot.sidebarDensity";
-export const SIDEBAR_TOOLS_LAYOUT_KEY = "openmausbot.sidebarToolsLayout";
-export const SIDEBAR_WIDTH_KEY = "openmausbot.sidebarWidth";
-export const SIDEBAR_ATTENTION_PINNED_KEY = "openmausbot.sidebarAttentionPinned.v1";
-export const SIDEBAR_COLLAPSED_SECTIONS_KEY = "openmausbot.sidebarCollapsedSections.v1";
-export const SIDEBAR_SECTION_ORDER_KEY = "openmausbot.sidebarSectionOrder.v1";
-export const PINNED_CIRCLES_KEY = "openmausbot.pinnedCircles";
-export const UNIVERSAL_PINS_KEY = "openmausbot.universalPins";
-export const PINNED_CIRCLE_ORDER_KEY = "openmausbot.pinnedCircleOrder.v1";
+export const SIDEBAR_DENSITY_KEY = "quatibot.sidebarDensity";
+export const SIDEBAR_TOOLS_LAYOUT_KEY = "quatibot.sidebarToolsLayout";
+export const SIDEBAR_WIDTH_KEY = "quatibot.sidebarWidth";
+export const SIDEBAR_ATTENTION_PINNED_KEY = "quatibot.sidebarAttentionPinned.v1";
+export const SIDEBAR_COLLAPSED_SECTIONS_KEY = "quatibot.sidebarCollapsedSections.v1";
+export const SIDEBAR_SECTION_ORDER_KEY = "quatibot.sidebarSectionOrder.v1";
+export const PINNED_CIRCLES_KEY = "quatibot.pinnedCircles";
+export const UNIVERSAL_PINS_KEY = "quatibot.universalPins";
+export const PINNED_CIRCLE_ORDER_KEY = "quatibot.pinnedCircleOrder.v1";
 
 export function parseSidebarDensity(value: string | null): SidebarDensity {
   switch (value) {

@@ -2,8 +2,8 @@ import { useSyncExternalStore } from "react";
 import { CLOUD_INTENT_ASKED } from "@/lib/cloud-setup";
 import { hintSeen, type OnboardingStatus, type WelcomeViewer } from "@/lib/onboarding";
 
-const KEY = "omb.cloudIntent.pending";
-const SENT_KEY = "omb.cloudIntent.sent";
+const KEY = "quati.cloudIntent.pending";
+const SENT_KEY = "quati.cloudIntent.sent";
 
 export interface SentIntent { botId: string; at: number }
 

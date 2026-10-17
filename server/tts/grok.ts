@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Audio, Voice } from "./elevenlabs.ts";
 
-const API = (process.env.OMB_XAI_TTS_API || "https://api.x.ai/v1").replace(/\/+$/, "");
+const API = (process.env.QUATI_XAI_TTS_API || "https://api.x.ai/v1").replace(/\/+$/, "");
 const voicesSchema = z.object({
   voices: z.array(z.object({
     voice_id: z.string().min(1),

@@ -1,5 +1,5 @@
-// The driver's real-Chrome suites run when OMB_CDP_CHROME names a Chrome, or
-// when OMB_CDP_E2E=1 asks for the one installed in the usual place (GitHub's
+// The driver's real-Chrome suites run when QUATI_CDP_CHROME names a Chrome, or
+// when QUATI_CDP_E2E=1 asks for the one installed in the usual place (GitHub's
 // runners have Google Chrome). Otherwise they are skipped.
 import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,19 +22,19 @@ const INSTALLED: Partial<Record<NodeJS.Platform, string[]>> = {
 };
 
 export function chromeForTests(): string | null {
-  const named = process.env.OMB_CDP_CHROME;
+  const named = process.env.QUATI_CDP_CHROME;
   if (named) {
-    if (!existsSync(named)) throw new Error(`OMB_CDP_CHROME names no file: ${named}`);
+    if (!existsSync(named)) throw new Error(`QUATI_CDP_CHROME names no file: ${named}`);
     return named;
   }
-  if (process.env.OMB_CDP_E2E !== "1") return null;
+  if (process.env.QUATI_CDP_E2E !== "1") return null;
   const found = (INSTALLED[process.platform] ?? []).find((path) => existsSync(path));
-  if (!found) throw new Error("OMB_CDP_E2E=1 but no installed Google Chrome was found; set OMB_CDP_CHROME.");
+  if (!found) throw new Error("QUATI_CDP_E2E=1 but no installed Google Chrome was found; set QUATI_CDP_CHROME.");
   return found;
 }
 
 export const CHROME = chromeForTests();
-if (!CHROME) console.log("skipping omb-cdp real-Chrome suites: set OMB_CDP_CHROME to a Chrome executable, or OMB_CDP_E2E=1 to use the installed Google Chrome");
+if (!CHROME) console.log("skipping quati-cdp real-Chrome suites: set QUATI_CDP_CHROME to a Chrome executable, or QUATI_CDP_E2E=1 to use the installed Google Chrome");
 
 /** A runner's first Chrome launch builds caches (and on Windows waits for a scan of the binary): over 30 s on GitHub's runners. */
 export const FIRST_LAUNCH_MS = 120_000;
@@ -42,10 +42,10 @@ export const FIRST_LAUNCH_MS = 120_000;
 /** Linux CI on containers and some runners needs the operator opt-out; never set by the driver itself. */
 const sandbox = !sandboxDisabled(process.env);
 
-export const HOST = process.env.OMB_CDP_HOST === "container" ? "container" : process.env.OMB_CDP_HOST === "server" ? "server" : "desktop";
+export const HOST = process.env.QUATI_CDP_HOST === "container" ? "container" : process.env.QUATI_CDP_HOST === "server" ? "server" : "desktop";
 
 export function testRoot(): string {
-  const root = process.env.OMB_CDP_TEST_TMP ?? tmpdir();
+  const root = process.env.QUATI_CDP_TEST_TMP ?? tmpdir();
   mkdirSync(root, { recursive: true });
   return root;
 }
@@ -94,7 +94,7 @@ export interface RunningChrome {
 
 export async function startChrome(label: string, { launch = {}, browser: browserOptions = {} }: { launch?: Partial<LaunchOptions>; browser?: BrowserOptions } = {}): Promise<RunningChrome> {
   if (!CHROME) throw new Error("No Chrome to test with.");
-  const dir = mkdtempSync(join(testRoot(), "omb-cdp-"));
+  const dir = mkdtempSync(join(testRoot(), "quati-cdp-"));
   const chrome = await launchChrome({
     executablePath: CHROME,
     userDataDir: join(dir, "profile"),

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 
-import { launchVerificationServer, runControlOmb } from "../scripts/control-omb.ts";
+import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 import { FakeLoginPage, LOGIN_FORM } from "./testing/fake-login-page.ts";
 import { freePortBlock } from "./testing/ports.ts";
@@ -52,7 +52,7 @@ async function browserFixture(url: string) {
   });
   await new Promise<void>((ready) => bridge.listen(port, "127.0.0.1", ready));
 
-  const tools = mkdtempSync(join(tmpdir(), "omb-saved-login-e2e-"));
+  const tools = mkdtempSync(join(tmpdir(), "quati-saved-login-e2e-"));
   const binaryPath = join(tools, "agent-browser");
   // The stand-in agent-browser: always running, `close` and `set` do nothing, `mcp` answers get_url and eval from the
   // page, and every other command goes to the bridge.
@@ -117,7 +117,7 @@ it.skipIf(process.platform === "win32")("saves a login from the sign-in card wit
       { steps: [{ tool: "fill_login", arguments: {} }], reply: `Signed in. The password was ${PASSWORD}.` },
     ] } }));
 
-    await runControlOmb(["send", "--bot", bot.id, "--task", bot.threadId, "--text", "Download this month's invoices.", "--url", browser.base]);
+    await runControlQuati(["send", "--bot", bot.id, "--task", bot.threadId, "--text", "Download this month's invoices.", "--url", browser.base]);
     await expect.poll(() => evidence().length, { timeout: 20_000 }).toBe(1);
     const messages = async () => (await api("GET", `/api/threads/${bot.threadId}/messages`)).body.messages as any[];
     await expect.poll(async () => (await messages()).some((message) => message.kind === "signin"), { timeout: 15_000 }).toBe(true);
@@ -172,9 +172,9 @@ it.skipIf(process.platform === "win32")("fills a login saved for example.com on 
       { steps: [{ tool: "fill_login", arguments: {}, expectError: true }], reply: "The site refused it." },
     ] } }));
     const turn = async (text: string, count: number) => {
-      await runControlOmb(["send", "--bot", bot.id, "--task", bot.threadId, "--text", text, "--url", browser.base]);
+      await runControlQuati(["send", "--bot", bot.id, "--task", bot.threadId, "--text", text, "--url", browser.base]);
       await expect.poll(() => evidence().length, { timeout: 20_000 }).toBe(count);
-      expect(await runControlOmb(["wait", "--bot", bot.id, "--task", bot.threadId, "--timeout", "20", "--url", browser.base])).toMatchObject({ status: "settled" });
+      expect(await runControlQuati(["wait", "--bot", bot.id, "--task", bot.threadId, "--timeout", "20", "--url", browser.base])).toMatchObject({ status: "settled" });
     };
 
     await turn("Sign in to example.com.", 1);

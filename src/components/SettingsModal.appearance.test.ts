@@ -130,7 +130,7 @@ describe("Settings → Appearance", () => {
   });
 
   it("keeps the Advanced mode switch reachable from a paired remote client", () => {
-    vi.stubGlobal("window", { ogb: { remoteClient: { active: true } } });
+    vi.stubGlobal("window", { quati: { remoteClient: { active: true } } });
     expect(render()).toContain('aria-label="Advanced mode"');
   });
 
@@ -281,7 +281,7 @@ describe("Settings → Appearance", () => {
     ["wide", "Wide"],
     ["full", "Full width"],
   ])("shows the saved chat width (%s) alongside message colors", (width, label) => {
-    vi.stubGlobal("localStorage", { getItem: (key: string) => key === "omb-chat-width" ? width : null });
+    vi.stubGlobal("localStorage", { getItem: (key: string) => key === "quati-chat-width" ? width : null });
     const html = render();
     expect(html).toContain('aria-label="Chat width"');
     expect(html).toContain(`<option value="${width}" selected="">${label}</option>`);
@@ -335,7 +335,7 @@ describe("Settings → Appearance", () => {
   });
 
   it("makes local appearance available remotely without exposing server settings", () => {
-    vi.stubGlobal("window", { ogb: { remoteClient: { active: true } } });
+    vi.stubGlobal("window", { quati: { remoteClient: { active: true } } });
     const html = render();
     expect(html).toContain('<option value="appearance" selected="">Appearance</option>');
     expect(html).toContain('<option value="companion">Remote access</option>');
@@ -355,7 +355,7 @@ describe("Settings → Appearance", () => {
     const html = render();
     expect(html).toContain('<option value="backups" selected="">Backups</option>');
     expect(html).toContain("Export full backup");
-    expect(html).toContain('type="file" accept=".ombbackup"');
+    expect(html).toContain('type="file" accept=".quatibackup"');
     expect(html).toContain("Older team backups and shareable templates");
   });
 
@@ -395,39 +395,39 @@ describe("Settings → Appearance", () => {
 
   it("offers desktop connections as a top-level page without exposing the list remotely", () => {
     fixture.section = "desktopWorkspaces";
-    vi.stubGlobal("window", { ogb: { environments: {} } });
+    vi.stubGlobal("window", { quati: { environments: {} } });
     const local = render();
     expect(local).toContain('<option value="desktopWorkspaces" selected="">Servers</option>');
     expect(local).toContain("Server address or pairing link");
     expect(local).toContain("Name (optional)");
     expect(local).toContain("Your servers");
-    expect(local).toContain("npx openmausbot pair --label");
+    expect(local).toContain("npx quatibot pair --label");
     fixture.section = "general";
-    vi.stubGlobal("window", { ogb: { workspaces: {} } });
+    vi.stubGlobal("window", { quati: { workspaces: {} } });
     expect(render()).not.toContain('<option value="desktopWorkspaces"');
   });
 
   it("offers optional Organisation settings only through the local desktop bridge", () => {
     fixture.section = "organization";
-    vi.stubGlobal("window", { ogb: { organization: {} } });
+    vi.stubGlobal("window", { quati: { organization: {} } });
     const local = render();
     expect(local).toContain('<option value="organization" selected="">Organization</option>');
     expect(local).toContain("personal and local models");
     fixture.section = "appearance";
     vi.stubGlobal("window", {});
     expect(render()).not.toContain('<option value="organization"');
-    vi.stubGlobal("window", { ogb: { organization: {}, remoteClient: { active: true } } });
+    vi.stubGlobal("window", { quati: { organization: {}, remoteClient: { active: true } } });
     expect(render()).not.toContain('<option value="organization"');
     expect(render()).toContain("Midnight");
   });
   it("offers personal Cloud separately and only through the local desktop bridge", () => {
     fixture.section = "cloudAccount";
-    vi.stubGlobal("window", { ogb: { cloudAccount: {} } });
-    expect(render()).toContain('<option value="cloudAccount" selected="">MausBot Cloud</option>');
+    vi.stubGlobal("window", { quati: { cloudAccount: {} } });
+    expect(render()).toContain('<option value="cloudAccount" selected="">Quati Cloud</option>');
     expect(render()).toContain("Free local use");
     fixture.section = "appearance";
     vi.stubGlobal("window", {}); expect(render()).not.toContain('<option value="cloudAccount"');
-    vi.stubGlobal("window", { ogb: { cloudAccount: {}, remoteClient: { active: true } } });
+    vi.stubGlobal("window", { quati: { cloudAccount: {}, remoteClient: { active: true } } });
     expect(render()).not.toContain('<option value="cloudAccount"');
   });
 });

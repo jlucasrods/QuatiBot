@@ -106,7 +106,7 @@ export function openPlaceAction(id: PlaceActionId, target: {
             appSettings("connections");
             return true;
         case "open-vm-settings":
-            window.sessionStorage?.setItem("openmausbot.settings.section", "computer");
+            window.sessionStorage?.setItem("quatibot.settings.section", "computer");
             appSettings("computer");
             return true;
         case "open-team-map":

@@ -12,14 +12,14 @@ export interface CloudAccountState {
   entitlement?: { plan: "free" | "pro"; tier?: string; status: "active" | "inactive"; expiresAt: number | null; version: number };
   verifiedAt?: number;
   verifiedUntil?: number;
-  /** Connected, but the last checks with OMB Cloud failed; the snapshot is the last verified one. */
+  /** Connected, but the last checks with QUATI Cloud failed; the snapshot is the last verified one. */
   checking?: true;
   /** Not connected (unavailable, or the sign-in ended): the paid plan last
    * verified for this account, for display only. It activates nothing. */
   lastPlan?: { tier?: string; active: boolean };
   /** The person's Cloud home machine, when their plan has one. */
   machine?: import("./cloud-home.mjs").CloudMachine;
-  /** A payment OMB Cloud received and is still linking to this account. */
+  /** A payment QUATI Cloud received and is still linking to this account. */
   purchase?: import("./cloud-home.mjs").CloudPurchase;
   /** Connected: the free trial on this account's Cloud, when the Admin says (display only). */
   trial?: import("./cloud-home.mjs").CloudTrial;

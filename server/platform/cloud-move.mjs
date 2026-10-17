@@ -8,7 +8,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { CLOUD_HOME_NAME } from "./cloud-home.mjs";
 
-const MAGIC = Buffer.from("OMB-WORKSPACE-1\n");
+const MAGIC = Buffer.from("QUATI-WORKSPACE-1\n");
 const MIN_BYTES = MAGIC.length + 16 + 12 + 16;
 export const CLOUD_MOVE_MAX_BYTES = 10 * 1024 ** 3 + 256 * 1024 ** 2;
 const PART_BYTES = 16 * 1024 ** 2;
@@ -17,7 +17,7 @@ const MAX_PART_BYTES = 64 * 1024 ** 2;
 const MIN_PART_BYTES = 512 * 1024;
 const SPACE_MARGIN = 256 * 1024 ** 2;
 const GB = 1024 ** 3;
-/** Must match openmaus-cloud's VOLUME_EXTEND step. */
+/** Must match quati-cloud's VOLUME_EXTEND step. */
 const DISK_STEP_GB = 10;
 const REUSE_MS = 30 * 60_000;
 const UUID = /^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/;
@@ -221,7 +221,7 @@ export function createCloudMove({ localRequest, fetchImpl = fetch, tempRoot, ava
       body: JSON.stringify({ code: grant.code, label: "Copy from desktop" }), signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
     });
     const body = await readJson(response);
-    if (!response.ok || typeof body?.token !== "string" || !body.token.startsWith("omb_sess_")) fail("cloud_unavailable", `This app could not sign in to ${there()} for the copy. Try again.`);
+    if (!response.ok || typeof body?.token !== "string" || !body.token.startsWith("quati_sess_")) fail("cloud_unavailable", `This app could not sign in to ${there()} for the copy. Try again.`);
     return { origin: dest.origin, token: body.token };
   }
   async function closeSession(session) {
@@ -284,7 +284,7 @@ export function createCloudMove({ localRequest, fetchImpl = fetch, tempRoot, ava
       const response = await localRequest(`/api/workspace-backup/download/${exported.id}`, { method: "GET", signal, redirect: "error" });
       const declared = response.headers.get("content-length");
       if (!response.ok || !response.body || (declared !== null && Number(declared) !== exported.bytes)) { await discard(response); fail("export_failed", "This computer's workspace could not be prepared for the copy."); }
-      const file = join(directory, "workspace.ombbackup"), hash = createHash("sha256"), header = Buffer.alloc(MAGIC.length);
+      const file = join(directory, "workspace.quatibackup"), hash = createHash("sha256"), header = Buffer.alloc(MAGIC.length);
       let bytes = 0;
       await pipeline(Readable.fromWeb(response.body), async function* (source) {
         for await (const chunk of source) {
@@ -396,7 +396,7 @@ export function createCloudMove({ localRequest, fetchImpl = fetch, tempRoot, ava
       } else restartBegins();
       if (now() > deadline) {
         fail("restart_timeout", target?.kind === "cloud" ? "My Cloud is taking longer than usual to restart. Check it again in a few minutes."
-          : `${There()} hasn't come back yet. If it doesn't start again on its own, start OpenMausBot there; it finishes installing the copy when it starts.`);
+          : `${There()} hasn't come back yet. If it doesn't start again on its own, start QuatiBot there; it finishes installing the copy when it starts.`);
       }
     }
   }

@@ -23,7 +23,7 @@ vi.mock("@/state/store", () => ({ api: store.api, useStore: () => ({ state: stor
 
 // The gate's job is choosing; the flow itself has its own recipe.
 vi.mock("./WelcomeFlow", () => ({ WelcomeFlow: () => null }));
-vi.mock("@/components/Avatar", () => ({ MausAvatar: () => null }));
+vi.mock("@/components/Avatar", () => ({ QuatiAvatar: () => null }));
 import { SharedWorkspaceHint } from "./SharedWorkspaceHint";
 import { useWelcomeViewer, WelcomeGate } from "./WelcomeGate";
 import { WelcomeFlow } from "./WelcomeFlow";
@@ -55,9 +55,9 @@ function storage() {
 }
 
 const fresh = { onboarding: EMPTY_ONBOARDING };
-const LOCAL_PAGE = { ogb: { platform: "darwin", remoteClient: { active: false }, workspaces: {} } };
+const LOCAL_PAGE = { quati: { platform: "darwin", remoteClient: { active: false }, workspaces: {} } };
 // A hosted workspace the desktop app opened: preload exposes only its remote-safe subset, still truthy.
-const REMOTE_PAGE = { ogb: { platform: "darwin", workspaces: {}, getCapabilities: () => ({}) } };
+const REMOTE_PAGE = { quati: { platform: "darwin", workspaces: {}, getCapabilities: () => ({}) } };
 beforeEach(() => {
   fixture.values = [];
   fixture.index = 0;
@@ -88,7 +88,7 @@ describe("who gets the welcome flow", () => {
     expect(tree?.props.hosted).toBe(true);
   });
 
-  it("leaves an OMB Cloud home's first run to its engine sign-in", () => {
+  it("leaves an QUATI Cloud home's first run to its engine sign-in", () => {
     vi.stubGlobal("window", REMOTE_PAGE);
     expect(gate({ hosted: false, canSave: true, cloudHome: true }).tree).toBeNull();
     store.state = { ...store.state, welcomeOpen: true };
@@ -98,7 +98,7 @@ describe("who gets the welcome flow", () => {
   it("gives a hosted member a note instead, and nothing that writes the workspace config", async () => {
     const { tree, html } = gate({ hosted: true, canSave: false });
     expect(tree?.type).toBe(SharedWorkspaceHint);
-    expect(html).toContain("Your team&#x27;s shared OpenMausBot");
+    expect(html).toContain("Your team&#x27;s shared QuatiBot");
     expect(html).not.toContain("role=\"dialog\"");
     fixture.values = [];
     const hint = render(() => SharedWorkspaceHint({ replay: false, onClose: vi.fn() }));
@@ -111,14 +111,14 @@ describe("who gets the welcome flow", () => {
     await flush();
     expect(store.api).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
-    expect(localStorage.getItem("omb.onboarding.sharedWorkspaceHint")).toBe("1");
+    expect(localStorage.getItem("quati.onboarding.sharedWorkspaceHint")).toBe("1");
     fixture.values = [];
     expect(render(() => SharedWorkspaceHint({ replay: false, onClose: vi.fn() })).html).toBe("");
     fixture.values = [];
-    expect(render(() => SharedWorkspaceHint({ replay: true, onClose: vi.fn() })).html).toContain("shared OpenMausBot");
+    expect(render(() => SharedWorkspaceHint({ replay: true, onClose: vi.fn() })).html).toContain("shared QuatiBot");
     vi.stubGlobal("localStorage", { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } });
     fixture.values = [];
-    expect(render(() => SharedWorkspaceHint({ replay: false, onClose: vi.fn() })).html).toContain("shared OpenMausBot");
+    expect(render(() => SharedWorkspaceHint({ replay: false, onClose: vi.fn() })).html).toContain("shared QuatiBot");
   });
 
   it("never opens the flow for a hosted member, even when the admin has not finished it", () => {
@@ -152,7 +152,7 @@ describe("who gets the welcome flow", () => {
 
   it("shows nothing to a remote client member or while a browser's session is unknown", () => {
     expect(gate(null).tree).toBeNull();
-    vi.stubGlobal("window", { ogb: { remoteClient: { active: true } } });
+    vi.stubGlobal("window", { quati: { remoteClient: { active: true } } });
     expect(gate({ hosted: true, canSave: false }).tree).toBeNull();
     expect(gate(LOCAL_VIEWER).tree).toBeNull();
   });
@@ -163,7 +163,7 @@ describe("who gets the welcome flow", () => {
     expect(gate(LOCAL_VIEWER).tree).toBeNull();
   });
 
-  it("steps aside for OMB Cloud opened by the Cloud link, not for a normal visit there", () => {
+  it("steps aside for QUATI Cloud opened by the Cloud link, not for a normal visit there", () => {
     vi.stubGlobal("window", LOCAL_PAGE);
     store.state = { ...store.state, appSettingsOpen: true, appSettingsSection: "cloudAccount", appSettingsCloudLink: 0 };
     expect(gate(LOCAL_VIEWER).tree).not.toBeNull();

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { MausAvatar } from "@/components/Avatar";
+import { QuatiAvatar } from "@/components/Avatar";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { MAUS_COLOR_NAMES, MAUS_COLORS, type MausColor } from "@/lib/mascot";
+import { MAUS_COLOR_NAMES, MAUS_COLORS, type QuatiColor } from "@/lib/mascot";
 import { api, type Bot } from "@/state/store";
 import { inputClass, PrimaryButton, QuietButton, staggerIndex, type BeatProps } from "./shared";
 
@@ -25,7 +25,7 @@ export function MeetYourBotBeat({
   onFinish: () => void;
 }) {
   const [name, setName] = useState(bot?.name ?? "");
-  const [color, setColor] = useState<MausColor>(bot?.color ?? "green");
+  const [color, setColor] = useState<QuatiColor>(bot?.color ?? "green");
   const [line, setLine] = useState("");
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -72,7 +72,7 @@ export function MeetYourBotBeat({
       </p>
 
       <div className="animate-rise mt-5 flex items-center gap-4" style={staggerIndex(1)}>
-        <MausAvatar color={color} state="happy" size={64} label={name || bot?.name} />
+        <QuatiAvatar color={color} state="happy" size={64} label={name || bot?.name} />
         <div className="min-w-0 flex-1">
           <label className="text-[11.5px] font-medium uppercase tracking-wide text-ink-secondary" htmlFor="welcome-bot-name">
             {t("onboarding.bot.name")}

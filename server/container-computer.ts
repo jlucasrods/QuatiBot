@@ -1,4 +1,4 @@
-// Cua-backed Local VM: OMB owns only the sandbox boundary; desktop automation is Cua Driver's (`cua-driver mcp` in the container).
+// Cua-backed Local VM: QUATI owns only the sandbox boundary; desktop automation is Cua Driver's (`cua-driver mcp` in the container).
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { lstatSync } from "node:fs";
@@ -27,21 +27,21 @@ export const BASE_IMAGE_DIGEST = "sha256:274eb636f5cf3fc58f705916ee72b7a701270b3
 export const BASE_IMAGE = `${BASE_IMAGE_REPOSITORY}@${BASE_IMAGE_DIGEST}`;
 // localhost/ is explicit: Podman prepends it to unqualified build tags and may then resolve the name on Docker Hub.
 // Image and container labels, not this mutable tag, decide compatibility.
-export const IMAGE_REPOSITORY = "localhost/openmausbot/cua-local-vm";
+export const IMAGE_REPOSITORY = "localhost/quatibot/cua-local-vm";
 export const IMAGE_LAYER_VERSION = "5";
-export const IMAGE_LAYER_LABEL = "com.openmausbot.image-layer";
+export const IMAGE_LAYER_LABEL = "com.quatibot.image-layer";
 export const IMAGE = `${IMAGE_REPOSITORY}:driver-${CUA_DRIVER_VERSION}-v${IMAGE_LAYER_VERSION}`;
-export const CONTAINER = "openmausbot-computer";
-export const MANAGED_LABEL = "com.openmausbot.local-vm";
-export const DRIVER_LABEL = "com.openmausbot.cua-driver";
-export const BASE_IMAGE_LABEL = "com.openmausbot.cua-base";
-export const WORKSPACE_LABEL = "com.openmausbot.workspace";
-export const TARGET_LABEL = "com.openmausbot.local-vm-target";
+export const CONTAINER = "quatibot-computer";
+export const MANAGED_LABEL = "com.quatibot.local-vm";
+export const DRIVER_LABEL = "com.quatibot.cua-driver";
+export const BASE_IMAGE_LABEL = "com.quatibot.cua-base";
+export const WORKSPACE_LABEL = "com.quatibot.workspace";
+export const TARGET_LABEL = "com.quatibot.local-vm-target";
 export const VM_WORKSPACE_DIR = join(DATA_DIR, "vm-home");
 export const VM_WORKSPACE_GUEST = "/home/cua/workspace";
 export const DISPLAY = ":1";
-export const CUA_SOCKET = "/run/user/1000/openmausbot-cua.sock";
-export const CUA_EXECUTABLE = "/usr/local/libexec/openmausbot/cua-driver";
+export const CUA_SOCKET = "/run/user/1000/quatibot-cua.sock";
+export const CUA_EXECUTABLE = "/usr/local/libexec/quatibot/cua-driver";
 
 const RUNTIMES = ["docker", "podman", "container"] as const;
 export type Runtime = (typeof RUNTIMES)[number];
@@ -174,11 +174,11 @@ RUN printf '%s\\n' \\
       'migrate_profile google-chrome' \\
       'migrate_profile chromium' \\
       'find "$profiles" \\( -name SingletonLock -o -name SingletonSocket -o -name SingletonCookie -o -name .parentlock \\) -delete' \\
-      > /usr/local/bin/prepare-openmausbot-workspace.sh \\
-    && chmod 0755 /usr/local/bin/prepare-openmausbot-workspace.sh
+      > /usr/local/bin/prepare-quatibot-workspace.sh \\
+    && chmod 0755 /usr/local/bin/prepare-quatibot-workspace.sh
 RUN printf '%s\\n' \\
       '#!/bin/sh' \\
-      '/usr/local/bin/prepare-openmausbot-workspace.sh' \\
+      '/usr/local/bin/prepare-quatibot-workspace.sh' \\
       'attempt=0' \\
       'until DISPLAY=:1 xset q >/dev/null 2>&1; do' \\
       '  attempt=$((attempt + 1))' \\
@@ -186,12 +186,12 @@ RUN printf '%s\\n' \\
       '  sleep 1' \\
       'done' \\
       'exec env CUA_DRIVER_INSTALL_CHANNEL=python_package CUA_DRIVER_RS_TELEMETRY_ENABLED=0 ${CUA_EXECUTABLE} serve --socket ${CUA_SOCKET} --permission-mode standard' \\
-      > /usr/local/bin/start-openmausbot-cua-driver.sh \\
-    && chmod 0755 /usr/local/bin/start-openmausbot-cua-driver.sh
+      > /usr/local/bin/start-quatibot-cua-driver.sh \\
+    && chmod 0755 /usr/local/bin/start-quatibot-cua-driver.sh
 RUN printf '%s\\n' \\
       '' \\
-      '[program:openmausbot-cua-driver]' \\
-      'command=/usr/local/bin/start-openmausbot-cua-driver.sh' \\
+      '[program:quatibot-cua-driver]' \\
+      'command=/usr/local/bin/start-quatibot-cua-driver.sh' \\
       'user=cua' \\
       'environment=HOME="/home/cua",USER="cua",DISPLAY=":1"' \\
       'autorestart=true' \\
@@ -387,7 +387,7 @@ function statusProblem(status: ContainerComputerStatus): string | null {
 
 function existingContainerProblem(status: ContainerComputerStatus): string | null {
   if (!status.imageMatches) return "The existing Local VM uses an older desktop or Cua Driver; recreate it";
-  if (!status.managed) return "The existing container was not created by OpenMausBot; recreate it";
+  if (!status.managed) return "The existing container was not created by QuatiBot; recreate it";
   if (status.network === "unsafe") return "The existing Local VM exposes its viewer publicly; recreate it";
   if (status.security === "unsafe") return "The existing Local VM is missing safety limits; recreate it";
   if (status.persistence === "unsafe") return "The existing Local VM is missing its durable folder; recreate it";
@@ -403,7 +403,7 @@ export function imageLabelsMatch(labels: Record<string, string> | undefined): bo
   );
 }
 
-/** Ownership ignores image/driver versions, so an older OMB container stays removable. */
+/** Ownership ignores image/driver versions, so an older QUATI container stays removable. */
 function containerOwnershipLabelsMatch(
   labels: Record<string, string> | undefined,
   target: LocalVmTarget,
@@ -622,7 +622,7 @@ export async function containerComputerStatus(
       ) {
         throw new Error(`Cua health report is ${report.overall ?? "invalid"}`);
       }
-      const readinessShot = "/tmp/openmausbot-readiness.png";
+      const readinessShot = "/tmp/quatibot-readiness.png";
       await runner(
         status.runtime,
         cuaExecArgs([
@@ -944,7 +944,7 @@ function baseImagePullArgs(runtime: Runtime): string[] {
 
 async function prepareManagedImage(runtime: Runtime, runner: CommandRunner): Promise<void> {
   await runner(runtime, baseImagePullArgs(runtime), 10 * 60_000);
-  const context = await mkdtemp(join(tmpdir(), "openmausbot-cua-image-"));
+  const context = await mkdtemp(join(tmpdir(), "quatibot-cua-image-"));
   try {
     await writeFile(join(context, "Dockerfile"), managedImageDockerfile(), { mode: 0o600 });
     await runner(runtime, ["build", "-t", IMAGE, context], 10 * 60_000);
@@ -984,7 +984,7 @@ export async function containerComputerAction(
   if (action === "remove" && !before.managed) {
     throw Object.assign(
       new Error(
-        `The existing container named ${target.containerName} was not created by OpenMausBot; remove it manually in ${runtime}`,
+        `The existing container named ${target.containerName} was not created by QuatiBot; remove it manually in ${runtime}`,
       ),
       { status: 409 },
     );
@@ -1055,7 +1055,7 @@ export async function containerComputerFrame(
   }
   if (cacheable) screenshotStatusCache.set(target.key, { status, expiresAt: now + SCREENSHOT_STATUS_TTL_MS });
   try {
-    const screenshot = "/tmp/openmausbot-preview.png";
+    const screenshot = "/tmp/quatibot-preview.png";
     await runner(
       status.runtime,
       cuaExecArgs([
@@ -1193,7 +1193,7 @@ export function containerComputerMcp(
     // The control pair rides in env, not argv, which `ps` shows for the bridge's whole life.
     env: {
       ELECTRON_RUN_AS_NODE: "1",
-      ...(control ? { OMB_CONTROL_URL: control.url, OMB_CONTROL_TOKEN: control.token } : {}),
+      ...(control ? { QUATI_CONTROL_URL: control.url, QUATI_CONTROL_TOKEN: control.token } : {}),
     },
   };
 }

@@ -17,9 +17,9 @@ let auth: RequestAuth, cloudHome: boolean, home: string, server: Server, base: s
 
 beforeEach(async () => {
   auth = owner; cloudHome = true;
-  home = mkdtempSync(join(tmpdir(), "omb-sync-routes-"));
-  mkdirSync(join(home, ".openmausbot"));
-  routes = createCloudSyncRoutes({ dataDir: join(home, ".openmausbot"), cloudHome: () => cloudHome, statfs: () => ({ totalBytes: 10 * 1024 ** 3, freeBytes: 9 * 1024 ** 3 }) });
+  home = mkdtempSync(join(tmpdir(), "quati-sync-routes-"));
+  mkdirSync(join(home, ".quatibot"));
+  routes = createCloudSyncRoutes({ dataDir: join(home, ".quatibot"), cloudHome: () => cloudHome, statfs: () => ({ totalBytes: 10 * 1024 ** 3, freeBytes: 9 * 1024 ** 3 }) });
   server = createServer(async (req, res) => {
     const url = new URL(req.url!, "http://127.0.0.1");
     if (!await dispatchRoutes([routes], { req, res, url, path: url.pathname, method: req.method!, auth, json, readBody })) json(res, 404, { error: "not ours" });
@@ -60,7 +60,7 @@ it("registers, uploads in parts, lists, serves a range, deletes and restores", a
   const ranged = await call("GET", `/api/sync/folders/${id}/file?path=a.txt`, undefined, { range: "bytes=6-" });
   expect(ranged.status).toBe(206);
   expect(ranged.body).toBe("world");
-  expect(ranged.headers.get("x-omb-sha256")).toBe(sha("hello world"));
+  expect(ranged.headers.get("x-quati-sha256")).toBe(sha("hello world"));
   expect((await call("POST", `/api/sync/folders/${id}/ops`, { ops: [{ op: "delete", path: "a.txt", baseSha256: sha("hello world") }] })).body).toEqual({ results: [{ ok: true }] });
   const [entry] = (await call("GET", "/api/sync/trash")).body.entries;
   expect((await call("POST", "/api/sync/trash/restore", { entryId: entry.id })).body).toEqual({ folderId: id, path: "a.txt" });

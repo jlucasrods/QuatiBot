@@ -272,7 +272,7 @@ export function createTaskRoutes(deps: TaskRouteDeps): RouteHandler {
         const widensMode = approvalRank[nextMode] > approvalRank[approvalModeFor(current)];
         const nextAllow = profile.alwaysAllow ?? [];
         const widensAllow = nextAllow.some((key) => !(current.alwaysAllow ?? []).includes(key));
-        // Full has no OMB-side guard here; the narrower levels keep this one.
+        // Full has no QUATI-side guard here; the narrower levels keep this one.
         if (nextMode !== "full" && (widensMode || widensAllow) && auth.kind === "loopback" && !DESKTOP_MANAGED && !req.headers.origin && store.bots.some((bot) => bot.busy)) {
           return json(res, 409, { error: "Change approval mode from the app or a paired device while bots are working." });
         }

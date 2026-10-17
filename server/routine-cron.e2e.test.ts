@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { launchVerificationServer, runControlOmb } from "../scripts/control-omb.ts";
+import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
 import { nextCronRuns } from "../shared/routine-schedule.ts";
 
 it("takes cron through the real routine tools, applying the bot's own routine at once, preserving its zone and rejecting invalid API input", async () => {
@@ -21,7 +21,7 @@ it("takes cron through the real routine tools, applying the bot's own routine at
     if (method !== "GET") evidence.push({ method, path, body, status: response.status, result: value });
     return value;
   };
-  const cli = (...args: string[]) => runControlOmb([...args, "--url", fixture.info.url]) as Promise<any>;
+  const cli = (...args: string[]) => runControlQuati([...args, "--url", fixture.info.url]) as Promise<any>;
   try {
     expect((await cli("doctor")).ok).toBe(true);
     const { bot } = await cli("new-bot", "--name", "Cron fixture");
@@ -57,9 +57,9 @@ it("takes cron through the real routine tools, applying the bot's own routine at
     expect(create.subtitle).toContain("Cron: 0 9 1 * *");
     const { resultId: routineId } = applied(create);
     const current = async () => (await api("GET", "/api/routines")).routines.find((routine: any) => routine.id === routineId);
-    expect(await current()).toMatchObject({ schedule, enabled: true, runOn: "maus", overlap: "queue", runOnStartup: true });
+    expect(await current()).toMatchObject({ schedule, enabled: true, runOn: "quati", overlap: "queue", runOnStartup: true });
     expect(create.subtitle).toContain("Queue one scheduled run");
-    expect(create.subtitle).toContain("On startup: Also runs once each time OpenMausBot starts");
+    expect(create.subtitle).toContain("On startup: Also runs once each time QuatiBot starts");
     expect((await current()).nextRunAt).toBe(nextCronRuns(schedule, create.routineRequest.createdAt, 1)[0]);
 
     const cardCount = (await messages()).filter(message => message.card?.routineRequest).length;
@@ -101,7 +101,7 @@ it("takes cron through the real routine tools, applying the bot's own routine at
       name: "Explicit Boat", instructions: "Run on the Boat-hosted agent.", schedule, run_on: "box",
     }, "Try the separate Boat runner without a Boat account.", true);
     const boatResponse = providerEvidence().at(-1).evidence.find((entry: any) => entry.step?.tool === "propose_routine").response;
-    expect(boatResponse.result.content[0].text).toContain('run_on="maus"');
+    expect(boatResponse.result.content[0].text).toContain('run_on="quati"');
     expect(boatResponse.result.content[0].text).toContain("self-hosted VPS");
     const before = await current();
     for (const invalid of [

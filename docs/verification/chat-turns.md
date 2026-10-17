@@ -17,11 +17,11 @@ Starting or selecting another bot task does not stop the previous one.
 ## Driving it
 
 ```sh
-pnpm control:omb new-bot --name Probe --url http://127.0.0.1:PORT
+pnpm control:quati new-bot --name Probe --url http://127.0.0.1:PORT
 # Copy bot.id from the JSON above as BOT_ID.
-pnpm control:omb send --bot BOT_ID --text "hello" --url http://127.0.0.1:PORT
-pnpm control:omb wait --bot BOT_ID --timeout 30 --url http://127.0.0.1:PORT
-pnpm control:omb messages --bot BOT_ID --limit 10 --url http://127.0.0.1:PORT
+pnpm control:quati send --bot BOT_ID --text "hello" --url http://127.0.0.1:PORT
+pnpm control:quati wait --bot BOT_ID --timeout 30 --url http://127.0.0.1:PORT
+pnpm control:quati messages --bot BOT_ID --limit 10 --url http://127.0.0.1:PORT
 ```
 
 The wait result must be `settled`, and the messages result must contain the
@@ -34,7 +34,7 @@ command without starting a turn.
   reading, or stopping. Pass `--task THREAD_ID` to target another owned bot task
   without changing the selection. A channel send still requires its active task.
 - `set-model --bot BOT_ID --task THREAD_ID --instance INSTANCE_ID --model MODEL_ID`
-  changes only that idle task. Get exact available IDs from `control:omb models`.
+  changes only that idle task. Get exact available IDs from `control:quati models`.
   Without `--task`, the legacy model operation updates the bot default and its
   selected idle task, leaving other tasks unchanged.
 - A bot working inside a channel must be awaited through that channel.
@@ -48,17 +48,17 @@ Auto pins the conversation to whatever its first turn reached. A conversation
 pinned from the composer chip wins over the bot's Works on, except Off.
 
 ```sh
-node --experimental-strip-types scripts/control-omb.ts launch
-pnpm control:omb new-bot --name Orbit --url http://127.0.0.1:PORT
+node --experimental-strip-types scripts/control-quati.ts launch
+pnpm control:quati new-bot --name Orbit --url http://127.0.0.1:PORT
 curl -s -X PATCH "http://127.0.0.1:PORT/api/bots/BOT_ID" \
   -H 'content-type: application/json' -d '{"computer":"cloud"}'
-pnpm control:omb send --bot BOT_ID --text "compare shipping prices on two sites" --url http://127.0.0.1:PORT
-pnpm control:omb wait --bot BOT_ID --timeout 40 --url http://127.0.0.1:PORT
+pnpm control:quati send --bot BOT_ID --text "compare shipping prices on two sites" --url http://127.0.0.1:PORT
+pnpm control:quati wait --bot BOT_ID --timeout 40 --url http://127.0.0.1:PORT
 # pin this conversation to the browser, the way the composer chip does
 curl -s -X PATCH "http://127.0.0.1:PORT/api/bots/BOT_ID/tasks/THREAD_ID" \
   -H 'content-type: application/json' -d '{"surface":"browser"}'
-pnpm control:omb send --bot BOT_ID --text "compare shipping prices on two sites" --url http://127.0.0.1:PORT
-pnpm control:omb wait --bot BOT_ID --timeout 40 --url http://127.0.0.1:PORT
+pnpm control:quati send --bot BOT_ID --text "compare shipping prices on two sites" --url http://127.0.0.1:PORT
+pnpm control:quati wait --bot BOT_ID --timeout 40 --url http://127.0.0.1:PORT
 ```
 
 In `fake-claude-dump.json` the Cloud turn's `systemPrompt` must say everything
@@ -80,16 +80,16 @@ browser, and the turn must tell the model it has no screen rather than leave
 it to narrate a browser it cannot call.
 
 ```sh
-node --experimental-strip-types scripts/control-omb.ts launch
+node --experimental-strip-types scripts/control-quati.ts launch
 # second terminal, using the printed URL
-pnpm control:omb new-bot --name Orbit --url http://127.0.0.1:PORT
-pnpm control:omb send --bot BOT_ID --text "list my calendar events" --url http://127.0.0.1:PORT
-pnpm control:omb wait --bot BOT_ID --timeout 40 --url http://127.0.0.1:PORT
+pnpm control:quati new-bot --name Orbit --url http://127.0.0.1:PORT
+pnpm control:quati send --bot BOT_ID --text "list my calendar events" --url http://127.0.0.1:PORT
+pnpm control:quati wait --bot BOT_ID --timeout 40 --url http://127.0.0.1:PORT
 # the fixture's own API sets the destination the Works on picker sets
 curl -s -X PATCH "http://127.0.0.1:PORT/api/bots/BOT_ID" \
   -H 'content-type: application/json' -d '{"computer":"off"}'
-pnpm control:omb send --bot BOT_ID --text "open a browser and check my calendar" --url http://127.0.0.1:PORT
-pnpm control:omb wait --bot BOT_ID --timeout 40 --url http://127.0.0.1:PORT
+pnpm control:quati send --bot BOT_ID --text "open a browser and check my calendar" --url http://127.0.0.1:PORT
+pnpm control:quati wait --bot BOT_ID --timeout 40 --url http://127.0.0.1:PORT
 ```
 
 After each settled turn read `fake-claude-dump.json` in the fixture's printed
@@ -106,7 +106,7 @@ dump above proves what the model was told, not what a native browser would do.
 ### Last exercised
 
 2026-09-12, isolated macOS fixture on port 21008. A bot on Auto settled with
-`mcpConfig` servers `agents` and `ogb` and no Works-on sentence. The same bot
+`mcpConfig` servers `agents` and `quati` and no Works-on sentence. The same bot
 patched to `computer: "off"` settled with the Works-on-Off sentence in its
 system prompt. A channel send to that bot carried the same sentence in the room
 prompt; an Auto bot mentioned in the same room did not. The fixture and its
@@ -180,7 +180,7 @@ teammate's cards through the broker's own course: the Chief's chip says
 denied, or that nobody answered and the step did not run, never "got your
 approval". The fixture fires the broker's fifteen-minute deadline through a
 marker file (`server/testing/approval-clock-hooks.mjs`, loaded only when
-`OMB_TEST_APPROVAL_CLOCK=1` reaches the isolated launcher). The result a
+`QUATI_TEST_APPROVAL_CLOCK=1` reaches the isolated launcher). The result a
 Chief's coordination, a routine run's hand-off and a room's coordinator each
 read then leads with the action that did not run; a failed teammate turn
 carries it after its failure, and an action the model asked again and was
@@ -196,7 +196,7 @@ claim real-provider performance.
 pnpm exec vitest run server/independent-threads-api.test.ts
 ```
 
-This test launches a fresh `control-omb` fixture for each case, wraps only its
+This test launches a fresh `control-quati` fixture for each case, wraps only its
 fake engine with per-model completion gates, and uses the shared MCP/CLI surface
 for pinned sends, waits, model changes, reads, and interrupts. It verifies two
 tasks running under one bot, switching and creating while busy, separate model

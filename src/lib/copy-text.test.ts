@@ -3,7 +3,7 @@ import { COPY_FEEDBACK_MS, WEB_WRITE_TIMEOUT_MS, copyText, createCopyFeedback, t
 
 const setEnv = (writeText: ((t: string) => Promise<void>) | undefined, bridge?: (t: string) => Promise<boolean>) => {
   vi.stubGlobal("navigator", writeText ? { clipboard: { writeText } } : {});
-  vi.stubGlobal("window", { ogb: bridge ? { copyText: bridge } : undefined });
+  vi.stubGlobal("window", { quati: bridge ? { copyText: bridge } : undefined });
 };
 
 afterEach(() => {

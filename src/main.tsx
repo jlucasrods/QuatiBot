@@ -13,7 +13,7 @@ import { BrowserSignInPage } from "./pair/BrowserSignInPage";
 import { PairPage } from "./pair/PairPage";
 import "./styles.css";
 
-// Before first paint; settleAdvancedModeDefault must run before applySkin writes omb-skin.
+// Before first paint; settleAdvancedModeDefault must run before applySkin writes quati-skin.
 settleAdvancedModeDefault();
 applySkin(readSkin());
 applyFont(readFont());

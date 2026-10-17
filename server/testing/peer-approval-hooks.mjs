@@ -2,8 +2,8 @@
 // deadline callback after observing the real HTTP card.
 import { registerHooks } from 'node:module';
 import { join } from 'node:path';
-const dataDir = process.env.OMB_DATA_DIR;
-if (!dataDir || dataDir !== process.env.HOME || !process.env.OMB_TEST_PEER_APPROVAL) {
+const dataDir = process.env.QUATI_DATA_DIR;
+if (!dataDir || dataDir !== process.env.HOME || !process.env.QUATI_TEST_PEER_APPROVAL) {
   throw new Error('Peer approval clock requires an explicitly isolated fixture');
 }
 const marker = join(dataDir, 'expire-peer-approval');

@@ -33,7 +33,7 @@ suite("the bots' browser service on real Chrome", () => {
 
   beforeAll(async () => {
     fx = await FixtureServer.start();
-    files = mkdtempSync(join(testRoot(), "omb-checklist-files-"));
+    files = mkdtempSync(join(testRoot(), "quati-checklist-files-"));
     real = await startService();
   }, hostTimeout(240_000));
 

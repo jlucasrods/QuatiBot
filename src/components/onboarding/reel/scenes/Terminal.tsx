@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MausAvatar } from "@/components/Avatar";
+import { QuatiAvatar } from "@/components/Avatar";
 import { cn } from "@/lib/cn";
 import { reducedMotion } from "@/lib/onboarding";
 import type { SceneProps } from "./types";
@@ -13,13 +13,13 @@ type Line =
   | { kind: "done"; label: string; value: string };
 
 const SCRIPT: Array<{ at: number; line: Line }> = [
-  { at: 300, line: { kind: "cmd", text: "npx openmausbot" } },
-  { at: 1150, line: { kind: "out", text: "Welcome to OpenMausBot", tone: "ink" } },
+  { at: 300, line: { kind: "cmd", text: "npx quatibot" } },
+  { at: 1150, line: { kind: "out", text: "Welcome to QuatiBot", tone: "ink" } },
   { at: 1350, line: { kind: "out", text: "Let's connect your AI. Choose a provider, then a model.", tone: "dim" } },
   { at: 1800, line: { kind: "pick", label: "Choose your AI connection", options: ["Claude Code", "ChatGPT / Codex", "API key"], chosen: 0 } },
   { at: 2900, line: { kind: "done", label: "Choose your AI connection", value: "Claude Code" } },
   { at: 3150, line: { kind: "done", label: "Choose your model", value: "claude-sonnet" } },
-  { at: 3700, line: { kind: "out", text: "OpenMausBot ready → http://127.0.0.1:8799", tone: "success" } },
+  { at: 3700, line: { kind: "out", text: "QuatiBot ready → http://127.0.0.1:8799", tone: "success" } },
 ];
 
 const RISE_AT = 4200;
@@ -133,8 +133,8 @@ export function Terminal({ playing, onCue, onEnded, label }: SceneProps) {
               <span className="size-2.5 rounded-full bg-[#28c840]" />
             </div>
             <div className="ml-2 flex h-6 max-w-[150px] items-center gap-1.5 rounded-t-lg bg-[#35363a] px-2.5 text-[9.5px] text-[#e8eaed]">
-              <MausAvatar color="green" state="idle" size={10} animated={false} trackPointer={false} />
-              <span className="truncate">OpenMausBot</span>
+              <QuatiAvatar color="green" state="idle" size={10} animated={false} trackPointer={false} />
+              <span className="truncate">QuatiBot</span>
               <span className="ml-1 text-[#9aa0a6]">×</span>
             </div>
             <span className="mb-1 text-[12px] leading-none text-[#9aa0a6]">+</span>
@@ -158,7 +158,7 @@ export function Terminal({ playing, onCue, onEnded, label }: SceneProps) {
             <div className="h-5 rounded-md bg-inset" />
             <div className="mt-2 text-[7.5px] font-semibold uppercase tracking-[0.12em] text-ink-tertiary">Bots</div>
             <div className="mt-1 flex items-center gap-1.5 rounded-md bg-raised/70 px-1.5 py-1">
-              <MausAvatar color="green" state="happy" size={14} animated={false} trackPointer={false} />
+              <QuatiAvatar color="green" state="happy" size={14} animated={false} trackPointer={false} />
               <div className="min-w-0">
                 <div className="h-1.5 w-9 rounded bg-ink/70" />
                 <div className="mt-1 h-1 w-12 rounded bg-ink-secondary/40" />
@@ -171,14 +171,14 @@ export function Terminal({ playing, onCue, onEnded, label }: SceneProps) {
           </div>
           <div className="relative flex-1">
             <div className="flex items-center gap-2 border-b border-hairline/40 px-3 py-2">
-              <MausAvatar color="green" state="happy" size={14} animated={false} trackPointer={false} />
+              <QuatiAvatar color="green" state="happy" size={14} animated={false} trackPointer={false} />
               <div className="h-1.5 w-10 rounded bg-ink/70" />
             </div>
             <div className="absolute inset-0 top-[29px] bg-app/80" />
             <div className="absolute left-1/2 top-[6px] w-[196px] -translate-x-1/2 rounded-xl border border-hairline/50 bg-panel px-4 py-2.5 shadow-[0_18px_40px_-16px_rgba(0,0,0,0.7)]">
               <div className="flex flex-col items-center">
-                <MausAvatar color="green" state="happy" size={24} animated={!still} trackPointer={false} />
-                <div className="mt-1 text-[10px] font-semibold text-ink">Welcome to OpenMausBot</div>
+                <QuatiAvatar color="green" state="happy" size={24} animated={!still} trackPointer={false} />
+                <div className="mt-1 text-[10px] font-semibold text-ink">Welcome to QuatiBot</div>
                 <div className="mt-0.5 h-1 w-24 rounded bg-ink-secondary/40" />
                 <div className="mt-2 flex h-[18px] w-full items-center rounded-md border border-hairline/40 bg-inset px-2 text-[8px] text-ink-secondary">Your name</div>
                 <div className="mt-1 flex h-[18px] w-full items-center rounded-md border border-hairline/40 bg-inset px-2 text-[8px] text-ink-secondary">you@example.com</div>
@@ -191,7 +191,7 @@ export function Terminal({ playing, onCue, onEnded, label }: SceneProps) {
 
       <div className="absolute bottom-3 right-5 z-20">
         <div className="drop-shadow-[0_8px_18px_rgba(0,0,0,0.45)]">
-          <MausAvatar color="green" state={rising ? "happy" : now > 1800 ? "working" : "loading"} size={36} animated={!still} trackPointer={false} />
+          <QuatiAvatar color="green" state={rising ? "happy" : now > 1800 ? "working" : "loading"} size={36} animated={!still} trackPointer={false} />
         </div>
       </div>
     </div>

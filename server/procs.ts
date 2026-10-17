@@ -40,14 +40,14 @@ function rememberEngineSession(child: ChildProcess): void {
 }
 
 /** `bot`: an engine running bots' turns, whose own servers that bot's browser may open on a server host.
- * `openmausbot`: everything else (logins, probes, the browser engine itself). */
-export type CliOwner = "bot" | "openmausbot";
+ * `quatibot`: everything else (logins, probes, the browser engine itself). */
+export type CliOwner = "bot" | "quatibot";
 
 export function spawnCli(
   cli: string,
   args: string[],
   opts: SpawnOptions,
-  owner: CliOwner = "openmausbot",
+  owner: CliOwner = "quatibot",
 ): ChildProcessByStdio<Writable, Readable, Readable> {
   const resolved = resolveCli(cli, args);
   const child = spawn(resolved.command, resolved.args, {

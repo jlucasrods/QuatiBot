@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { Bot } from "@/state/store";
 import type { Routine, RoutineRun } from "@/lib/routines";
-// RoutineCalendarPage imports DesktopCapabilities, which reads window.ogb at import time; the node environment has no
+// RoutineCalendarPage imports DesktopCapabilities, which reads window.quati at import time; the node environment has no
 // window.
 vi.mock("@/components/DesktopCapabilities", () => ({
     useDesktopCapabilities: () => ({ capabilities: { host: { homeDir: undefined } } }),
@@ -46,7 +46,7 @@ const activeRoutine: Routine = {
     prompt: "Summarize overnight news",
     target: "bot",
     botId: bot.id,
-    runOn: "maus",
+    runOn: "quati",
     enabled: true,
     schedule: { type: "daily", time: "09:00", weekdays: [1, 2, 3, 4, 5] },
     durationMinutes: 5,
@@ -60,7 +60,7 @@ const pausedRoutine: Routine = {
     prompt: "Summarize the week",
     target: "bot",
     botId: bot.id,
-    runOn: "maus",
+    runOn: "quati",
     enabled: false,
     schedule: { type: "once", at: Date.now() + 86400000 },
     durationMinutes: 5,
@@ -74,7 +74,7 @@ const finishedRun: RoutineRun = {
     routineName: "Morning brief",
     target: "bot",
     botId: bot.id,
-    runOn: "maus",
+    runOn: "quati",
     scheduledFor: Date.UTC(2026, 8, 6, 9),
     status: "completed",
     manual: false,

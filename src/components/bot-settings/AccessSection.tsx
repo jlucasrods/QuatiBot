@@ -134,7 +134,7 @@ export function AccessSection({ bot, derived, }: {
             <div className="mt-0.5 text-[13px] text-ink-secondary">
               {!desktopBrowser
             ? browserBlockedOnWindows && !browserInstallable
-                ? "Not available on this Windows machine yet: install the browser engine with `openmausbot browser install`."
+                ? "Not available on this Windows machine yet: install the browser engine with `quatibot browser install`."
                 : browserUnavailableReason(state.config)
             : !browserFeature
                 ? "The built-in browser is switched off under App Settings → Computers."

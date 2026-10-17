@@ -9,11 +9,11 @@ import en from "./en.json";
 import { locales } from "./index";
 
 const RETIRED: ReadonlyArray<readonly [string, RegExp, string]> = [
-  ["OMB Cloud", /OMB Cloud/i, "MausBot Cloud"],
-  ["OpenMausBot Cloud", /OpenMausBot Cloud/i, "MausBot Cloud"],
-  ["MausBot Pro", /MausBot Pro\b/, "MausBot Cloud"],
-  // \b before "_" fails, so environment names such as OMB_PUBLIC_IPV4 pass.
-  ["OMB", /\bOMB\b/, "OpenMausBot"],
+  ["QUATI Cloud", /QUATI Cloud/i, "Quati Cloud"],
+  ["QuatiBot Cloud", /QuatiBot Cloud/i, "Quati Cloud"],
+  ["Quati Pro", /Quati Pro\b/, "Quati Cloud"],
+  // \b before "_" fails, so environment names such as QUATI_PUBLIC_IPV4 pass.
+  ["QUATI", /\bOMB\b/, "QuatiBot"],
   ["Cloud box", /Cloud box/i, "Cloud computer"],
   ["Hosted desktop", /Hosted desktop/i, "Cloud computer"],
   ["Cloud VM", /Cloud VM/i, "Cloud computer"],
@@ -50,11 +50,11 @@ const ALLOWED: ReadonlyArray<{ file: string; snippet?: string; why: string }> = 
   { file: "src/components/CloudBackendPicker.tsx", why: "the own-key provider picker names its two providers, Boat and a VPS" },
   { file: "shared/credential-request.ts", snippet: "when Boat is selected", why: "the card that asks for a person's own Boat key" },
   { file: "server/boat-create-idempotency.ts", snippet: "unnamed Boat", why: "own-key repair: boat.dev's own name for a machine" },
-  { file: "server/request-auth.ts", snippet: "OMB Cloud home", why: "a request-trust reason and log warning, never shown in the app" },
-  { file: "../../server/platform/cloud-account.mjs", snippet: "[cloud] OMB Cloud sent plan", why: "a log line" },
-  { file: "server/workspace-backup.ts", snippet: "OMB-WORKSPACE-1", why: "a backup file's format marker" },
-  { file: "electron/cloud-move.mjs", snippet: "OMB-WORKSPACE-1", why: "a backup file's format marker" },
-  { file: "electron/company-backups.mjs", snippet: "OMB-WORKSPACE-1", why: "a backup file's format marker" },
+  { file: "server/request-auth.ts", snippet: "QUATI Cloud home", why: "a request-trust reason and log warning, never shown in the app" },
+  { file: "../../server/platform/cloud-account.mjs", snippet: "[cloud] QUATI Cloud sent plan", why: "a log line" },
+  { file: "server/workspace-backup.ts", snippet: "QUATI-WORKSPACE-1", why: "a backup file's format marker" },
+  { file: "electron/cloud-move.mjs", snippet: "QUATI-WORKSPACE-1", why: "a backup file's format marker" },
+  { file: "electron/company-backups.mjs", snippet: "QUATI-WORKSPACE-1", why: "a backup file's format marker" },
 ];
 
 function* sources(dir: string): Generator<string> {
@@ -98,7 +98,7 @@ const allows = (entry: (typeof ALLOWED)[number], finding: { file: string; text: 
   entry.file === finding.file && (entry.snippet === undefined || finding.text.includes(entry.snippet));
 
 describe("one name per thing", () => {
-  it("English copy uses MausBot Cloud, My Cloud, Cloud computer, This computer and Plan page", () => {
+  it("English copy uses Quati Cloud, My Cloud, Cloud computer, This computer and Plan page", () => {
     const offending = Object.entries(en as Record<string, string>)
       .filter(([key]) => !PENDING_KEY_PREFIXES.some((prefix) => key.startsWith(prefix)) && !Object.hasOwn(EN_ALLOWED, key))
       // English keys are UI copy, so lower-case "boat" counts too.
@@ -106,13 +106,13 @@ describe("one name per thing", () => {
     expect(offending).toEqual([]);
   });
 
-  const productNames = RETIRED.filter(([, , use]) => use === "MausBot Cloud");
-  it("translations never show OMB, T3 or an old name for MausBot Cloud, keep its name as it is, and say Boat only where the English does", () => {
+  const productNames = RETIRED.filter(([, , use]) => use === "Quati Cloud");
+  it("translations never show QUATI, T3 or an old name for Quati Cloud, keep its name as it is, and say Boat only where the English does", () => {
     const offending = Object.entries(locales).filter(([code]) => code !== "en").flatMap(([code, pack]) =>
       Object.entries(pack)
         .filter(([key]) => !PENDING_KEY_PREFIXES.some((prefix) => key.startsWith(prefix)))
         .filter(([key, value]) => /\bOMB\b|\bT3\b/.test(value!) || productNames.some(([, pattern]) => pattern.test(value!))
-          || (/MausBot Cloud/.test((en as Record<string, string>)[key]!) && !/MausBot Cloud/.test(value!))
+          || (/Quati Cloud/.test((en as Record<string, string>)[key]!) && !/Quati Cloud/.test(value!))
           || (/boat/i.test(value!) && !/\bboats?\b/i.test((en as Record<string, string>)[key]!)))
         .map(([key]) => `${code}: ${key}`));
     expect([...new Set(offending)]).toEqual([]);
@@ -131,8 +131,8 @@ describe("one name per thing", () => {
     expect(staleKeys).toEqual([]);
   });
 
-  it("the public docs name My Cloud and MausBot Cloud as the app does", () => {
-    const cloudNames = RETIRED.filter(([, , use]) => /My Cloud|MausBot Cloud/.test(use));
+  it("the public docs name My Cloud and Quati Cloud as the app does", () => {
+    const cloudNames = RETIRED.filter(([, , use]) => /My Cloud|Quati Cloud/.test(use));
     const pages = (dir: string): string[] => readdirSync(dir).flatMap((name) => {
       const path = join(dir, name);
       return statSync(path).isDirectory() ? pages(path) : /\.mdx?$/.test(name) ? [path] : [];
@@ -169,15 +169,15 @@ describe("one name per thing", () => {
 
   it("the check catches each retired word, and lets own-key Boat and env names through", () => {
     for (const bad of [
-      "Sign in to OMB Cloud", "Sign in to OpenMausBot Cloud", "Get OpenMausBot Pro", "MausBot Pro plans",
-      "restart OMB", "Cloud box", "Hosted desktop", "Run it in its cloud VM", "Boat cloud runner",
+      "Sign in to QUATI Cloud", "Sign in to QuatiBot Cloud", "Get QuatiBot Pro", "Quati Pro plans",
+      "restart QUATI", "Cloud box", "Hosted desktop", "Run it in its cloud VM", "Boat cloud runner",
       "Open your Cloud dashboard", "Connect to my Cloud", "Your Cloud is ready", "Let my Cloud use this Mac",
       "Local (this computer)", "Choose Cloud to wake", "Auto, Cloud or Browser", "including one from T3",
       "Auto uses this Boat", "New Boat computer",
     ]) expect(retiredIn(bad), bad).not.toEqual([]);
     for (const good of [
-      "Sign in to MausBot Cloud", "Pro active · verified by MausBot Cloud", "Restart OpenMausBot", "locked by another OpenMausBot process",
-      "set OMB_PUBLIC_IPV4", "Open My Cloud", "Choose Cloud computer to wake",
+      "Sign in to Quati Cloud", "Pro active · verified by Quati Cloud", "Restart QuatiBot", "locked by another QuatiBot process",
+      "set QUATI_PUBLIC_IPV4", "Open My Cloud", "Choose Cloud computer to wake",
       "Included with your Cloud plan", "Add a Boat API key in Settings → API keys", "Connect Boat", "Check boat.dev",
       "Local VM", "Open your Plan page",
     ]) expect(retiredIn(good), good).toEqual([]);

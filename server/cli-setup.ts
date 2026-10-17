@@ -70,7 +70,7 @@ export async function runSetup(
     const entries = Object.entries(instances).filter(([, entry]) => entry.enabled !== false);
     if (!entries.length) throw new Error("Enable OpenCode V2 in Settings before running setup.");
 
-    io.log("\nOpenMausBot uses OpenCode V2 over ACP.");
+    io.log("\nQuatiBot uses OpenCode V2 over ACP.");
     io.log("Configure providers, credentials and local endpoints in OpenCode, using `opencode auth login` when needed.");
     const selected = entries.length === 1 ? 0 : await io.choose("Choose OpenCode instance", entries.map(([id, entry]) => entry.displayName ?? id));
     const [id, entry] = entries[selected]!;

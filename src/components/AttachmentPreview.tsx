@@ -120,7 +120,7 @@ function sourceImageExtension(source: string | undefined): string | null {
         return null;
     let pathname = source;
     try {
-        pathname = decodeURIComponent(new URL(source, "https://openmausbot.invalid").pathname);
+        pathname = decodeURIComponent(new URL(source, "https://quatibot.invalid").pathname);
     }
     catch {
         pathname = source.split(/[?#]/, 1)[0] ?? source;
@@ -262,7 +262,7 @@ export function useLocalFileSave(filePath: string, name?: string, message?: Mess
         request.current = controller;
         try {
             const response = await requestMessageFile(filePath, message, controller.signal, entry === undefined ? { list: true } : { entry });
-            if (response.headers.get("x-openmausbot-folder") === "1") {
+            if (response.headers.get("x-quatibot-folder") === "1") {
                 const listing = await response.json() as MessageFolderListing;
                 if (!mounted.current || controller.signal.aborted)
                     return;

@@ -54,7 +54,7 @@ export function serviceAllowed(method: string, path: string): boolean {
   return SERVICE_ALLOW.some((rule) => rule.methods.includes(upper) && rule.path.test(path));
 }
 
-/** Packaged desktop: `owner`. Else OMB_LOOPBACK_TRUST=owner|service; unset, a hosted workspace (any OMB_ADMIN_*)
+/** Packaged desktop: `owner`. Else QUATI_LOOPBACK_TRUST=owner|service; unset, a hosted workspace (any QUATI_ADMIN_*)
  * gets `service` and a headless server `owner`. Any other value fails closed. `localBrowsers`: see localBrowserTrust. */
 export function resolveLoopbackTrust(input: {
   env?: NodeJS.ProcessEnv;
@@ -72,25 +72,25 @@ export function resolveLoopbackTrust(input: {
 }
 
 function loopbackTrust(input: Parameters<typeof resolveLoopbackTrust>[0]): { trust: LoopbackTrust; reason: string; warning?: string } {
-  const raw = (input.env ?? process.env).OMB_LOOPBACK_TRUST;
+  const raw = (input.env ?? process.env).QUATI_LOOPBACK_TRUST;
   const requested = raw?.trim().toLowerCase();
   if (input.cloudHome) {
-    return { trust: "service", reason: "OMB Cloud home", ...(raw !== undefined && requested !== "service" ? { warning: "OMB_LOOPBACK_TRUST is ignored on an OMB Cloud home: a local request is always a service" } : {}) };
+    return { trust: "service", reason: "QUATI Cloud home", ...(raw !== undefined && requested !== "service" ? { warning: "QUATI_LOOPBACK_TRUST is ignored on an QUATI Cloud home: a local request is always a service" } : {}) };
   }
   if (input.desktopManaged) {
-    return { trust: "owner", reason: "desktop app", ...(raw !== undefined ? { warning: "OMB_LOOPBACK_TRUST is ignored in the desktop app" } : {}) };
+    return { trust: "owner", reason: "desktop app", ...(raw !== undefined ? { warning: "QUATI_LOOPBACK_TRUST is ignored in the desktop app" } : {}) };
   }
   if (requested === "owner" || requested === "service") {
     return {
       trust: requested,
-      reason: "OMB_LOOPBACK_TRUST",
+      reason: "QUATI_LOOPBACK_TRUST",
       ...(requested === "owner" && input.hostedWorkspace
-        ? { warning: "OMB_LOOPBACK_TRUST=owner on a shared workspace: every bot's shell can change settings and approve cards as the owner" }
+        ? { warning: "QUATI_LOOPBACK_TRUST=owner on a shared workspace: every bot's shell can change settings and approve cards as the owner" }
         : {}),
     };
   }
   if (raw !== undefined && requested !== "") {
-    return { trust: "service", reason: "OMB_LOOPBACK_TRUST", warning: `OMB_LOOPBACK_TRUST="${raw.replace(/[^\w.-]/g, "").slice(0, 40)}" is not owner or service; using service` };
+    return { trust: "service", reason: "QUATI_LOOPBACK_TRUST", warning: `QUATI_LOOPBACK_TRUST="${raw.replace(/[^\w.-]/g, "").slice(0, 40)}" is not owner or service; using service` };
   }
   if (input.hostedWorkspace) return { trust: "service", reason: "hosted workspace" };
   return { trust: "owner", reason: "self-hosted default" };
@@ -129,7 +129,7 @@ export function fromBrowser(req: IncomingMessage): boolean {
   return headerValue(headers.upgrade)?.toLowerCase() === "websocket" && headers.origin !== undefined;
 }
 
-const LOCAL_BROWSER_TRUST = "OMB_DEV_TRUST_LOCAL_BROWSER";
+const LOCAL_BROWSER_TRUST = "QUATI_DEV_TRUST_LOCAL_BROWSER";
 
 /** Development only: a server run from a source checkout (`pnpm dev:server`, test fixtures) lets this machine's browsers in
  * as before, because Vite's dev proxy forwards them; a packaged, bundled, hosted or service-trust server ignores it. */
@@ -141,7 +141,7 @@ function localBrowserTrust(env: NodeJS.ProcessEnv, fromSource: boolean, trust: L
   return { trusted: true, warning: `${LOCAL_BROWSER_TRUST}=1: browsers on this machine act as the owner (development only)` };
 }
 
-export const BROWSER_SIGN_IN = "unauthorized: this browser is not signed in. Open the sign-in link that openmausbot serve or openmausbot pair prints on this computer, or pair it with a code from Settings → Remote access";
+export const BROWSER_SIGN_IN = "unauthorized: this browser is not signed in. Open the sign-in link that quatibot serve or quatibot pair prints on this computer, or pair it with a code from Settings → Remote access";
 
 export function isAllowedOrigin(origin: string | undefined | null): boolean {
   if (!origin) return true; // non-browser clients (CLIs, curl, tests) send none
@@ -236,7 +236,7 @@ export function bearerToken(header: string | string[] | undefined): string | und
 
 /** Cookies are scoped by host, not port; the environment id stops a reinstalled server reading its predecessor's cookie. */
 export function sessionCookieName(port: number, environmentId: string): string {
-  return `omb_session_${port}_${environmentId.replace(/[^a-z0-9]/gi, "").slice(0, 12)}`;
+  return `quati_session_${port}_${environmentId.replace(/[^a-z0-9]/gi, "").slice(0, 12)}`;
 }
 
 export function serializeSessionCookie(
@@ -372,16 +372,16 @@ export interface ResolveOptions {
   features?: { sharedComputers?: boolean };
   /** Absent is `owner`; ignored while loopbackMutationToken is in force. */
   loopbackTrust?: LoopbackTrust;
-  /** Under `service`: a per-launch secret from `openmausbot serve` over stdin (never env, which other children read); it opens only pairing codes. */
+  /** Under `service`: a per-launch secret from `quatibot serve` over stdin (never env, which other children read); it opens only pairing codes. */
   cliOwnerToken?: string;
   /** resolveLoopbackTrust's `localBrowsers`: a development server lets this machine's browsers use loopback trust. */
   trustLocalBrowser?: boolean;
 }
 
-const CLI_OWNER_HEADER = "x-openmausbot-cli-owner";
+const CLI_OWNER_HEADER = "x-quatibot-cli-owner";
 const CLI_OWNER_ROUTE = /^\/api\/auth\/pairing$/;
 
-const DESKTOP_OWNER_HEADER = "x-openmausbot-desktop-owner";
+const DESKTOP_OWNER_HEADER = "x-quatibot-desktop-owner";
 
 function mutatingPublicRoute(method: string, path: string): boolean {
   const upper = method.toUpperCase();
@@ -418,7 +418,7 @@ export function resolveRequestAuth(req: IncomingMessage, options: ResolveOptions
   const ticket = path === options.streamPath ? options.url.searchParams.get("ticket") : null;
   let session: SessionRecord | null = null;
   let via: "bearer" | "cookie" | "ticket" | null = null;
-  if (bearer?.startsWith("omb_sess_")) {
+  if (bearer?.startsWith("quati_sess_")) {
     session = options.sessions.authenticate(bearer);
     via = "bearer";
   } else if (ticket) {
@@ -453,12 +453,12 @@ export function resolveRequestAuth(req: IncomingMessage, options: ResolveOptions
   const proxied = isProxied(req);
   const loopback = !proxied && isLoopbackHost(headerValue(req.headers.host)) && isAllowedOrigin(headerValue(req.headers.origin));
   if (loopback) {
-    const companionToken = headerValue(req.headers["x-openmausbot-companion-auth"]);
+    const companionToken = headerValue(req.headers["x-quatibot-companion-auth"]);
     if (companionToken && options.loopbackMutationToken !== undefined) {
       if (
         !secureTokenMatch(companionToken, options.companionMutationToken ?? "") ||
-        req.headers["x-openmausbot-companion"] !== "1" ||
-        !/^[\w-]{1,128}$/.test(headerValue(req.headers["x-openmausbot-companion-device"]) ?? "") ||
+        req.headers["x-quatibot-companion"] !== "1" ||
+        !/^[\w-]{1,128}$/.test(headerValue(req.headers["x-quatibot-companion-device"]) ?? "") ||
         (companionDenial({ path, method, authenticated: true }) && !isCompanionNotice(method, path))
       ) return deny(403, "forbidden: invalid companion request");
       return { auth: { kind: "loopback", scopes: LOOPBACK_SCOPES }, status: 401, error: "" };

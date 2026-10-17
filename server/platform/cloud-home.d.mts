@@ -47,7 +47,7 @@ export interface CloudPlanAllowances {
   /** Cloud computers at once, and cloud computer hours and voice characters a month. */
   computers: number; computerHours: number; voiceCharacters: number;
 }
-/** One plan OpenMausBot Cloud sells: its monthly price before tax in US cents,
+/** One plan QuatiBot Cloud sells: its monthly price before tax in US cents,
  * and its free trial's days when it comes with one. */
 export interface CloudOfferPlan { tier: string; label?: string; amount: number; allowances?: CloudPlanAllowances; trialDays?: number }
 /** What someone may buy now: the session's `offer` (signed in), or the public

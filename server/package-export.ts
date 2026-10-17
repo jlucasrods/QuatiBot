@@ -202,7 +202,7 @@ export function createBotPackageExport(input: {
     }];
   });
 
-  const id = portableKey(input.name, "openmaus-package", new Set());
+  const id = portableKey(input.name, "quati-package", new Set());
   const agents: BotPackageDefinition["agents"] = bots.map((bot) => {
     const appearance: BotPackageDefinition["agents"][number]["appearance"] = { color: bot.color };
     if (bot.mascotExpression) appearance.mascotExpression = bot.mascotExpression;
@@ -225,10 +225,10 @@ export function createBotPackageExport(input: {
     id,
     release: "1.0.0",
     name: input.name,
-    tagline: `A portable OpenMausBot setup with ${bots.length} ${bots.length === 1 ? "bot" : "bots"}.`,
-    summary: "Exported from OpenMausBot. Review the roles, rooms, playbooks, connector requirements, and paused routines before sharing or publishing.",
+    tagline: `A portable QuatiBot setup with ${bots.length} ${bots.length === 1 ? "bot" : "bots"}.`,
+    summary: "Exported from QuatiBot. Review the roles, rooms, playbooks, connector requirements, and paused routines before sharing or publishing.",
     category: "Community",
-    author: { name: input.authorName?.trim() || "OpenMausBot user" },
+    author: { name: input.authorName?.trim() || "QuatiBot user" },
     license: "Unspecified",
     outcomes: ["Recreate this bot setup without copying private runtime state."],
     setupMinutes: Math.min(240, Math.max(2, bots.length + requirements.size * 2)),
@@ -247,7 +247,7 @@ export function createBotPackageExport(input: {
     };
   }
   return parseBotPackage({
-    format: "openmaus.package",
+    format: "quati.package",
     version: 1,
     package: definition,
   });
@@ -635,7 +635,7 @@ export function createTeamPackageExport(input: TeamExportInput): TeamExportResul
       agent,
       ...(goal ? { room: roomKeys.get(routine.groupId!)! } : {}),
       prompt: routine.prompt,
-      runOn: goal ? "maus" as const : routine.runOn,
+      runOn: goal ? "quati" as const : routine.runOn,
       schedule: portableSchedule(routine.schedule),
       durationMinutes: routine.durationMinutes,
       ...(routine.timeoutMinutes === undefined ? {} : { timeoutMinutes: routine.timeoutMinutes }),
@@ -652,12 +652,12 @@ export function createTeamPackageExport(input: TeamExportInput): TeamExportResul
     id: packageId,
     release,
     name: displayName,
-    tagline: input.tagline?.trim() || `A portable OpenMausBot team with ${bots.length} ${bots.length === 1 ? "bot" : "bots"}.`,
+    tagline: input.tagline?.trim() || `A portable QuatiBot team with ${bots.length} ${bots.length === 1 ? "bot" : "bots"}.`,
     summary: input.summary?.trim() ||
-      "Shared from OpenMausBot. Bots, skills, group chats and routines arrive as new copies; routines start paused and chat history never travels.",
+      "Shared from QuatiBot. Bots, skills, group chats and routines arrive as new copies; routines start paused and chat history never travels.",
     ...(notes ? { notes } : {}),
     category: "Community",
-    author: { name: input.authorName?.trim() || "OpenMausBot user" },
+    author: { name: input.authorName?.trim() || "QuatiBot user" },
     license: "Unspecified",
     outcomes: ["Recreate this team without copying chat history or private settings."],
     setupMinutes: Math.min(240, Math.max(2, bots.length + requirements.size * 2 + connections.length * 2)),
@@ -692,7 +692,7 @@ export function createTeamPackageExport(input: TeamExportInput): TeamExportResul
   const exportedRoutines = new Set(routines.map((routine) => routine.key));
   return {
     document,
-    filename: `${document.package.id}-${document.package.release}.openmaus.json`,
+    filename: `${document.package.id}-${document.package.release}.quati.json`,
     redacted: [...new Set([...addressRedactions, ...redacted])],
     skipped,
     published: {
@@ -771,12 +771,12 @@ export function createLibraryPackageExport(input: LibraryExportInput): LibraryEx
     id: packageId,
     release,
     name: displayName,
-    tagline: input.tagline?.trim() || "A preset bot for OpenMausBot's New bot dialog.",
+    tagline: input.tagline?.trim() || "A preset bot for QuatiBot's New bot dialog.",
     summary: input.summary?.trim() ||
-      "Shared from OpenMausBot. Adds a preset bot to New bot. Its skills arrive switched off; model choices, computers, approval levels and connected apps never travel.",
+      "Shared from QuatiBot. Adds a preset bot to New bot. Its skills arrive switched off; model choices, computers, approval levels and connected apps never travel.",
     ...(notes ? { notes } : {}),
     category: "Community",
-    author: { name: input.authorName?.trim() || "OpenMausBot user" },
+    author: { name: input.authorName?.trim() || "QuatiBot user" },
     license: "Unspecified",
     outcomes: ["Start new bots from a shared preset."],
     setupMinutes: 2,
@@ -797,7 +797,7 @@ export function createLibraryPackageExport(input: LibraryExportInput): LibraryEx
   }
   return {
     document,
-    filename: `${document.package.id}-${document.package.release}.openmaus.json`,
+    filename: `${document.package.id}-${document.package.release}.quati.json`,
     redacted,
     skipped,
     published: { packageId, lastRelease: release },

@@ -1,4 +1,4 @@
-// Real provider adapters against the scripted ACP peer: proves OMB's flags and residual-request handling,
+// Real provider adapters against the scripted ACP peer: proves QUATI's flags and residual-request handling,
 // not a native engine's classifier.
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,7 +31,7 @@ describe("remaining ACP approval mappings", () => {
   ];
   it.each(cases)("$driver.driverKind preserves residual requests across Full → Auto → Ask", async ({ driver, argv, native }) => {
     ensureDirs();
-    const scratch = mkdtempSync(join(tmpdir(), "omb-approval-matrix-"));
+    const scratch = mkdtempSync(join(tmpdir(), "quati-approval-matrix-"));
     const dump = join(scratch, "spawn.json");
     const rpcDump = join(scratch, "rpc.json");
     const instance = await driver.create({
@@ -43,7 +43,7 @@ describe("remaining ACP approval mappings", () => {
         USERPROFILE: scratch,
         FAKE_ACP_AGENT_NAME: "OpenCode",
         FAKE_ACP_AGENT_VERSION: "2.0.31",
-        OPENMAUSBOT_PROBE_LOCAL_INJECT: "0",
+        QUATIBOT_PROBE_LOCAL_INJECT: "0",
         FAKE_ACP_MODE: "permission",
         FAKE_ACP_DUMP: dump,
         FAKE_ACP_RPC_DUMP: rpcDump,

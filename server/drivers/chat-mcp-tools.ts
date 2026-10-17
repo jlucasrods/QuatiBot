@@ -29,7 +29,7 @@ export interface ChatToolSession {
   definitions: ChatToolDefinition[];
   skipped: SkippedChatMcpServer[];
   validate(name: string, args: unknown): void;
-  /** Directory reads and OpenMausBot's own agents server need no card; call_tool shows the tool it runs. */
+  /** Directory reads and QuatiBot's own agents server need no card; call_tool shows the tool it runs. */
   view(name: string, args: Record<string, unknown>): ChatToolCallView;
   execute(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ChatToolResult>;
   close(): Promise<void>;
@@ -186,7 +186,7 @@ class ChatMcpClient {
       return deadline - Date.now();
     };
     const initialized = await this.call("initialize", {
-      protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "openmausbot-chat", version: "1" },
+      protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "quatibot-chat", version: "1" },
     }, signal, remaining());
     if (!object(initialized)) throw new Error("MCP initialization returned an invalid result");
     if (signal.aborted) throw aborted();

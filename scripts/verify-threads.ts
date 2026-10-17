@@ -2,14 +2,14 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { launchVerificationServer, runControlOmb } from "./control-omb.ts";
+import { launchVerificationServer, runControlQuati } from "./control-quati.ts";
 import { fixtureApi, mountPreview, parkUntilSignal, type MountedPreview } from "./testing/preview-fixture.ts";
 
 const fixture = await launchVerificationServer();
 let ui: MountedPreview | undefined;
 try {
   const api = fixtureApi(fixture.info.url);
-  const control = (args: string[]) => runControlOmb([...args, "--url", fixture.info.url]);
+  const control = (args: string[]) => runControlQuati([...args, "--url", fixture.info.url]);
   await control(["new-bot", "--name", "Pepper"]);
   await control(["new-bot", "--name", "Miso"]);
   const { bots } = await api("GET", "/api/bots?messages=0");
@@ -50,7 +50,7 @@ try {
   ].join("\n"), { mode: 0o700 });
   await api("PATCH", "/api/instances/claude", { cli: wrapper });
   ui = await mountPreview(fixture, {
-    entry: "/scripts/testing/threads-preview.tsx", route: "/__threads.html", title: "Isolated OpenMaus Threads",
+    entry: "/scripts/testing/threads-preview.tsx", route: "/__threads.html", title: "Isolated Quati Threads",
   });
   console.log(JSON.stringify({ ...fixture.info, previewUrl: ui.previewUrl, finishGate }));
   await parkUntilSignal();

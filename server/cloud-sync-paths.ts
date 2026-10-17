@@ -7,7 +7,7 @@ import { validWirePath } from "./platform/cloud-sync-rules.mjs";
 export class SyncPathError extends Error {}
 
 export function syncRoot(dataDir: string, env: NodeJS.ProcessEnv = process.env): string {
-  return env.OMB_SYNC_ROOT || join(dirname(dataDir), "Synced");
+  return env.QUATI_SYNC_ROOT || join(dirname(dataDir), "Synced");
 }
 
 /** The absolute path of `wirePath` inside `folder`. Refuses a malformed path, and any existing part that is a link. */

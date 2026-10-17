@@ -64,10 +64,10 @@ function workspaceSummary(state) {
 
 /** Native identity must not depend on a hosted renderer's version/title. */
 function workspaceWindowTitle(state, companion) {
-  if (companion) return `OpenMausBot — Connected to: ${companion.serverName} (${new URL(companion.endpoint).host})`;
+  if (companion) return `QuatiBot — Connected to: ${companion.serverName} (${new URL(companion.endpoint).host})`;
   const active = activeEnvironment(state);
-  if (active && active.kind !== "local") return `OpenMausBot — Hosted: ${active.name} (${new URL(active.origin).host})`;
-  return "OpenMausBot";
+  if (active && active.kind !== "local") return `QuatiBot — Hosted: ${active.name} (${new URL(active.origin).host})`;
+  return "QuatiBot";
 }
 
 /** Switching is a main-process action; a cloud page must not navigate itself onto the local bridge. */

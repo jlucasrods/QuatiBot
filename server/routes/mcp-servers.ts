@@ -18,14 +18,14 @@ export function createMcpServerRoutes(deps: {
       const servers = await deps.listServers();
       if (!servers.some((server) => server.name === name)) return json(res, 404, { error: "Global MCP server not found." });
       deps.setEnabled(name, parsed.data.enabled);
-      return json(res, 200, { name, enabled: parsed.data.enabled, scope: "mausbot", applies: "next_turn" });
+      return json(res, 200, { name, enabled: parsed.data.enabled, scope: "quati", applies: "next_turn" });
     }
     if (method !== "GET" || (!extensions && path !== "/api/mcp/servers")) {
       return json(res, 405, { error: "MCP servers are configured exclusively in OpenCode." });
     }
     try {
       const result = extensions ? await deps.listExtensions() : { servers: await deps.listServers() };
-      return json(res, 200, { ...result, scope: "global", activationScope: "mausbot" });
+      return json(res, 200, { ...result, scope: "global", activationScope: "quati" });
     } catch {
       return json(res, 503, { error: "Could not read global extensions from OpenCode V2." });
     }

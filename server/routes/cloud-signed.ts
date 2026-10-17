@@ -24,7 +24,7 @@ export function createCloudSignedRoutes(deps: {
     res.setHeader("cache-control", "no-store");
     const source = requestSource(req);
     const header = (name: string) => { const value = req.headers[name]; return typeof value === "string" ? value : undefined; };
-    const signed = { timestamp: header("x-omb-cloud-timestamp"), nonce: header("x-omb-cloud-nonce"), signature: header("x-omb-cloud-signature") };
+    const signed = { timestamp: header("x-quati-cloud-timestamp"), nonce: header("x-quati-cloud-nonce"), signature: header("x-quati-cloud-signature") };
     if (path === CLOUD_HEALTH_PATH) {
       if (method !== "GET") { json(res, 405, { error: "method_not_allowed" }); return true; }
       const verdict = healthRequests.verify({ ...signed, method, target: `${path}${url.search}`, body: "" });

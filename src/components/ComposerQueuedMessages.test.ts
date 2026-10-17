@@ -100,7 +100,7 @@ describe("QueuedComposerMessages", () => {
     }));
     expect(markup).toContain("selected 🐭 code");
     expect(markup).toContain("explain it");
-    expect(markup).not.toContain("omb-citation-v1");
+    expect(markup).not.toContain("quati-citation-v1");
   });
 
   it("offers Edit on every queued row only when the composer can take the words back", () => {

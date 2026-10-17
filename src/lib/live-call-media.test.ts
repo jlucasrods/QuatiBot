@@ -50,7 +50,7 @@ const endRequests = () =>
   request.mock.calls.filter(([path]) => path === "/api/live/call/end").map(([, init]) => JSON.parse(String(init.body)).callId);
 
 beforeEach(() => {
-  vi.stubGlobal("window", { ogb: { speechStop: vi.fn(async () => {}) } });
+  vi.stubGlobal("window", { quati: { speechStop: vi.fn(async () => {}) } });
   peer = new FakePeer();
   track = new FakeTrack();
   request = vi.fn(async (path: string) => {
@@ -450,7 +450,7 @@ describe("live call media", () => {
     await startLiveCall({ botId: "b1", threadId: "t1" });
     expect(liveMedia()).toMatchObject({
       phase: "failed",
-      notice: "Live calls need a microphone, and this window can't use one. Open OpenMausBot at a secure https address to make the call.",
+      notice: "Live calls need a microphone, and this window can't use one. Open QuatiBot at a secure https address to make the call.",
       action: null,
     });
     expect(currentCall()).toBeNull();
@@ -778,7 +778,7 @@ describe("a blocked microphone", () => {
       pageMicrophone,
     });
     await startLiveCall({ botId: "b1", threadId: "t1" });
-    expect(liveMedia()).toMatchObject({ phase: "failed", notice: "Live calls need a microphone, and this window can't use one. Open OpenMausBot at a secure https address to make the call.", action: null });
+    expect(liveMedia()).toMatchObject({ phase: "failed", notice: "Live calls need a microphone, and this window can't use one. Open QuatiBot at a secure https address to make the call.", action: null });
     expect(liveMedia().notice).not.toMatch(/browser/i);
     expect(pageMicrophone).not.toHaveBeenCalled();
   });
@@ -831,7 +831,7 @@ describe("a blocked microphone", () => {
   });
 
   it("Open in browser opens this very page in the web browser", async () => {
-    vi.stubGlobal("location", { href: "https://omb-u-0123456789ab.fly.dev/?bot=b1" });
+    vi.stubGlobal("location", { href: "https://quati-u-0123456789ab.fly.dev/?bot=b1" });
     const openInBrowser = vi.fn();
     configureLiveMedia({
       getUserMedia: async () => { throw new DOMException("denied", "NotAllowedError"); },
@@ -841,15 +841,15 @@ describe("a blocked microphone", () => {
     });
     await startLiveCall({ botId: "b1", threadId: "t1" });
     takeLiveCallAction();
-    expect(openInBrowser).toHaveBeenCalledExactlyOnceWith("https://omb-u-0123456789ab.fly.dev/?bot=b1");
+    expect(openInBrowser).toHaveBeenCalledExactlyOnceWith("https://quati-u-0123456789ab.fly.dev/?bot=b1");
     expect(request).not.toHaveBeenCalledWith("/api/live/session", expect.anything());
   });
 
   it("asks the desktop app through permStatus, and opens the page as a link", async () => {
     const open = vi.fn();
     const permStatus = vi.fn(async () => ({ mic: "granted", pageMic: "refused" }));
-    vi.stubGlobal("window", { ogb: { speechStop: vi.fn(async () => {}), permStatus }, open });
-    vi.stubGlobal("location", { href: "https://omb-u-0123456789ab.fly.dev/" });
+    vi.stubGlobal("window", { quati: { speechStop: vi.fn(async () => {}), permStatus }, open });
+    vi.stubGlobal("location", { href: "https://quati-u-0123456789ab.fly.dev/" });
     configureLiveMedia({
       getUserMedia: async () => { throw new DOMException("denied", "NotAllowedError"); },
       capabilities: () => ({ dictation: { available: false, engine: "none", onDevice: false, reasonCode: "remote-server" } }) as DesktopCapabilities,
@@ -858,12 +858,12 @@ describe("a blocked microphone", () => {
     expect(permStatus).toHaveBeenCalledOnce();
     expect(liveMedia()).toMatchObject({ notice: APP_REFUSED, action: "open-in-browser" });
     takeLiveCallAction();
-    expect(open).toHaveBeenCalledExactlyOnceWith("https://omb-u-0123456789ab.fly.dev/", "_blank", "noopener,noreferrer");
+    expect(open).toHaveBeenCalledExactlyOnceWith("https://quati-u-0123456789ab.fly.dev/", "_blank", "noopener,noreferrer");
   });
 
   it("treats a desktop app that cannot answer as one that does not say", async () => {
     const permStatus = vi.fn(async () => { throw new Error("no handler"); });
-    vi.stubGlobal("window", { ogb: { speechStop: vi.fn(async () => {}), permStatus } });
+    vi.stubGlobal("window", { quati: { speechStop: vi.fn(async () => {}), permStatus } });
     configureLiveMedia({
       getUserMedia: async () => { throw new DOMException("denied", "NotAllowedError"); },
       capabilities: () => ({ dictation: { available: true, engine: "apple-speech", onDevice: true } }) as DesktopCapabilities,

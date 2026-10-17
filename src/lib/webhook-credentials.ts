@@ -1,6 +1,6 @@
 import type { WebhookCredential } from "./webhooks.js";
 
-const KEY = "omb-webhook-credentials";
+const KEY = "quati-webhook-credentials";
 
 type Store = Pick<Storage, "getItem" | "setItem"> | undefined;
 

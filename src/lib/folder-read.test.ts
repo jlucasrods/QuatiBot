@@ -3,7 +3,7 @@ import { initialState, reducer, type AppState, type Bot, type BotAnnouncement, t
 import { folderUnreadThreadIds, markFolderRead } from "./folder-read";
 
 const bot: Bot = {
-  id: "maus", threadId: "elsewhere", name: "Maus", title: "", description: "", notifications: true,
+  id: "quati", threadId: "elsewhere", name: "Quati", title: "", description: "", notifications: true,
   color: "green", unread: true, messages: [], modelSelection: { instanceId: "fake", model: "test" },
   projects: [{ id: "archive", name: "Archived" }, { id: "work", name: "Work" }],
   tasks: [
@@ -43,8 +43,8 @@ describe("mark folder as read", () => {
     await markFolderRead(owner, "archive", request, onRead);
 
     expect(request.mock.calls).toEqual([
-      ["/api/bots/maus/read", { method: "POST", body: '{"threadId":"archive-done"}' }],
-      ["/api/bots/maus/read", { method: "POST", body: '{"threadId":"archive-waiting"}' }],
+      ["/api/bots/quati/read", { method: "POST", body: '{"threadId":"archive-done"}' }],
+      ["/api/bots/quati/read", { method: "POST", body: '{"threadId":"archive-waiting"}' }],
     ]);
     expect(onRead.mock.calls.map(([updated]) => updated.tasks!.filter((task) => task.unread).map((task) => task.threadId))).toEqual([
       ["archive-waiting", "elsewhere", "loose"], ["elsewhere", "loose"],

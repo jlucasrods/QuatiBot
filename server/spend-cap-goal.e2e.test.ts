@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { launchVerificationServer, runControlOmb, type VerificationServer } from "../scripts/control-omb.ts";
+import { launchVerificationServer, runControlQuati, type VerificationServer } from "../scripts/control-quati.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 
 describe("spend cap inside a team goal run", () => {
@@ -12,14 +12,14 @@ describe("spend cap inside a team goal run", () => {
   let layerDir: string;
 
   beforeEach(async () => {
-    layerDir = mkdtempSync(join(tmpdir(), "omb-fake-layer-goal-"));
+    layerDir = mkdtempSync(join(tmpdir(), "quati-fake-layer-goal-"));
     mkdirSync(join(layerDir, "server"));
     writeFileSync(join(layerDir, "server", "index.js"), 'export async function register() { return { customer: "Fixture Co", features: ["budgets", "billing"], expiresAt: "2099-01-01" }; }\n');
     session = await launchVerificationServer({
       ...process.env,
       // FAKE_CLAUDE_REPLY_STATE unset: every invocation replays index 0, so an accidental retry would price another turn.
       FAKE_CLAUDE_REPLIES: JSON.stringify([
-        'The plan is ready.\n<openmaus-goal>{"status":"continue","next":"Worker","instruction":"Do the thing","detail":"Plan ready"}</openmaus-goal>',
+        'The plan is ready.\n<quati-goal>{"status":"continue","next":"Worker","instruction":"Do the thing","detail":"Plan ready"}</quati-goal>',
       ]),
     }, undefined, undefined, undefined, { dir: layerDir, licenseKey: "fixture-key" });
   }, 60_000);
@@ -30,7 +30,7 @@ describe("spend cap inside a team goal run", () => {
     await removeTempDir(layerDir);
   });
 
-  const control = (args: string[]) => runControlOmb([...args, "--url", session.info.url]) as Promise<any>;
+  const control = (args: string[]) => runControlQuati([...args, "--url", session.info.url]) as Promise<any>;
   const api = (path: string, init: RequestInit = {}) => fetch(`${session.info.url}${path}`, init);
   const put = (body: unknown) => api("/api/config", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 

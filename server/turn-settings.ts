@@ -1,7 +1,7 @@
 import { mcpCallTimeoutMinutes, type AppConfig } from "./config.ts";
 import { correctiveRounds } from "./host/loop-guard.ts";
 
-/** Runtime limits for OpenMausBot's internal tools. */
+/** Runtime limits for QuatiBot's internal tools. */
 export function settingsTurnFields(cfg: AppConfig): {
   mcpCallTimeoutMs: number;
   toolErrorCorrectiveRounds: number;

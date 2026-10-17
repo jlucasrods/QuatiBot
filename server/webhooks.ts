@@ -90,7 +90,7 @@ export const DEFAULT_MAX_PENDING_RUNS = 3;
 export const MAX_PENDING_RUNS_LIMIT = 50;
 const maxPendingRunsSchema = z.number().int().min(1).max(MAX_PENDING_RUNS_LIMIT);
 
-const runOnSchema = z.enum(["maus", "cloud"]);
+const runOnSchema = z.enum(["quati", "cloud"]);
 const deliverySchema = z.enum(["run", "post"]);
 const eventTypesSchema = z.array(z.string()).max(20).optional();
 const triggerInputSchema = z.object({
@@ -191,10 +191,10 @@ function cleanInput(input: WebhookTriggerInput): CleanWebhookInput {
   const name = input.name.trim().slice(0, 80);
   const prompt = input.prompt.trim().slice(0, 20_000);
   const botId = input.botId.trim();
-  const runOn = input.runOn ?? "maus";
+  const runOn = input.runOn ?? "quati";
   if (!name) fail(400, "Give the webhook a name");
   if (!botId) fail(400, "Choose a MAUS");
-  if (runOn !== "maus" && runOn !== "cloud") fail(400, "Choose where this webhook runs");
+  if (runOn !== "quati" && runOn !== "cloud") fail(400, "Choose where this webhook runs");
   const eventTypes = Array.from(new Set(
     (input.eventTypes ?? [])
       .map((value) => value.trim().slice(0, 200))
@@ -244,7 +244,7 @@ function serializePayload(payload: JsonValue): string {
     }
   }
   if (text.length <= MAX_EVENT_CHARS) return text;
-  return `${text.slice(0, MAX_EVENT_CHARS)}\n\n[Payload truncated by OpenMausBot]`;
+  return `${text.slice(0, MAX_EVENT_CHARS)}\n\n[Payload truncated by QuatiBot]`;
 }
 
 function previewPayload(payload: JsonValue): string {
@@ -443,15 +443,15 @@ export class WebhookManager {
     }
   }
 
-  test(id: string, payload: JsonValue = { event: "openmaus.test", message: "Test webhook delivery" }): WebhookReceiveResult | null {
+  test(id: string, payload: JsonValue = { event: "quati.test", message: "Test webhook delivery" }): WebhookReceiveResult | null {
     const trigger = this.webhooks.find((candidate) => candidate.id === id);
     if (!trigger) return null;
-    const eventName = trigger.eventTypes?.[0] ?? "openmaus.test";
+    const eventName = trigger.eventTypes?.[0] ?? "quati.test";
     return this.dispatch(trigger, {
       payload,
       contentType: "application/json",
       eventName,
-      userAgent: "OpenMausBot webhook tester",
+      userAgent: "QuatiBot webhook tester",
       deliveryId: `test-${randomUUID()}`,
     });
   }

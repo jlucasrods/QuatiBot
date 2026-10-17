@@ -17,7 +17,7 @@ export function ChatGptPlanStatus({ instanceId, welcome = true }: {
     instanceId: string;
     welcome?: boolean;
 }) {
-    const key = `omb:chatgpt-plan-welcome:${instanceId}`;
+    const key = `quati:chatgpt-plan-welcome:${instanceId}`;
     const [acknowledged, setAcknowledged] = useState(() => {
         if (!welcome)
             return true;

@@ -1,8 +1,8 @@
-import type { MausState } from "@/lib/mascot";
+import type { QuatiState } from "@/lib/mascot";
 
 export interface SceneProps {
   playing: boolean;
-  onCue?: (state: MausState) => void;
+  onCue?: (state: QuatiState) => void;
   onEnded?: () => void;
   label: string;
 }

@@ -1,7 +1,7 @@
 // Dependency-free: Electron main, the server and the renderer all import it.
 
-export const PRO_PLAN_ENV = "OMB_PRO_PLAN";
-export const PRO_PLAN_MESSAGE = "openmausbot:pro-plan";
+export const PRO_PLAN_ENV = "QUATI_PRO_PLAN";
+export const PRO_PLAN_MESSAGE = "quatibot:pro-plan";
 
 /** While the plan cannot be checked, the last verified plan decides (`lastPlan`, else `lastKnown`); a Cloud home always may. */
 export function liveCallsAllowed({ account, lastKnown = false, cloudHome = false } = {}) {

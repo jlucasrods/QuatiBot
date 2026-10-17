@@ -1,4 +1,4 @@
-// The upstream handshake is OMB's own, never the engine's: an engine's client adds capability fields a strict server
+// The upstream handshake is QUATI's own, never the engine's: an engine's client adds capability fields a strict server
 // refuses. stdout carries only protocol frames.
 import { createInterface } from "node:readline";
 import { redactSecretsInText } from "../shared/redact.ts";
@@ -45,7 +45,7 @@ function fail(message: string): never {
 }
 
 const CREDENTIALS_REFUSED = "This MCP server refused its credentials (HTTP 401). If it uses a sign-in, send the message again: "
-  + "OpenMausBot refreshes sign-ins when a message starts. If it still fails, open Plugins → MCP servers and sign in to it again, "
+  + "QuatiBot refreshes sign-ins when a message starts. If it still fails, open Plugins → MCP servers and sign in to it again, "
   + "or check its header values.";
 
 /** A refusal of our own: its words carry nothing remote, so they are relayed. */
@@ -57,7 +57,7 @@ class Refusal extends Error {
   }
 }
 
-const SETTINGS = ["OMB_REMOTE_MCP_SERVER", "OMB_REMOTE_MCP_DIRECTORY"];
+const SETTINGS = ["QUATI_REMOTE_MCP_SERVER", "QUATI_REMOTE_MCP_DIRECTORY"];
 /** Codex hands every MCP child one shared environment, so a mount names its own record; settings leave this env once read. */
 function privateSettings(): Record<string, string | undefined> {
   if (process.argv.length === 2) {
@@ -80,7 +80,7 @@ function privateSettings(): Record<string, string | undefined> {
 
 const settings = privateSettings();
 let spec;
-try { spec = remoteMcpSpec(JSON.parse(settings.OMB_REMOTE_MCP_SERVER ?? "")); } catch {}
+try { spec = remoteMcpSpec(JSON.parse(settings.QUATI_REMOTE_MCP_SERVER ?? "")); } catch {}
 if (!spec) fail("invalid remote MCP configuration");
 
 /** A selection that cannot be read must never widen to all tools. */
@@ -96,7 +96,7 @@ function directorySettings(raw: string | undefined): { server: string; scope: To
   } catch {}
   return fail("invalid tool directory configuration");
 }
-const directory = directorySettings(settings.OMB_REMOTE_MCP_DIRECTORY);
+const directory = directorySettings(settings.QUATI_REMOTE_MCP_DIRECTORY);
 
 const REMOTE_ERROR_CHARS = 1_000;
 /** Configured values (address parts, header values) a remote error must never echo. */
@@ -234,7 +234,7 @@ async function callTool(params: unknown, signal: AbortSignal): Promise<unknown> 
 
 async function directed(message: Json, signal: AbortSignal): Promise<unknown> {
   if (message.method === "initialize") {
-    const result = await client.initialize("OpenMausBot tool proxy", signal);
+    const result = await client.initialize("QuatiBot tool proxy", signal);
     if (!isRecord(result)) return result;
     const info = isRecord(result.serverInfo) ? result.serverInfo : {};
     const title = typeof info.title === "string" ? info.title : typeof info.name === "string" ? info.name : undefined;
@@ -279,7 +279,7 @@ async function handle(message: Json): Promise<void> {
     const result = directory
       ? await directed(message, signal)
       : message.method === "initialize"
-        ? await client.initialize("OpenMausBot tool proxy", signal)
+        ? await client.initialize("QuatiBot tool proxy", signal)
         : await client.request(message.method, message.params, signal);
     if (message.method === "initialize") initialized = true;
     send({ jsonrpc: "2.0", id: message.id, result });

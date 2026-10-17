@@ -12,7 +12,7 @@ pnpm exec vitest run server/openai-tools.e2e.test.ts
 ```
 
 `server/openai-tools.e2e.test.ts` launches its own server with
-`launchVerificationServer`, then uses `runControlOmb` with the launcher's exact
+`launchVerificationServer`, then uses `runControlQuati` with the launcher's exact
 URL for `new-bot`, `set-model`, `send`, `wait`, `messages`, and `interrupt`.
 Configuration and approval go through the fixture's existing HTTP routes;
 approval uses `/api/bots/ID/respond`. The fixture explicitly enables each MCP
@@ -147,7 +147,7 @@ Content-Type: application/json
 {"tools": false}
 ```
 
-Use the exact instance ID from `pnpm control:omb models --url URL`, and direct
+Use the exact instance ID from `pnpm control:quati models --url URL`, and direct
 the request only to that explicitly selected server. The route accepts this
 setting for OpenAI-compatible, Grok API, and MiniMax API instances, refuses
 changes while the instance is busy, and stores `config.tools` on that instance.

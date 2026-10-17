@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { Hash, Send } from "lucide-react";
-import { MausAvatar } from "@/components/Avatar";
+import { QuatiAvatar } from "@/components/Avatar";
 import { cn } from "@/lib/cn";
-import type { MausColor } from "@/lib/mascot";
+import type { QuatiColor } from "@/lib/mascot";
 import { reducedMotion } from "@/lib/onboarding";
 import type { SceneProps } from "./types";
 
 const CHANNELS_MS = 6000;
 
-const MEMBERS: Array<{ name: string; title: string; color: MausColor }> = [
-  { name: "Maus", title: "Chief of staff", color: "green" },
+const MEMBERS: Array<{ name: string; title: string; color: QuatiColor }> = [
+  { name: "Quati", title: "Chief of staff", color: "green" },
   { name: "Researcher", title: "Finds and checks facts", color: "blue" },
   { name: "Writer", title: "Drafts and edits", color: "orange" },
 ];
@@ -118,7 +118,7 @@ export function Channels({ playing, onCue, onEnded, label }: SceneProps) {
                     busy && i !== RESEARCHER && "opacity-45",
                   )}
                 >
-                  <MausAvatar color={m.color} state={active ? "working" : "happy"} size={24} animated={!still && active} trackPointer={false} />
+                  <QuatiAvatar color={m.color} state={active ? "working" : "happy"} size={24} animated={!still && active} trackPointer={false} />
                   {active && <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full border border-app bg-accent" />}
                 </span>
               );
@@ -138,7 +138,7 @@ export function Channels({ playing, onCue, onEnded, label }: SceneProps) {
           {(thinking || replied) && (
             <div className="animate-rise flex items-start gap-2">
               <div className="mt-0.5 shrink-0 drop-shadow-[0_4px_10px_rgba(0,0,0,0.35)]">
-                <MausAvatar color="blue" state={replied ? "writing" : "working"} size={26} animated={!still} trackPointer={false} />
+                <QuatiAvatar color="blue" state={replied ? "writing" : "working"} size={26} animated={!still} trackPointer={false} />
               </div>
               <div className="min-w-0">
                 <div className="mb-0.5 text-[10.5px] font-medium text-ink-secondary">Researcher</div>
@@ -162,7 +162,7 @@ export function Channels({ playing, onCue, onEnded, label }: SceneProps) {
             <div className="animate-spot-in absolute bottom-[48px] left-3.5 z-20 w-[210px] origin-bottom-left rounded-xl border border-hairline/50 bg-panel p-1 shadow-[0_18px_44px_-16px_rgba(0,0,0,0.7)]">
               {[MEMBERS[RESEARCHER]!, MEMBERS[2]!].map((m, i) => (
                 <div key={m.name} className={cn("flex items-center gap-2 rounded-lg px-2 py-1", i === 0 ? "bg-accent/10" : "")}>
-                  <MausAvatar color={m.color} state="happy" size={20} animated={false} trackPointer={false} />
+                  <QuatiAvatar color={m.color} state="happy" size={20} animated={false} trackPointer={false} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[11.5px] font-medium text-ink">{m.name}</span>
                     <span className="block truncate text-[9.5px] text-ink-secondary">{m.title}</span>
@@ -194,7 +194,7 @@ export function Channels({ playing, onCue, onEnded, label }: SceneProps) {
 
       <div className="flex h-11 shrink-0 items-center justify-center">
         <div className="drop-shadow-[0_8px_18px_rgba(0,0,0,0.45)]">
-          <MausAvatar color="green" state={replied ? "proud" : busy ? "listening" : "idle"} size={28} animated={!still} trackPointer={false} />
+          <QuatiAvatar color="green" state={replied ? "proud" : busy ? "listening" : "idle"} size={28} animated={!still} trackPointer={false} />
         </div>
       </div>
     </div>

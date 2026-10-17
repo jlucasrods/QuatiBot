@@ -17,7 +17,7 @@ it.each([
 });
 
 it("directs provider setup to OpenCode without credential forms", () => {
-  vi.stubGlobal("window", { ogb: {} });
+  vi.stubGlobal("window", { quati: {} });
   const instance: InstanceInfo = { instanceId: "opencodeGo", driverKind: "opencodeGo", displayName: "OpenCode V2", snapshot: { state: "available", authenticated: false }, models: { default: "", options: [] } };
   const html = renderToStaticMarkup(createElement(StoreProvider, null, createElement(EngineSetup, { instance })));
   expect(html).toContain("opencode auth login");

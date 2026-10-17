@@ -11,7 +11,7 @@ describe("shortcut hints", () => {
     ["win32", "Ctrl N", "Ctrl /"],
     ["linux", "Ctrl N", "Ctrl /"],
   ])("uses the existing bindings on %s", (platform, newBot, help) => {
-    vi.stubGlobal("window", { ogb: { platform } });
+    vi.stubGlobal("window", { quati: { platform } });
     expect(shortcutLabel("new-bot")).toBe(newBot);
     expect(shortcutLabel("shortcuts-cheat-sheet")).toBe(help);
     expect(shortcutLabel("close-panel")).toBe("Esc");

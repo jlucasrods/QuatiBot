@@ -4,8 +4,8 @@ import { appArmorProfile, BrowserHostError, diagnoseLaunchFailure, sandboxBlocke
 
 describe("host setup", () => {
   it("pins the AppArmor exemption to one root-owned executable", () => {
-    const profile = appArmorProfile("/opt/OpenMausBot/resources/chrome/chrome");
-    expect(profile).toContain("profile openmausbot-chrome /opt/OpenMausBot/resources/chrome/chrome flags=(unconfined)");
+    const profile = appArmorProfile("/opt/QuatiBot/resources/chrome/chrome");
+    expect(profile).toContain("profile quatibot-chrome /opt/QuatiBot/resources/chrome/chrome flags=(unconfined)");
     expect(profile).toContain("userns,");
     for (const path of ["/opt/**/chrome", "/home/a/chrome", "relative/chrome", "/opt/a b/chrome"]) expect(() => appArmorProfile(path)).toThrow();
   });
@@ -14,10 +14,10 @@ describe("host setup", () => {
     const diagnosis = await diagnoseLaunchFailure({ executable: "/opt/chrome", output: "[0101/000000.000:FATAL:zygote_host_impl_linux.cc] No usable sandbox! ...", platform: "darwin" });
     expect(diagnosis).toBeInstanceOf(BrowserHostError);
     expect(diagnosis?.kind).toBe("sandbox");
-    expect(diagnosis?.message).toMatch(/openmausbot browser setup/);
+    expect(diagnosis?.message).toMatch(/quatibot browser setup/);
     expect(await diagnoseLaunchFailure({ executable: "/opt/chrome", output: "something else", platform: "darwin" })).toBeNull();
     expect(sandboxDisabled({})).toBe(false);
-    expect(sandboxDisabled({ OMB_BROWSER_SANDBOX: "0" })).toBe(true);
+    expect(sandboxDisabled({ QUATI_BROWSER_SANDBOX: "0" })).toBe(true);
   });
 
   it("sees a blocked sandbox only where user namespaces are restricted and no profile is installed", () => {

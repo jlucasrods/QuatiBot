@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { MemoryCapacity, MemoryFileInfo, MemoryJournalRow } from "@/lib/memory";
-// DesktopCapabilities reads window.ogb at module scope, and this suite runs in the node environment.
+// DesktopCapabilities reads window.quati at module scope, and this suite runs in the node environment.
 vi.mock("../DesktopCapabilities", () => ({
     useDesktopCapabilities: () => ({ capabilities: { host: { homeDir: undefined, platform: "other" } } }),
 }));

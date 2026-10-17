@@ -118,7 +118,7 @@ beforeEach(() => {
   fixture.dispatch.mockClear();
   fixture.startCall.mockClear();
   fixture.endCall.mockClear();
-  vi.stubGlobal("window", { ogb: { speechStart: () => {} } });
+  vi.stubGlobal("window", { quati: { speechStart: () => {} } });
 });
 afterEach(() => {
   resetLiveMedia();
@@ -200,7 +200,7 @@ describe("setting up a voice from the call button", () => {
   });
 
   it("opens the remote agent settings instead on a desktop paired to another computer", () => {
-    vi.stubGlobal("window", { ogb: { speechStart: () => {}, remoteClient: { active: true } } });
+    vi.stubGlobal("window", { quati: { speechStart: () => {}, remoteClient: { active: true } } });
     fixture.config = { tts: { configured: true, ready: false } };
     click(find(render(), "data-call-button"));
     const help = render();
@@ -217,7 +217,7 @@ describe("setting up a voice from the call button", () => {
   });
 
   it("opens the member's chat first from a room on a paired desktop", () => {
-    vi.stubGlobal("window", { ogb: { speechStart: () => {}, remoteClient: { active: true } } });
+    vi.stubGlobal("window", { quati: { speechStart: () => {}, remoteClient: { active: true } } });
     fixture.config = { tts: { configured: true, ready: true } };
     const room: Props = {
       targetId: "room-1",
@@ -236,7 +236,7 @@ describe("setting up a voice from the call button", () => {
   });
 
   it("opens the member's chat as its row does with threads hidden: at its main thread", () => {
-    vi.stubGlobal("window", { ogb: { speechStart: () => {}, remoteClient: { active: true } } });
+    vi.stubGlobal("window", { quati: { speechStart: () => {}, remoteClient: { active: true } } });
     fixture.config = { tts: { configured: true, ready: true } };
     fixture.showThreads = false;
     fixture.bots = [{ ...pepper, mainThreadId: "main", tasks: [{ threadId: "t", title: "Report", createdAt: 1 }, { threadId: "main", title: "Chat", createdAt: 2 }] }, basil];

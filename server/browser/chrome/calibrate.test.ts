@@ -10,7 +10,7 @@ const folders: string[] = [];
 afterAll(async () => { for (const folder of folders) await removeTempDir(folder); });
 
 function folder(): string {
-  const made = mkdtempSync(join(tmpdir(), "omb-calibrate-test-"));
+  const made = mkdtempSync(join(tmpdir(), "quati-calibrate-test-"));
   folders.push(made);
   return made;
 }

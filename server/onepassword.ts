@@ -42,7 +42,7 @@ export function loginFields(fields: readonly SdkField[]): OnePasswordItemFields 
 }
 
 export async function sdkOnePasswordClient(sdk: OnePasswordSdk, token: string, version: string): Promise<OnePasswordClient> {
-  const client = await sdk.createClient({ auth: token, integrationName: "OpenMausBot", integrationVersion: version });
+  const client = await sdk.createClient({ auth: token, integrationName: "QuatiBot", integrationVersion: version });
   return {
     vaults: async () => (await client.vaults.list()).map((vault) => ({ id: vault.id, title: vault.title })),
     loginItems: async (vaultId) => (await client.items.list(vaultId))

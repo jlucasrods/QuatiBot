@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { launchVerificationServer, runControlOmb } from "../scripts/control-omb.ts";
+import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
 
 it("discovers native models, persists conversation choices and completes an ACP chat", async () => {
   const fixture = await launchVerificationServer();
@@ -25,7 +25,7 @@ it("discovers native models, persists conversation choices and completes an ACP 
 
     const before = readFileSync(join(dataDir, "config.json"), "utf8");
     expect(await request("GET", "/api/mcp/servers")).toEqual({ status: 200, body: {
-      scope: "global", activationScope: "mausbot", servers: [
+      scope: "global", activationScope: "quati", servers: [
         { name: "global-local", type: "local", status: "disabled", enabled: false },
         { name: "global-remote", type: "remote", status: "configured", enabled: true },
       ],
@@ -54,7 +54,7 @@ it("discovers native models, persists conversation choices and completes an ACP 
     expect((await request("PATCH", "/api/mcp/servers/global-remote", { enabled: false })).status).toBe(200);
     expect((await request("PATCH", "/api/mcp/servers/global-local", { enabled: true })).status).toBe(200);
 
-    const created = await runControlOmb(["new-bot", "--name", "OpenCode fixture", "--url", url]) as { bot: { id: string; activeTaskId: string } };
+    const created = await runControlQuati(["new-bot", "--name", "OpenCode fixture", "--url", url]) as { bot: { id: string; activeTaskId: string } };
     const { id, activeTaskId } = created.bot;
     const browser = await request("PATCH", `/api/bots/${id}`, { computer: "browser", browser: true });
     expect(browser.status).toBe(200);
@@ -63,14 +63,14 @@ it("discovers native models, persists conversation choices and completes an ACP 
     const selected = await request("PATCH", `/api/bots/${id}/tasks/${activeTaskId}`, { modelSelection });
     expect(selected.status).toBe(200);
 
-    await runControlOmb(["send", "--bot", id, "--text", "Hello OpenCode V2", "--url", url]);
-    const settled = await runControlOmb(["wait", "--bot", id, "--timeout", "30", "--url", url]);
+    await runControlQuati(["send", "--bot", id, "--text", "Hello OpenCode V2", "--url", url]);
+    const settled = await runControlQuati(["wait", "--bot", id, "--timeout", "30", "--url", url]);
     expect(settled, JSON.stringify(settled)).toMatchObject({ status: "settled" });
     const state = await request("GET", "/api/bots");
     expect(state.body).toMatchObject({ bots: expect.arrayContaining([
       expect.objectContaining({ id, tasks: expect.arrayContaining([expect.objectContaining({ threadId: activeTaskId, modelSelection })]) }),
     ]) });
-    const transcript = await runControlOmb(["messages", "--bot", id, "--limit", "20", "--url", url]);
+    const transcript = await runControlQuati(["messages", "--bot", id, "--limit", "20", "--url", url]);
     expect(transcript).toMatchObject({ messages: expect.arrayContaining([expect.objectContaining({ role: "bot", text: "hello from fake acp" })]) });
     const dump = JSON.parse(readFileSync(join(dataDir, "fake-acp-dump.json"), "utf8")) as { env: { OPENCODE_CONFIG_CONTENT: string } };
     expect(JSON.parse(dump.env.OPENCODE_CONFIG_CONTENT)).toMatchObject({ mcp: { servers: {
@@ -83,8 +83,8 @@ it("discovers native models, persists conversation choices and completes an ACP 
     ] } });
 
     expect((await request("PATCH", "/api/mcp/servers/global-remote", { enabled: true })).status).toBe(200);
-    await runControlOmb(["send", "--bot", id, "--text", "Continue with the updated MCP selection", "--url", url]);
-    expect(await runControlOmb(["wait", "--bot", id, "--timeout", "30", "--url", url])).toMatchObject({ status: "settled" });
+    await runControlQuati(["send", "--bot", id, "--text", "Continue with the updated MCP selection", "--url", url]);
+    expect(await runControlQuati(["wait", "--bot", id, "--timeout", "30", "--url", url])).toMatchObject({ status: "settled" });
     const resumedDump = JSON.parse(readFileSync(join(dataDir, "fake-acp-dump.json"), "utf8")) as { env: { OPENCODE_CONFIG_CONTENT: string } };
     expect(JSON.parse(resumedDump.env.OPENCODE_CONFIG_CONTENT)).toMatchObject({ mcp: { servers: {
       "global-local": { command: ["fixture-mcp"], disabled: false },

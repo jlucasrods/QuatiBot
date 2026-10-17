@@ -36,23 +36,23 @@ Launch the headless chat UI with a slow fake engine, as in
 
 ```sh
 FAKE_CLAUDE_SLOW_FINISH_GATE=/tmp/widget-gate \
-  node --experimental-strip-types scripts/control-omb.ts ui launch --mode slow
+  node --experimental-strip-types scripts/control-quati.ts ui launch --mode slow
 ```
 
-Send Pepper a message so a turn is open, read that turn's `OMB_COMMS_TOKEN`
+Send Pepper a message so a turn is open, read that turn's `QUATI_COMMS_TOKEN`
 from `fake-claude-dump.json` in the printed data directory, and post two of
 the samples in `shared/widget-samples.ts` to `/api/internal/options-card` as
 `{"tool":"show_widget","widget":…}` with that bearer token. Create the gate
 file to let the turn finish, then:
 
 ```sh
-H=/tmp/openmausbot-verify-data-XXXXXX/ui.json
-pnpm control:omb ui snapshot --ui $H
-pnpm control:omb ui click --ui $H --name "Create routine"
-pnpm control:omb ui wait-settle --ui $H --timeout 60
-pnpm control:omb ui click --ui $H --name "Details"
-pnpm control:omb ui screenshot --ui $H --out .omb-scratch/verify-evidence/widgets.png
-pnpm control:omb ui console --ui $H
+H=/tmp/quatibot-verify-data-XXXXXX/ui.json
+pnpm control:quati ui snapshot --ui $H
+pnpm control:quati ui click --ui $H --name "Create routine"
+pnpm control:quati ui wait-settle --ui $H --timeout 60
+pnpm control:quati ui click --ui $H --name "Details"
+pnpm control:quati ui screenshot --ui $H --out .quati-scratch/verify-evidence/widgets.png
+pnpm control:quati ui console --ui $H
 ```
 
 Expected: the snapshot holds a `Pull requests` list with three rows and the

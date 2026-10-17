@@ -1,6 +1,6 @@
 # Sharing a whole team
 
-**Share team…** saves one team as a single file (`<team>-<version>.openmaus.json`).
+**Share team…** saves one team as a single file (`<team>-<version>.quati.json`).
 Someone else adds it in **Templates → Import**, or an organization uploads it
 in Admin → Packages and its desktops add it from **Templates → From
 {Organization}** ([org-library.md](org-library.md)). Open it from the team's menu in the sidebar (right-click
@@ -106,7 +106,7 @@ If any step fails, everything the import created is removed again.
 
 ## The file format
 
-`openmaus.package` version 2, defined in `shared/package-format.ts`, the one
+`quati.package` version 2, defined in `shared/package-format.ts`, the one
 module the app, the import preview and Admin all validate with. It still
 reads version 1 files (JSON and the BotMRR Markdown playbook). Older apps
 refuse version 2 files with their existing "not supported" message; Admin can

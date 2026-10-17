@@ -11,7 +11,7 @@ export { awayFromMainThread, botOpensTo, openBot, openBotThread, openNotificatio
 import type { TurnDigest } from "../../shared/digest";
 import type { ToolScope } from "../../shared/tool-scope";
 import type { ModelVariantOption, RuntimeEvent } from "../../shared/runtime-events";
-import type { MausColor, MausMotion } from "@/lib/mascot";
+import type { QuatiColor, QuatiMotion } from "@/lib/mascot";
 import type { BotAvatarCrop } from "../../shared/bot-avatar";
 import { approvalModeFor, type ApprovalMode } from "../../shared/approval-mode";
 import { sameModelSelection } from "../../shared/thread-model";
@@ -60,7 +60,7 @@ function trimRoutineRuns(runs: readonly RoutineRun[]): RoutineRun[] {
         return true;
     });
 }
-export type { MausColor } from "@/lib/mascot";
+export type { QuatiColor } from "@/lib/mascot";
 export type { RoutineRunCardData } from "../../shared/routine-run";
 export interface OptionCardData extends Pick<WireOptionCard, "fixedOptions"> {
     title: string;
@@ -187,7 +187,7 @@ export interface Message extends Pick<import("../../shared/wire").WireMessage, "
     from?: {
         botId: string;
         name: string;
-        color: MausColor;
+        color: QuatiColor;
     };
     peerAsk?: {
         botId: string;
@@ -207,7 +207,7 @@ export interface Message extends Pick<import("../../shared/wire").WireMessage, "
         threadId?: string;
         withBotId: string;
         withName: string;
-        withColor: MausColor;
+        withColor: QuatiColor;
     };
     threadRef?: {
         botId: string;
@@ -340,7 +340,7 @@ export interface Bot {
     soul?: string;
     soulDrift?: boolean;
     notifications: boolean;
-    color: MausColor;
+    color: QuatiColor;
     mascotExpression?: string | null;
     mascotBody?: MascotBodyId | null;
     avatarUrl?: string | null;
@@ -731,7 +731,7 @@ export interface AppState {
     mascotMotion: {
         botId: string;
         nonce: number;
-        kind: Exclude<MausMotion, "none">;
+        kind: Exclude<QuatiMotion, "none">;
     } | null;
     pendingQueued: Record<string, Array<{
         queueId: string;
@@ -1360,7 +1360,7 @@ function bumpTranscriptGeneration(state: AppState, threadId: string | undefined 
 function updateBot(state: AppState, botId: string, fn: (b: Bot) => Bot): AppState {
     return { ...state, bots: state.bots.map((b) => (b.id === botId ? fn(b) : b)) };
 }
-function withMascotMotion(state: AppState, botId: string, kind: Exclude<MausMotion, "none">): AppState {
+function withMascotMotion(state: AppState, botId: string, kind: Exclude<QuatiMotion, "none">): AppState {
     return {
         ...state,
         mascotMotion: {

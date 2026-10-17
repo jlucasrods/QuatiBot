@@ -1,6 +1,6 @@
 # Decision model
 
-OpenMausBot can use a fast decision model to pick things for your bots. It
+QuatiBot can use a fast decision model to pick things for your bots. It
 answers in a few hundred milliseconds for a fraction of a cent. It never does
 the work: the chosen bot still runs its own turn on its own engine. Two
 providers are supported: TypeSafe's [Jev](https://typesafe.ai) (the default)
@@ -87,7 +87,7 @@ account is out of credits for a 402.
 ## What is logged
 
 Each call that reaches the model adds one row to
-`~/.openmausbot/decider-log/YYYY-MM.ndjson` (mode 0600). This is separate
+`~/.quatibot/decider-log/YYYY-MM.ndjson` (mode 0600). This is separate
 from the approvals log in `decisions/`.
 
 ```json
@@ -105,18 +105,18 @@ The log stays on this machine: workspace backups leave it out.
 
 - **Desktop app:** in the operating system's encrypted store
   (`credentials.bin`), like the other workspace keys. The server receives the
-  Jev key as `OMB_JEV_API_KEY` and the OpenRouter key as
-  `OMB_OPENROUTER_DECIDER_KEY` at start-up; `config.json` keeps only an
+  Jev key as `QUATI_JEV_API_KEY` and the OpenRouter key as
+  `QUATI_OPENROUTER_DECIDER_KEY` at start-up; `config.json` keeps only an
   empty placeholder.
 - **Server or browser use:** in the server's own `config.json` (mode 0600),
   under `decider.key` (Jev) or `decider.openrouterKey` (OpenRouter).
-  `OMB_JEV_API_KEY` and `OMB_OPENROUTER_DECIDER_KEY` override them.
+  `QUATI_JEV_API_KEY` and `QUATI_OPENROUTER_DECIDER_KEY` override them.
 - **Not the engine key:** the OpenRouter key here is separate from the one in
-  **Settings → Engines** (`OMB_OPENROUTER_API_KEY`). Neither is used for the
+  **Settings → Engines** (`QUATI_OPENROUTER_API_KEY`). Neither is used for the
   other, and clearing one never affects the other.
 - **Cloud Pro:** decisions are included, with no key to paste. With no key of
   the person's own, the Cloud home uses its relay token
-  (`OMB_CLOUD_DECIDER_TOKEN`), sent only to the Admin's relay, never to Jev
+  (`QUATI_CLOUD_DECIDER_TOKEN`), sent only to the Admin's relay, never to Jev
   or `baseUrl`, and only for room routing and the key check (other jobs need
   a key of the person's own). Settings says **Included with your Cloud plan**, and
   the master switch is on until someone switches it off. A key saved here
@@ -140,7 +140,7 @@ Each decision sends the state described above (the room's name, its people,
 recent room lines and the new message) and the bots' descriptions to the
 selected provider. With OpenRouter that is OpenRouter and the host it routes
 the model to, under OpenRouter's privacy settings and your account's data
-policy; OpenMausBot does not set a data-collection preference. Use Jev, or
+policy; QuatiBot does not set a data-collection preference. Use Jev, or
 leave the job off, for rooms that must not leave the machine.
 
 ## Turning it off
@@ -193,9 +193,9 @@ API is alpha at OpenRouter and may change. The model list comes from
 
 `server/decider/room-routing.eval.test.ts` replays 53 labelled room messages
 (`server/decider/fixtures/room-routing.json`) against the live model. It is
-skipped unless `OMB_JEV_LIVE_EVAL=1` is set with a key, and costs about
+skipped unless `QUATI_JEV_LIVE_EVAL=1` is set with a key, and costs about
 $0.002 per run. The same eval runs against OpenRouter with
-`OMB_OPENROUTER_LIVE_EVAL=1` and `OMB_OPENROUTER_DECIDER_KEY`, using the
-model in `OMB_OPENROUTER_EVAL_MODEL` (else the default); the cost depends on
+`QUATI_OPENROUTER_LIVE_EVAL=1` and `QUATI_OPENROUTER_DECIDER_KEY`, using the
+model in `QUATI_OPENROUTER_EVAL_MODEL` (else the default); the cost depends on
 the model. It is the check for whether a model's own probabilities hold up at
 the 0.6 threshold.

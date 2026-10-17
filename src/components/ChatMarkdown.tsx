@@ -480,7 +480,7 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
           theme: scheme === "light" ? "default" : "dark",
           fontFamily: MERMAID_FONT,
         });
-        return module.default.render(`omb-mermaid-${mermaidRenderId}`, code);
+        return module.default.render(`quati-mermaid-${mermaidRenderId}`, code);
       })
       .then((out) => {
         if (!alive) return;
@@ -968,7 +968,7 @@ const MARKDOWN_COMPONENTS: Components = {
   },
 };
 
-const MAY_LINK_THREAD = /#|openmausbot/i;
+const MAY_LINK_THREAD = /#|quatibot/i;
 const NO_THREAD_REFS: ThreadRefsValue = { threads: [] };
 
 function ChatMarkdownComponent({ text, message, mentionPeers = NO_MENTION_PEERS, everyone = false, mentionPerson, delivered }: {

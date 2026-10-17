@@ -1,9 +1,9 @@
-export const APP_NAME = "OpenMausBot";
-export const APP_REPOSITORY = "https://github.com/milind-soni/OpenMausBot";
+export const APP_NAME = "QuatiBot";
+export const APP_REPOSITORY = "https://github.com/jlucasrods/QuatiBot";
 export const DOCS_URL = `${APP_REPOSITORY}/tree/main/docs`;
 export const APPROVAL_LEVELS_URL = `${APP_REPOSITORY}/blob/main/docs/approval-levels.md`;
 export const RELEASES_URL = `${APP_REPOSITORY}/releases`;
-export const PRICING_URL = "https://www.openmausbot.com/pricing";
+export const PRICING_URL = `${APP_REPOSITORY}#readme`;
 export function withSource(url: string, source: string): string {
     const target = new URL(url);
     target.searchParams.set("src", source);

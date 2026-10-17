@@ -1,26 +1,26 @@
-# OMB Cloud: the home machine
+# QUATI Cloud: the home machine
 
-OMB Cloud (the Personal, Pro and Max plans) gives one person an always-on
-OpenMausBot server of their own. The plans differ in machine size, disk and
+QUATI Cloud (the Personal, Pro and Max plans) gives one person an always-on
+QuatiBot server of their own. The plans differ in machine size, disk and
 included allowances; everything on this page applies to all of them. Each
 customer gets one Fly app with one `home` machine that is always on, a volume
 at `/data`, and TLS at `https://<app>.fly.dev`. The desktop app, the phone and
 the web are windows onto it. Local use of the app is unchanged and free.
-Customers read its name as **MausBot Cloud** wherever they meet it (the
-app, the Admin's pages, emails); "OMB Cloud" is this page's shorthand, and
-the app itself is still OpenMausBot.
+Customers read its name as **Quati Cloud** wherever they meet it (the
+app, the Admin's pages, emails); "QUATI Cloud" is this page's shorthand, and
+the app itself is still QuatiBot.
 
-OMB Cloud includes no AI usage. The person signs in on their machine with their
+QUATI Cloud includes no AI usage. The person signs in on their machine with their
 own Claude or ChatGPT subscription, or an API key, through the same sign-in
-flows as any OpenMausBot server. Nothing on a Cloud home is routed to a
+flows as any QuatiBot server. Nothing on a Cloud home is routed to a
 platform model gateway. The one exception is a free trial's Claude credit, a
 small one-time amount the Admin meters on its own relay, used only until the
 person connects their own AI ([Trial Claude credit](#trial-claude-credit)).
 
-This page is the OpenMausBot half of a contract with three parties:
+This page is the QuatiBot half of a contract with three parties:
 
 - **the home machine**: this repository's `cloud-home` image (`Dockerfile`, `deploy/fly/`);
-- **the Admin** (openmaus-cloud, `docs/consumer-cloud.md` there): provisions
+- **the Admin** (quati-cloud, `docs/consumer-cloud.md` there): provisions
   the app, holds the machine's signing secret, and answers the desktop's Cloud
   session;
 - **the desktop app**: signs in to Cloud, lists the machine under Servers,
@@ -31,7 +31,7 @@ Contract version: `1` (`cloudContractVersion` on the wire).
 ## What the person sees
 
 1. They subscribe on the Cloud site. The Admin creates the Fly app and machine.
-2. They open the desktop app, go to **Settings → MausBot Cloud** and sign in (the
+2. They open the desktop app, go to **Settings → Quati Cloud** and sign in (the
    existing device sign-in). A **Your Cloud** card says **Setting up** until
    the machine is up.
 3. When it is ready, the machine appears under **Servers** as **My Cloud**, and
@@ -49,7 +49,7 @@ Contract version: `1` (`cloudContractVersion` on the wire).
    itself up for the job in the chat. With an engine already able to run, it
    is sent at once; the box becomes the composer on the way (a named View
    Transition) and the request is the chat's first message. Otherwise the job
-   waits on this device (`omb.cloudIntent.pending` in browser storage) and
+   waits on this device (`quati.cloudIntent.pending` in browser storage) and
    the engine sign-in shows it at the top, with **Edit**. The Cloud keeps
    that the question was answered (`cloud-intent-asked`) and that a job was
    given (`cloud-intent-given`) in its onboarding record, so no device asks
@@ -202,7 +202,7 @@ welcome flow. The step to do now leads the card, with its explanation and
 action, under a segment per step that fills as each finishes. Every other step
 sits below it on one line; one not done becomes the lead with a click. The
 chevron minimizes the card to its segments on this device only
-(`omb.cloudSetup.collapsed` in browser storage), which is not hiding it. When
+(`quati.cloudSetup.collapsed` in browser storage), which is not hiding it. When
 the last required step finishes in the session that is open,
 the card gives way once to **Your Cloud is ready**, with the guide mascot;
 a Cloud that opens already done shows nothing. Each step's state comes from
@@ -221,7 +221,7 @@ the Cloud or the app, never from a box the person ticks:
 4. **Approve its plan**: listed once a first job is given. The bot asks its
    questions in the chat and proposes a routine; done once that routine
    exists, the job's bot's and made after the job was sent (this device
-   remembers which bot got it, `omb.cloudIntent.sent`; another device counts
+   remembers which bot got it, `quati.cloudIntent.sent`; another device counts
    any routine). **Open the chat** goes to that bot.
 5. **Bring your bots from your computer**: only in the desktop app, while the
    Copy this computer here card would be offered (an empty Cloud, a computer
@@ -236,7 +236,7 @@ answers, so no step flickers back. When the main pane already shows the step tha
 sign-in in the chat view), the card says **You're on this step** instead of
 repeating it. With every listed step done but no turn finished yet, the card says the bot
 is setting itself up in the chat. Lending this Mac to the Cloud is not a step;
-it stays in Settings → MausBot Cloud and the menu-bar item's **Lending
+it stays in Settings → Quati Cloud and the menu-bar item's **Lending
 settings…**.
 
 **Hide setup** is the only dismiss. The Cloud keeps it (`cloud-setup-hidden`
@@ -296,7 +296,7 @@ says "sign in again on your computer". A check that names no machine for the
 account ends it (a stopped machine named without its address does not). A
 call placed while a saved sign-in is still restoring, in the first seconds
 after launch, waits for it (at most 5 seconds) rather than being refused.
-Signing out of MausBot Cloud takes it away at once, and so do another
+Signing out of Quati Cloud takes it away at once, and so do another
 account, companion client mode and restarting the app before a check succeeds
 (the last verified Cloud is kept in memory only); every other server's page
 stays refused. In a web browser, the browser asks for the microphone for
@@ -323,12 +323,12 @@ the Cloud's address.
   the call with one bot is a Live call, and a room has no call
   (`effectiveCallMode` in `src/lib/call-mode.ts`, `GroupCallButton`).
 
-### Open in the app: `openmausbot://cloud`
+### Open in the app: `quatibot://cloud`
 
-The Cloud page (`https://cloud.openmausbot.com/cloud`) can offer **Open in the
-app** as a link to exactly `openmausbot://cloud`. The app accepts that string
+The Cloud page (`https://cloud.quatibot.invalid/cloud`) can offer **Open in the
+app** as a link to exactly `quatibot://cloud`. The app accepts that string
 and nothing else: no path, query, fragment or trailing slash, and it ignores
-any other form. Like `openmausbot://organization`, it is an action, not a
+any other form. Like `quatibot://organization`, it is an action, not a
 router. It never carries an address, a pairing code or a credential; the app
 decides everything from its own verified state (`electron/cloud-entry.mjs`).
 
@@ -337,7 +337,7 @@ decides everything from its own verified state (`electron/cloud-entry.mjs`).
    that arrives before the app is ready). If the window already shows
    **My Cloud**, coming forward is all it does.
 2. Otherwise the window returns to this computer (a hosted server that was
-   showing stays saved under **Servers**) and opens **Settings → MausBot Cloud**.
+   showing stays saved under **Servers**) and opens **Settings → Quati Cloud**.
    Before that view acts, the app gives a saved Cloud sign-in up to five
    seconds to finish restoring, so it is never mistaken for signed out.
 3. Opened this way, the view acts on its own, with no confirmation:
@@ -355,11 +355,11 @@ sign-out in that view starts nothing) and one automatic connection per link.
 A failed connection shows the card's error; clicking the link again retries.
 Closing Settings or choosing another section ends it. While it is open, the
 first-run welcome waits, as it does for Organization settings. A normal visit
-to **Settings → MausBot Cloud** never signs in or connects by itself.
+to **Settings → Quati Cloud** never signs in or connects by itself.
 
 The link does nothing in development builds, and in companion client mode it
 explains that the app must be disconnected from the other computer first.
-The `openmausbot` scheme belongs to the installed app: on macOS through the
+The `quatibot` scheme belongs to the installed app: on macOS through the
 app bundle, on Linux through the `.deb`'s desktop entry, and on Windows (and
 for an AppImage) once the installed app has started at least once, since it
 registers itself at startup. Before that, or if the app is not installed, the
@@ -380,7 +380,7 @@ a new tab, signed in after one **Continue**, with nothing to copy.
    scopes, at most two minutes, redeemable only by its 256-bit credential
    through a browser sign-in, and recording its owner. The answer has no
    typeable code and says `"purpose":"browser"` back.
-3. The tab goes to `https://<app>.fly.dev/pair#signin=omb_pair_…`. The
+3. The tab goes to `https://<app>.fly.dev/pair#signin=quati_pair_…`. The
    credential is only in the fragment, which never reaches a server, a proxy
    log or a `Referer`.
 4. Before anything renders, the web UI takes the fragment off the address bar
@@ -450,7 +450,7 @@ computer sharing exactly as before: off unless a maintainer sets
 
 ### What the person sees
 
-In **Settings → MausBot Cloud**, the **My Cloud** card has a **Let My Cloud use
+In **Settings → Quati Cloud**, the **My Cloud** card has a **Let My Cloud use
 this computer** switch under **Open My Cloud** (it is part of connecting, not
 a dialog). Turning it on shows what can be lent; each change applies at once,
 with no confirmation. The switch and the chosen scopes are the consent.
@@ -491,7 +491,7 @@ On the Mac (the authority; `electron/computer-sharing.mjs`,
 - **Bound to the account and the machine.** The grant records the Cloud
   account id and the machine's origin from the verified Cloud session
   (`cloud-account.mjs`), and the Cloud home's environment id on first contact.
-  Signing out of OMB Cloud, another account signing in, the Cloud moving to
+  Signing out of QUATI Cloud, another account signing in, the Cloud moving to
   another machine, or another server answering at that address ends lending
   and switches it off (turning it back on is the person's choice). A Cloud
   sign-in that must be renewed pauses lending; a minute's re-verification or an
@@ -606,7 +606,7 @@ On the Cloud home (`server/shared-computers.ts`, `server/index.ts`):
   conversations someone else's. A guest never carries it.
 - On a Cloud home a request from the machine itself without a session (a
   bot's shell, any local process) is only a service, whatever
-  `OMB_LOOPBACK_TRUST` says: it may reach the health check, the Slack
+  `QUATI_LOOPBACK_TRUST` says: it may reach the health check, the Slack
   worker's guarded routes and a turn's own capability routes, decline a card
   and nothing else. It cannot open a pairing window, change a setting or a
   bot, answer a card or review memory.
@@ -693,7 +693,7 @@ layers (Node, Chrome's libraries, agent-browser and its Chrome) and adds:
   any file under `/app`, or Caddy, is not root's or is writable by others.
 
 ```sh
-docker build --target cloud-home -t omb-cloud-home .
+docker build --target cloud-home -t quati-cloud-home .
 ```
 
 The app files are the last layers, so an image built from a later commit
@@ -701,22 +701,22 @@ differs from the previous one only in those (a few MB) unless Chrome, an
 engine, Grok's pin, or the Node base image changed in between.
 
 At boot the launcher, running as root, hands the volume's mount point to the
-`maus` user, binds the volume to this machine as `maus`
-(`/data/.omb-cloud-home.json`; another machine's volume, or an unmarked
-volume with data on it, is refused), and runs two children as `maus`: the
+`quati` user, binds the volume to this machine as `quati`
+(`/data/.quati-cloud-home.json`; another machine's volume, or an unmarked
+volume with data on it, is refused), and runs two children as `quati`: the
 server on `127.0.0.1:8799` (webhooks on `127.0.0.1:8800`) and Caddy on
 `:8080`. It stays a small root supervisor: if either child exits, both stop
 and Fly restarts the machine. The one exception: after a restore commits
 (Copy this computer here, below), the server exits with code 75
 (`server/restart.ts`) and the launcher starts only the server again.
 
-The machine's secrets (`OMB_CLOUD_BOOTSTRAP_SECRET` and the relay tokens
-`OMB_CLOUD_BOAT_TOKEN`, `OMB_CLOUD_VOICE_TOKEN`, `OMB_CLOUD_DECIDER_TOKEN`)
+The machine's secrets (`QUATI_CLOUD_BOOTSTRAP_SECRET` and the relay tokens
+`QUATI_CLOUD_BOAT_TOKEN`, `QUATI_CLOUD_VOICE_TOKEN`, `QUATI_CLOUD_DECIDER_TOKEN`)
 arrive as the launcher's environment, from the Fly app secrets the Admin
 sets. The launcher never puts them in a child's environment, because
 `/proc/<pid>/environ` keeps a process's starting environment for anything
 running as the same user to read. It writes them to the server over an
-inherited pipe (`OMB_CLOUD_SECRETS_FD`). The server reads it and closes it
+inherited pipe (`QUATI_CLOUD_SECRETS_FD`). The server reads it and closes it
 as its very first step (`server/cloud-secrets-boot.ts`, its first import),
 before any other module loads, so no process it starts inherits the pipe.
 The server's environment is built from an allow-list: the process basics,
@@ -724,17 +724,17 @@ what the image sets and the parts of the boot contract that are not secret
 (`serverEnvironmentAllowed`). Anything else, a secret the platform adds
 later included, never reaches it; the launcher logs the names it left out,
 never their values. The launcher's own environment and memory belong to
-root, out of `maus`'s reach. A server started without the pipe (tests,
+root, out of `quati`'s reach. A server started without the pipe (tests,
 development) reads them from its environment and says so in its log.
 
-The launcher runs and trusts only code `maus` cannot change: the image
+The launcher runs and trusts only code `quati` cannot change: the image
 makes `/app` root's and not writable by anyone else, and the launcher
 refuses to start if Node, itself, the server's entry point, Caddy or its
 config (or any folder above them) is not root's, is writable by others, or
-is on the volume. Only the `/data` volume is `maus`'s.
+is on the volume. Only the `/data` volume is `quati`'s.
 
-`HOME=/data`, so `~/.claude`, `~/.codex`, `~/.grok` and OpenMausBot's own
-data (`/data/.openmausbot`) persist on the volume.
+`HOME=/data`, so `~/.claude`, `~/.codex`, `~/.grok` and QuatiBot's own
+data (`/data/.quatibot`) persist on the volume.
 
 ### Why the server stays on loopback
 
@@ -746,20 +746,20 @@ https` and `X-Forwarded-For`, so the server sees each one as remote: it needs
 a paired session, whatever `Host` it claims. Caddy trusts `Fly-Client-IP`
 only from Fly's private ranges; that address feeds the pairing lockout, never
 authorization. Apart from `/api/health`, Caddy answers only for the machine's
-own name (`OMB_PUBLIC_URL`) and refuses any other `Host`.
+own name (`QUATI_PUBLIC_URL`) and refuses any other `Host`.
 
 ### Fly
 
 The Admin creates the machine through the Machines API; `deploy/fly/fly.toml`
 is the same shape for a manual deploy: `internal_port = 8080`, `force_https`,
-no auto-stop, one machine always running, a volume `omb_home` at `/data`,
+no auto-stop, one machine always running, a volume `quati_home` at `/data`,
 restart policy `always`, and an HTTP check on `GET /api/health` (it answers
-`{"app":"openmausbot"}` with no session). Each customer's app lives in its
+`{"app":"quatibot"}` with no session). Each customer's app lives in its
 own Fly private network, so no machine can reach another's over 6PN.
 
 ## Boot contract
 
-Set by openmaus-cloud's provisioner (`server/cloud-machines.ts`). Any of the
+Set by quati-cloud's provisioner (`server/cloud-machines.ts`). Any of the
 first four switches the server into Cloud home mode; then all of them are
 required and the whole contract is validated. A partial or invalid contract
 stops the server before it serves, with a message that names the variable and
@@ -767,24 +767,24 @@ never echoes a secret.
 
 | Variable | Fly | Value |
 | --- | --- | --- |
-| `OMB_CLOUD_ROLE` | env | `home`. (`desktop` belongs to the Cloud desktop image and is refused here.) |
-| `OMB_CLOUD_MACHINE_ID` | env | The Admin's machine id (a UUID). Binds the volume. |
-| `OMB_CLOUD_ADMIN_URL` | secret | The Cloud origin, exact `https://`, e.g. `https://cloud.openmausbot.com`. |
-| `OMB_CLOUD_BOOTSTRAP_SECRET` | secret | 43 base64url characters (256 bits): the key the Admin signs pairing requests with. |
-| `OMB_PUBLIC_URL` | env | The machine's exact `https://` origin, `https://<app>.fly.dev`. |
+| `QUATI_CLOUD_ROLE` | env | `home`. (`desktop` belongs to the Cloud desktop image and is refused here.) |
+| `QUATI_CLOUD_MACHINE_ID` | env | The Admin's machine id (a UUID). Binds the volume. |
+| `QUATI_CLOUD_ADMIN_URL` | secret | The Cloud origin, exact `https://`, e.g. `https://cloud.quatibot.invalid`. |
+| `QUATI_CLOUD_BOOTSTRAP_SECRET` | secret | 43 base64url characters (256 bits): the key the Admin signs pairing requests with. |
+| `QUATI_PUBLIC_URL` | env | The machine's exact `https://` origin, `https://<app>.fly.dev`. |
 
-- The machine must not also carry `OMB_ADMIN_URL`, `OMB_ADMIN_WORKSPACE` or
-  `OMB_ADMIN_MEMBERSHIP`: a Cloud home is a personal server with pairing codes
+- The machine must not also carry `QUATI_ADMIN_URL`, `QUATI_ADMIN_WORKSPACE` or
+  `QUATI_ADMIN_MEMBERSHIP`: a Cloud home is a personal server with pairing codes
   on, not a hosted team workspace with portal membership.
-- `HOME=/data` and `OMB_DATA_DIR=/data/.openmausbot` are set by the image.
+- `HOME=/data` and `QUATI_DATA_DIR=/data/.quatibot` are set by the image.
 - The server keeps the secret in memory and removes it from its environment at
   startup; no engine or tool it starts ever inherits it.
 
 ### No model gateway
 
-OMB Cloud includes no AI, so the contract has no model gateway. If a Cloud
-home is ever given `OMB_HOSTED_MODEL_URL`, `OMB_HOSTED_MODEL_TOKEN` or
-`OMB_HOSTED_MODELS` (an Admin from before this decision set all three), it
+QUATI Cloud includes no AI, so the contract has no model gateway. If a Cloud
+home is ever given `QUATI_HOSTED_MODEL_URL`, `QUATI_HOSTED_MODEL_TOKEN` or
+`QUATI_HOSTED_MODELS` (an Admin from before this decision set all three), it
 still boots, logs one warning naming the variables (never their values), and
 ignores them:
 
@@ -804,13 +804,13 @@ For each service the Admin has configured, it also sets:
 
 | Variable | Fly | Value |
 | --- | --- | --- |
-| `OMB_CLOUD_BOAT_URL` | env | `https://cloud.openmausbot.com/api/cloud/services/boat/api/box/v1`, the Admin's Boat relay. The app speaks Boat's public API v1 (`/sandboxes`, `sandbox` envelopes); this relay still serves Boat's retired box API (`/boxes`, `box` envelopes), so for a base ending in `/api/box/v1` the app translates paths and answers in one place, `server/boat-relay.ts`. A base ending in `/api/v1` gets v1 as it is. Bots use it only for cloud computers, as a tool on their own engine; no turn runs on Boat's own agent, so nothing calls its `/prompt`, `/events`, `/prompts/{id}` or `/interrupt` routes. |
-| `OMB_CLOUD_BOAT_TOKEN` | secret | This machine's Boat relay token (`box_omb_…`). It is not a Boat key and works only through the relay. |
-| `OMB_CLOUD_VOICE_URL` | env | `https://cloud.openmausbot.com/api/cloud/services/voice/v1`, the Admin's voice relay. |
-| `OMB_CLOUD_VOICE_TOKEN` | secret | This machine's voice relay token (`omb_voice_…`). |
-| `OMB_TTS_DEFAULT_VOICE` | env | An ElevenLabs voice id, used until the person picks a voice or another speech provider in Settings. |
-| `OMB_CLOUD_DECIDER_URL` | env | `https://cloud.openmausbot.com/api/cloud/services/decider`, the Admin's Jev relay. It is a Jev base URL, used as it is: the decider adds `/v1/systemone`, the relay's only route, so every included decision goes to exactly `<OMB_CLOUD_DECIDER_URL>/v1/systemone`. |
-| `OMB_CLOUD_DECIDER_TOKEN` | secret | This machine's decision relay token (`omb_decide_…`). It is not a Jev key and works only through the relay. |
+| `QUATI_CLOUD_BOAT_URL` | env | `https://cloud.quatibot.invalid/api/cloud/services/boat/api/box/v1`, the Admin's Boat relay. The app speaks Boat's public API v1 (`/sandboxes`, `sandbox` envelopes); this relay still serves Boat's retired box API (`/boxes`, `box` envelopes), so for a base ending in `/api/box/v1` the app translates paths and answers in one place, `server/boat-relay.ts`. A base ending in `/api/v1` gets v1 as it is. Bots use it only for cloud computers, as a tool on their own engine; no turn runs on Boat's own agent, so nothing calls its `/prompt`, `/events`, `/prompts/{id}` or `/interrupt` routes. |
+| `QUATI_CLOUD_BOAT_TOKEN` | secret | This machine's Boat relay token (`box_omb_…`). It is not a Boat key and works only through the relay. |
+| `QUATI_CLOUD_VOICE_URL` | env | `https://cloud.quatibot.invalid/api/cloud/services/voice/v1`, the Admin's voice relay. |
+| `QUATI_CLOUD_VOICE_TOKEN` | secret | This machine's voice relay token (`quati_voice_…`). |
+| `QUATI_TTS_DEFAULT_VOICE` | env | An ElevenLabs voice id, used until the person picks a voice or another speech provider in Settings. |
+| `QUATI_CLOUD_DECIDER_URL` | env | `https://cloud.quatibot.invalid/api/cloud/services/decider`, the Admin's Jev relay. It is a Jev base URL, used as it is: the decider adds `/v1/systemone`, the relay's only route, so every included decision goes to exactly `<QUATI_CLOUD_DECIDER_URL>/v1/systemone`. |
+| `QUATI_CLOUD_DECIDER_TOKEN` | secret | This machine's decision relay token (`quati_decide_…`). It is not a Jev key and works only through the relay. |
 
 A service is included only when both its URL and its token are set
 (`server/included-services.ts`). The real Boat, ElevenLabs and Jev keys stay
@@ -819,14 +819,14 @@ computers belong to this machine on every request.
 
 - **The person's own key always wins.** An included token is a fallback, used
   only while the person has no key of their own: none saved in Settings
-  (`box.token`, `tts.key`, `decider.key`) and no `BOX_TOKEN`, `OMB_TTS_KEY`
-  or `OMB_JEV_API_KEY` in the environment. Adding a key switches to it at
+  (`box.token`, `tts.key`, `decider.key`) and no `BOX_TOKEN`, `QUATI_TTS_KEY`
+  or `QUATI_JEV_API_KEY` in the environment. Adding a key switches to it at
   once; removing it falls back to the included service again (for Boat, once
   that key's cloud computers are deleted: removing a Boat key that still has
   computers is refused). The choice is made on every request.
 - **Each credential goes to one place.** The relays know only the Admin's
-  accounts, so an own key goes only to the provider (`OMB_BOAT_API`,
-  `OMB_ELEVENLABS_API` or `decider.baseUrl` when set, for development and
+  accounts, so an own key goes only to the provider (`QUATI_BOAT_API`,
+  `QUATI_ELEVENLABS_API` or `decider.baseUrl` when set, for development and
   tests, else Boat's, ElevenLabs' and Jev's own APIs) and an included token
   only to its relay, whatever those settings say.
 - **The decision relay takes two requests, and the app sends it nothing
@@ -865,11 +865,11 @@ computers belong to this machine on every request.
   starts inherits them, including tools that copy its environment as it is
   (the browser, docker, ssh, MCP bridges), and no process finds them in the
   server's `/proc/<pid>/environ`. They are still in the server's memory, and
-  that is the remaining exposure: the server runs as `maus`, like every
+  that is the remaining exposure: the server runs as `quati`, like every
   engine, so a process running as the same user that may trace it (the
   kernel's ptrace policy, `kernel.yama.ptrace_scope`, decides) could read
   them there. That is why a guest's turn gets no shell (above); the complete
-  fix is engines under a user of their own. A relay token is only this customer's own OMB Cloud
+  fix is engines under a user of their own. A relay token is only this customer's own QUATI Cloud
   allowance: it works only through the Admin, only on this machine's cloud
   computers, voice and decisions, and only up to the monthly caps.
 - A refusal from the Boat or voice relay (for example, the month's cloud
@@ -884,17 +884,17 @@ computers belong to this machine on every request.
 ### Trial Claude credit
 
 A free trial may come with a one-time Claude credit (the Admin's
-`OMB_CLOUD_TRIAL_CREDIT_USD`). While it lasts, and only while the person has
+`QUATI_CLOUD_TRIAL_CREDIT_USD`). While it lasts, and only while the person has
 no AI of their own on My Cloud, bots run on Claude through the Admin's relay,
 which holds the provider key and meters the credit. For an account with a
 credit, the Admin also sets:
 
 | Variable | Fly | Value |
 | --- | --- | --- |
-| `OMB_CLOUD_AI_URL` | env | `https://cloud.openmausbot.com/api/cloud/services/ai/v1`, an OpenAI-compatible base URL with its `/v1` (as the Admin sends it): `POST {url}/chat/completions` and `GET {url}/models` only. Nothing Anthropic-shaped (no `/v1/messages`) answers a credit token. |
-| `OMB_CLOUD_AI_TOKEN` | secret | This machine's credit token (`omb_ai_…`), sent as `Authorization: Bearer`. It works only through the relay, only for this account's credit, and not at all once it is spent or the Cloud is deleted. |
+| `QUATI_CLOUD_AI_URL` | env | `https://cloud.quatibot.invalid/api/cloud/services/ai/v1`, an OpenAI-compatible base URL with its `/v1` (as the Admin sends it): `POST {url}/chat/completions` and `GET {url}/models` only. Nothing Anthropic-shaped (no `/v1/messages`) answers a credit token. |
+| `QUATI_CLOUD_AI_TOKEN` | secret | This machine's credit token (`quati_ai_…`), sent as `Authorization: Bearer`. It works only through the relay, only for this account's credit, and not at all once it is spent or the Cloud is deleted. |
 
-- **OpenMausBot's own chat engine, nothing else.** `server/cloud-credit-provider.ts`
+- **QuatiBot's own chat engine, nothing else.** `server/cloud-credit-provider.ts`
   adds one read-only **Trial credit · Claude** engine: the OpenAI-compatible
   driver (`openai-compat`, the same chat engine and tools as any API key) with
   the relay as its address and the token as its own key, on the models the
@@ -935,11 +935,11 @@ credit, the Admin also sets:
 ```http
 POST /api/cloud/pairing
 Content-Type: application/json
-x-omb-cloud-timestamp: 1790000000
-x-omb-cloud-nonce: <base64url, 16–128 characters>
-x-omb-cloud-signature: v1=<base64url HMAC-SHA256(OMB_CLOUD_BOOTSTRAP_SECRET, canonical)>
+x-quati-cloud-timestamp: 1790000000
+x-quati-cloud-nonce: <base64url, 16–128 characters>
+x-quati-cloud-signature: v1=<base64url HMAC-SHA256(QUATI_CLOUD_BOOTSTRAP_SECRET, canonical)>
 
-{"label":"OpenMausBot app (Cloud)","ttlSeconds":300}
+{"label":"QuatiBot app (Cloud)","ttlSeconds":300}
 ```
 
 where `canonical` is
@@ -951,7 +951,7 @@ v1\n<timestamp>\n<nonce>\nPOST\n/api/cloud/pairing\n<base64url SHA-256 of the ra
 `200`:
 
 ```json
-{ "code": "ABCD-EFGH-JKLM", "credential": "omb_pair_…", "expiresAt": 1790000300000 }
+{ "code": "ABCD-EFGH-JKLM", "credential": "quati_pair_…", "expiresAt": 1790000300000 }
 ```
 
 `code` and `credential` are two encodings of **one ordinary pairing window**
@@ -963,7 +963,7 @@ With `"purpose":"browser"` and `"owner":"<the account's email>"` in the body
 sign-in window for that owner instead and answers
 
 ```json
-{ "credential": "omb_pair_…", "expiresAt": 1790000120000, "purpose": "browser" }
+{ "credential": "quati_pair_…", "expiresAt": 1790000120000, "purpose": "browser" }
 ```
 
 `ttlSeconds` then defaults to and is capped at 120. Only
@@ -1061,7 +1061,7 @@ The desktop polls `GET /api/cloud/desktop/session` with its personal device
 token (`Authorization: Bearer omc_…`). Contract version 1 adds:
 
 ```json
-"cloud": { "state": "ready", "origin": "https://omb-u-1a2b3c4d5e6f.fly.dev", "pairingAvailable": true }
+"cloud": { "state": "ready", "origin": "https://quati-u-1a2b3c4d5e6f.fly.dev", "pairingAvailable": true }
 ```
 
 - `null` or absent when the account has no machine; the app then shows nothing new.
@@ -1146,7 +1146,7 @@ time, and none after one closes until another launch:
    trial** (while the Admin offers one) or **Upgrade to Cloud Pro** opens the
    Add a Cloud dialog (source `update_popup`), and so does **Compare plans**
    (the dialog lists every plan); on any plan (a trial, Personal, Pro, Max or
-   one that needs attention) **Manage plan** opens Settings → MausBot Cloud,
+   one that needs attention) **Manage plan** opens Settings → Quati Cloud,
    and there is no Compare plans. Personal → Pro is not self-serve yet, so
    Personal gets Manage plan rather than an Upgrade that would end at "write
    to us". Its numbers are the Admin's. Any button, its X,
@@ -1155,7 +1155,7 @@ time, and none after one closes until another launch:
     and gives focus back when it closes. No product events or analytics email
     identifiers are sent by this fork.
 2. **The card after the update** (`CloudTrialIntro`, id `cloud-trial-intro-v1`):
-   MausBot Cloud's free trial for someone signed out or with no plan who
+   Quati Cloud's free trial for someone signed out or with no plan who
    has used the app before this launch, only while the Admin offers a trial
    (it waits for one). Its numbers are the Admin's: the trial's days, the
    lowest monthly price, the Claude credit and money-back. At most once a
@@ -1192,19 +1192,19 @@ again** (one step, the plan unaffected) instead of offering a plan. A `401` or
 other refusal, is a failed check like a dropped connection: it never ends the
 sign-in. Nobody signed in with a paid plan, in payment trouble, with a payment
 being linked, or whose state is unknown is offered a plan anywhere in the app;
-the Cloud Pro popup sends them to Settings → MausBot Cloud instead.
+the Cloud Pro popup sends them to Settings → Quati Cloud instead.
 
 In the Server menu, **My Cloud** goes through the same connection as
 **Open My Cloud** (no pairing code to type); when it cannot, the app
-opens **Settings → MausBot Cloud**, which says the next step. In the desktop app a
+opens **Settings → Quati Cloud**, which says the next step. In the desktop app a
 `/pair#code=` link connects without a second click; a browser still asks. On a
 Cloud home the pairing page says where its connection starts (the environment
 descriptor's `capabilities.cloudHome`).
 
-On the person's own Cloud, open in the app's window, **Settings → MausBot Cloud**
+On the person's own Cloud, open in the app's window, **Settings → Quati Cloud**
 shows the plan read only (`cloud-plan:*`: its name and whether it is active,
 **Manage in your browser** and **Switch to this computer**). It is listed only
-on an OMB Cloud home (`config.cloudHome`), never on another server open in the
+on an QUATI Cloud home (`config.cloudHome`), never on another server open in the
 window. Main answers it for the Cloud this account verified, or last verified
 while a check is failing or the sign-in has ended (`myCloudOrigin`, the rule
 the Cloud's microphone uses too), so that page says
@@ -1224,10 +1224,10 @@ malformed session summary or grant is treated as none.
 
 ## Add a Cloud
 
-The one way to buy MausBot Cloud in the app, the same for every way in:
+The one way to buy Quati Cloud in the app, the same for every way in:
 the Cloud Pro popup, the card after the update, **Show me how**, **Add a
 Cloud…** in the server menu (the sidebar's and the menu bar's Server menu),
-Settings (the Cloud card in General, and MausBot Cloud), and the routine
+Settings (the Cloud card in General, and Quati Cloud), and the routine
 screen's note.
 
 - **The menu item.** Main adds **Add a Cloud…** under the saved servers only
@@ -1263,7 +1263,7 @@ screen's note.
   checkout already being prepared), the offer says why. The plan picker is a
   radio group with one tab stop and arrow keys, and each new step takes focus
   at its heading. A payment problem, an ended sign-in or a Cloud that can't
-  be reached go to Settings → MausBot Cloud instead.
+  be reached go to Settings → Quati Cloud instead.
 - **Checkout runs in the default browser, never the app.** Signed in, main
   asks the Admin for this account's checkout (`POST /api/cloud/desktop/checkout`
   with the plan and where it was opened) and opens the address only when it is
@@ -1275,7 +1275,7 @@ screen's note.
   with `&next=checkout&plan=<plan>&src=<source>` added (older Admins ignore it).
   The app follows its own session, never the return page: every 15 seconds
   for 30 minutes after it opened a checkout, and at once when the window comes
-  back or `openmausbot://cloud` arrives (which then opens the dialog).
+  back or `quatibot://cloud` arrives (which then opens the dialog).
 - **Ready.** When My Cloud is ready after a checkout this app opened and the
   window is elsewhere, one system notification says so.
 
@@ -1303,7 +1303,7 @@ screen's note.
   `app_routines`, `update_popup` (main refuses any other, and any plan the
   offer doesn't sell).
 - **Interest** `POST /api/cloud/desktop/interest` `{kind: "another_cloud"}` → `{ok: true}`.
-- Every signed-in request carries this app's version in `x-openmausbot-version`.
+- Every signed-in request carries this app's version in `x-quatibot-version`.
 
 Nothing in the app is a price: with the Admin's trial switch off, no card is
 shown, and the dialog offers today's plans at the Admin's prices, charged
@@ -1318,12 +1318,12 @@ section is only what the Cloud adds.
 
 - **The Admin's grant.** Main signs in to the Cloud through the Admin: it
   opens a single-use pairing window for the signed-in owner
-  (`POST /api/cloud/desktop/pairing`, `pairHome`), so **Settings → MausBot Cloud**
+  (`POST /api/cloud/desktop/pairing`, `pairHome`), so **Settings → Quati Cloud**
   can copy before the Cloud was ever opened in this app. No session in the
   window yet is therefore not a block on the Cloud, as it is on other servers.
   A saved "My Cloud" entry that is not this account's verified Cloud is copied
   to like any other server.
-- **Settings → MausBot Cloud**, under My Cloud once it is Ready, opens the same
+- **Settings → Quati Cloud**, under My Cloud once it is Ready, opens the same
   panel as Settings → Servers, named "My Cloud".
 - **The setup checklist.** While the Cloud's setup checklist is up, the copy
   offer is its second step instead of a card (Setup checklist, above).
@@ -1368,7 +1368,7 @@ section is only what the Cloud adds.
   characters.
 - The signing secret is removed from the server's environment at startup and
   is never passed to engines or to Caddy.
-- There is no platform model gateway: stray `OMB_HOSTED_*` settings are
+- There is no platform model gateway: stray `QUATI_HOSTED_*` settings are
   ignored with one warning and never reach the server's environment or an
   engine. Every model call uses the person's own sign-in or key.
 - A volume binds to one machine and is never adopted by another.
@@ -1380,8 +1380,8 @@ section is only what the Cloud adds.
 ## Published image
 
 Every push to `main` and every release tag publishes the home machine image as
-`ghcr.io/milind-soni/openmausbot-cloud-home`, tagged `latest` (main only), `sha-<commit>` and the release tag.
+`ghcr.io/jlucasrods/quatibot-cloud-home`, tagged `latest` (main only), `sha-<commit>` and the release tag.
 It is the `Dockerfile`'s `cloud-home` target for the same commit, with Grok and the current Claude Code and
 Codex installed. The Docker workflow's summary prints the digest. Set it in the Admin as
-`OMB_CLOUD_HOME_IMAGE=ghcr.io/milind-soni/openmausbot-cloud-home@sha256:…`; changing it rolls the new image
+`QUATI_CLOUD_HOME_IMAGE=ghcr.io/jlucasrods/quatibot-cloud-home@sha256:…`; changing it rolls the new image
 out to existing machines one at a time, reverting automatically on a failed health check.

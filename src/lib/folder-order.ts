@@ -1,4 +1,4 @@
-export const FOLDER_DRAG_TYPE = "application/x-openmausbot-folder";
+export const FOLDER_DRAG_TYPE = "application/x-quatibot-folder";
 
 export function draggedFolder(raw: string, botId: string, projectIds: readonly string[]): string | null {
   try {

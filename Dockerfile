@@ -1,5 +1,5 @@
-# OpenMausBot harness server — hosted/self-hosted tenant image, and the
-# OMB Cloud Pro home machine (docs/cloud-pro.md).
+# QuatiBot harness server — hosted/self-hosted tenant image, and the
+# QUATI Cloud Pro home machine (docs/cloud-pro.md).
 #
 # Build the renderer + the self-contained server bundle, then ship only those
 # artifacts on a slim Node runtime. The runtime stage holds what changes
@@ -11,12 +11,12 @@
 # Caddy in the same network namespace to terminate TLS and authentication at
 # the edge.
 #
-#   docker build -t openmausbot .
-#   docker build --build-arg ENGINES="@anthropic-ai/claude-code @openai/codex" -t openmausbot .
-#   docker build --target cloud-home -t omb-cloud-home .
+#   docker build -t quatibot .
+#   docker build --build-arg ENGINES="@anthropic-ai/claude-code @openai/codex" -t quatibot .
+#   docker build --target cloud-home -t quati-cloud-home .
 #
 # HOME is the /data volume, so engine CLI logins (~/.claude, ~/.codex, ~/.grok,
-# ...) and OpenMausBot's own state (~/.openmausbot) persist across container
+# ...) and QuatiBot's own state (~/.quatibot) persist across container
 # restarts.
 #
 # A plain `docker run` of either image wants `--init --shm-size=512m`, as the
@@ -67,7 +67,7 @@ RUN apt-get update \
     libatk-bridge2.0-0 libdrm2 libxkbcommon0 libatspi2.0-0 libcups2 \
     libxshmfence1 libgbm1 fonts-noto-color-emoji fonts-noto-cjk fonts-freefont-ttf \
   && rm -rf /var/lib/apt/lists/* \
-  && useradd --create-home --home-dir /data --shell /bin/bash maus
+  && useradd --create-home --home-dir /data --shell /bin/bash quati
 # The bots' browser (docs/plans/browser-engine.md): the pinned agent-browser
 # and a Chrome for Testing with its libraries, so a server bot can browse.
 # Pin here and in server/browser-engine-release.ts together.
@@ -79,8 +79,8 @@ ARG CHROME_CACHE_TAG=""
 # postinstall points it there); the other platforms' binaries are never run.
 RUN echo "agent-browser ${AGENT_BROWSER_VERSION}, Chrome for Testing ${CHROME_CACHE_TAG:-Stable}" \
   && npm install -g --cache /tmp/npm-cache agent-browser@${AGENT_BROWSER_VERSION} \
-  && HOME=/opt/openmausbot-browser agent-browser install \
-  && ln -s /opt/openmausbot-browser/.agent-browser/browsers/chrome-*/chrome /opt/openmausbot-browser/chrome \
+  && HOME=/opt/quatibot-browser agent-browser install \
+  && ln -s /opt/quatibot-browser/.agent-browser/browsers/chrome-*/chrome /opt/quatibot-browser/chrome \
   && native="$(readlink -f "$(command -v agent-browser)")" \
   && case "$native" in */agent-browser/bin/agent-browser-linux-*) ;; *) echo "agent-browser is not a native binary: $native" >&2; exit 1;; esac \
   && [ "$(head -c 4 "$native")" = "$(printf '\177ELF')" ] \
@@ -91,15 +91,17 @@ RUN echo "agent-browser ${AGENT_BROWSER_VERSION}, Chrome for Testing ${CHROME_CA
 # which may be an existing mounted volume. Session state still lives in HOME,
 # which each image sets after its last build step, so no build step writes
 # into what a fresh volume starts with.
-#  OMB_DUCKDB_DIR: the DuckDB binding tree the server requires (no node_modules here).
-ENV AGENT_BROWSER_EXECUTABLE_PATH=/opt/openmausbot-browser/chrome \
-    OMB_DUCKDB_DIR=/app/duckdb \
-    OMB_DATA_DIR=/data/.openmausbot \
-    OMB_STATIC_DIR=/app/dist \
-    OMB_PORT=8799 \
-    OMB_WEBHOOK_PORT=8800 \
+#  QUATI_DUCKDB_DIR: the DuckDB binding tree the server requires (no node_modules here).
+ENV AGENT_BROWSER_EXECUTABLE_PATH=/opt/quatibot-browser/chrome \
+    QUATI_DUCKDB_DIR=/app/duckdb \
+    QUATI_DATA_DIR=/data/.quatibot \
+    QUATI_STATIC_DIR=/app/dist \
+    QUATI_PORT=8799 \
+    QUATI_WEBHOOK_PORT=8800 \
     NODE_ENV=production
 WORKDIR /app
+COPY LICENSE NOTICE LICENSING.md ./
+COPY third_party/ ./third_party/
 
 FROM runtime AS cloud-home
 # Caddy and Grok are pinned, so they sit beneath the engines, which change
@@ -130,34 +132,34 @@ RUN if [ -n "$GROK_VERSION" ]; then \
 ARG CLOUD_HOME_ENGINES="@anthropic-ai/claude-code @openai/codex"
 ARG ENGINES_CACHE_TAG=""
 RUN echo "engines: ${CLOUD_HOME_ENGINES:-none} ${ENGINES_CACHE_TAG}" \
-  && if [ -n "$CLOUD_HOME_ENGINES" ]; then HOME=/tmp/omb-build-home npm install -g $CLOUD_HOME_ENGINES; fi \
-  && rm -rf /tmp/omb-build-home /tmp/node-compile-cache
+  && if [ -n "$CLOUD_HOME_ENGINES" ]; then HOME=/tmp/quati-build-home npm install -g $CLOUD_HOME_ENGINES; fi \
+  && rm -rf /tmp/quati-build-home /tmp/node-compile-cache
 COPY deploy/fly/Caddyfile /app/cloud/Caddyfile
 # The root supervisor runs /app's code and hands the server its secrets, so
-# no file there may be one `maus` can change: unlike the server image's, these
-# copies stay root's. Only the /data volume is maus's; the launcher refuses to
+# no file there may be one `quati` can change: unlike the server image's, these
+# copies stay root's. Only the /data volume is quati's; the launcher refuses to
 # start otherwise (codeTrustProblem), and this check refuses to build.
 # DuckDB and resvg change on a version bump, not per commit: beneath the app files.
 COPY --from=build /src/dist-native/duckdb/linux-x64 ./duckdb
 COPY --from=build /src/dist-server ./dist-server
 COPY --from=build /src/dist ./dist
-RUN export HOME=/tmp/omb-build-home \
+RUN export HOME=/tmp/quati-build-home \
  && chmod go-w /app/cloud /app/cloud/Caddyfile \
  && caddy version \
- && OMB_CLOUD_PUBLIC_HOST=validate.fly.dev caddy validate --config /app/cloud/Caddyfile --adapter caddyfile \
+ && QUATI_CLOUD_PUBLIC_HOST=validate.fly.dev caddy validate --config /app/cloud/Caddyfile --adapter caddyfile \
  && test -f /app/dist-server/cloud-home-start.js \
  && untrusted="$(find /app /usr/local/bin/caddy \( ! -user root -o ! -type l -perm /022 \) -print)" \
  && if [ -n "$untrusted" ]; then echo "not root's, or writable by others:" >&2; echo "$untrusted" >&2; exit 1; fi \
- && rm -rf /tmp/omb-build-home
+ && rm -rf /tmp/quati-build-home
 ENV HOME=/data
 VOLUME ["/data"]
 EXPOSE 8080
 # Fly uses the checks in fly.toml; this one serves a plain `docker run`.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
-  CMD curl -sf http://127.0.0.1:8080/api/health | grep -q openmausbot || exit 1
-# Starts as root: hands a fresh volume to `maus`, runs the server and the edge
-# as `maus`, and hands the server its secrets over a pipe, never an
-# environment `maus` could read (server/cloud-home-start.ts). It runs only
+  CMD curl -sf http://127.0.0.1:8080/api/health | grep -q quatibot || exit 1
+# Starts as root: hands a fresh volume to `quati`, runs the server and the edge
+# as `quati`, and hands the server its secrets over a pipe, never an
+# environment `quati` could read (server/cloud-home-start.ts). It runs only
 # root's code from the image, never anything on the volume.
 USER root
 CMD ["node", "/app/dist-server/cloud-home-start.js"]
@@ -166,15 +168,15 @@ CMD ["node", "/app/dist-server/cloud-home-start.js"]
 FROM runtime AS server
 # Optional engine CLIs baked into the image (space-separated npm packages).
 ARG ENGINES=""
-RUN if [ -n "$ENGINES" ]; then HOME=/tmp/omb-build-home npm install -g $ENGINES && rm -rf /tmp/omb-build-home /tmp/node-compile-cache; fi
-COPY --from=build --chown=maus:maus /src/dist-native/duckdb/linux-x64 ./duckdb
-COPY --from=build --chown=maus:maus /src/dist-server ./dist-server
-COPY --from=build --chown=maus:maus /src/dist ./dist
+RUN if [ -n "$ENGINES" ]; then HOME=/tmp/quati-build-home npm install -g $ENGINES && rm -rf /tmp/quati-build-home /tmp/node-compile-cache; fi
+COPY --from=build --chown=quati:quati /src/dist-native/duckdb/linux-x64 ./duckdb
+COPY --from=build --chown=quati:quati /src/dist-server ./dist-server
+COPY --from=build --chown=quati:quati /src/dist ./dist
 ENV HOME=/data
 VOLUME ["/data"]
-USER maus
+USER quati
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -sf http://127.0.0.1:8799/api/health | grep -q openmausbot || exit 1
+  CMD curl -sf http://127.0.0.1:8799/api/health | grep -q quatibot || exit 1
 # The launcher runs dist-server/index.js and starts it again when it asks to
 # (a copied workspace committing, server/restart.ts), so the container, and a
 # Caddy sharing its network, stays up through that restart.

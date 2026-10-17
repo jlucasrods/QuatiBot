@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 it("persists encrypted auxiliary credentials without touching an old desktop vault", () => {
-  const home = mkdtempSync(join(tmpdir(), "omb-server-secrets-"));
+  const home = mkdtempSync(join(tmpdir(), "quati-server-secrets-"));
   homes.push(home);
   writeFileSync(join(home, "credentials.bin"), "old-os-ciphertext");
   saveConfigSecrets(home, { decider: { key: "fake-jev-secret" }, tts: { key: "fake-voice-secret" } });
@@ -25,7 +25,7 @@ it("persists encrypted auxiliary credentials without touching an old desktop vau
 });
 
 it.each(["missing", "wrong", "malformed"])("refuses reads and writes with a %s vault key", (key) => {
-  const home = mkdtempSync(join(tmpdir(), "omb-server-secrets-"));
+  const home = mkdtempSync(join(tmpdir(), "quati-server-secrets-"));
   homes.push(home);
   saveConfigSecrets(home, { decider: { key: "fake-jev-secret" } });
   const before = readFileSync(join(home, "credentials.enc"));

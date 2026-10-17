@@ -154,7 +154,7 @@ Tests are written first, in Vitest. The fake clock uses `vi.useFakeTimers()` / `
 **Test floor**
 - `TEST_COUNT_FLOOR` is unaffected.
 
-**Manual check** (side-by-side OMB2 build, per the test-locally skill):
+**Manual check** (side-by-side QUATI2 build, per the test-locally skill):
 1. Bot A delegates to Bot B while B is mid-task → one waiting chip; delivered when B finishes.
 2. B has an approval card open → A's chip says B is waiting on you, and A's `list_bots` shows "waiting on the user".
 3. Chat with B three or more times before it picks up the handoff → still delivered.

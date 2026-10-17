@@ -16,12 +16,12 @@ import {
   type AccountSnapshot,
 } from "../src/endpoint-accounts";
 
-const TOKEN_SECRET = "CLOUDFLARE_API_TOKEN_MAUSBOT_SI";
-const TOKEN = "test-only-mausbot-si-api-token-with-no-real-access";
+const TOKEN_SECRET = "CLOUDFLARE_API_TOKEN_QUATI_SI";
+const TOKEN = "test-only-quati-si-api-token-with-no-real-access";
 const SECOND_ENTRY = {
   accountId: "2B".repeat(16),
   zoneId: "3c".repeat(16),
-  companionHostSuffix: "mausbot.si",
+  companionHostSuffix: "quati.si",
   apiTokenSecret: TOKEN_SECRET,
 };
 
@@ -55,7 +55,7 @@ describe("endpoint account configuration", () => {
     expect(configured.endpointAccountIssues).toEqual([]);
     expect(configured.endpointAccounts.slice(1).map(({ apiToken: _token, ...account }) => account)).toEqual([{
       accountId: "bbb5305f06e28a6f2abaac299f3b09dc",
-      companionHostSuffix: "mausbot.si",
+      companionHostSuffix: "quati.si",
       dnsRecordLimit: 200,
       minAppVersion: "0.1.104",
       newEndpoints: true,
@@ -76,7 +76,7 @@ describe("endpoint account configuration", () => {
       expect(config.endpointAccounts).toEqual([config.cloudflare, {
         accountId: "2b".repeat(16),
         apiToken: TOKEN,
-        companionHostSuffix: "mausbot.si",
+        companionHostSuffix: "quati.si",
         dnsRecordLimit: 200,
         minAppVersion: "0.1.103",
         newEndpoints: true,
@@ -97,7 +97,7 @@ describe("endpoint account configuration", () => {
     // Closed to new endpoints, keeping the ones it holds.
     const closed = readConfig(withAccounts([{ ...SECOND_ENTRY, newEndpoints: false }]));
     expect(closed.endpointAccountIssues).toEqual([]);
-    expect(closed.endpointAccounts[1]).toMatchObject({ companionHostSuffix: "mausbot.si", newEndpoints: false });
+    expect(closed.endpointAccounts[1]).toMatchObject({ companionHostSuffix: "quati.si", newEndpoints: false });
   });
 
   it("drops a bad entry with a redacted issue code and never throws", () => {
@@ -118,7 +118,7 @@ describe("endpoint account configuration", () => {
       { value: [{ ...SECOND_ENTRY, apiTokenSecret: "BETTER_AUTH_SECRET" }], accounts: 1, issues: ["entry_1_shape"] },
       { value: [SECOND_ENTRY], secrets: {}, accounts: 1, issues: ["entry_1_token"] },
       { value: [SECOND_ENTRY], secrets: { [TOKEN_SECRET]: "short" }, accounts: 1, issues: ["entry_1_token"] },
-      { value: [{ ...SECOND_ENTRY, companionHostSuffix: "Mausbot.si" }], accounts: 1, issues: ["entry_1_suffix"] },
+      { value: [{ ...SECOND_ENTRY, companionHostSuffix: "Quatibot.si" }], accounts: 1, issues: ["entry_1_suffix"] },
       { value: [{ ...SECOND_ENTRY, companionHostSuffix: "si" }], accounts: 1, issues: ["entry_1_suffix"] },
       { value: [{ ...SECOND_ENTRY, accountId: "not-an-account" }], accounts: 1, issues: ["entry_1_shape"] },
       { value: [{ ...SECOND_ENTRY, minAppVersion: "0.1" }], accounts: 1, issues: ["entry_1_shape"] },
@@ -141,7 +141,7 @@ describe("endpoint account configuration", () => {
 const PRIMARY: EndpointAccount = {
   accountId: "0c92969a82eb9e173b013a7e7a02333d",
   apiToken: "primary-token-for-pure-tests-only",
-  companionHostSuffix: "openmausbot.com",
+  companionHostSuffix: "quatibot.invalid",
   dnsRecordLimit: 1000,
   minAppVersion: null,
   newEndpoints: true,
@@ -151,7 +151,7 @@ const PRIMARY: EndpointAccount = {
 const SECOND: EndpointAccount = {
   accountId: "2b".repeat(16),
   apiToken: "second-token-for-pure-tests-only",
-  companionHostSuffix: "mausbot.si",
+  companionHostSuffix: "quati.si",
   dnsRecordLimit: 200,
   minAppVersion: null,
   newEndpoints: true,
@@ -242,17 +242,17 @@ describe("endpoint account rules", () => {
   it("ties a row to its own configured account and that account's suffix only", () => {
     const config = accounts(PRIMARY, SECOND);
     const label = `c-${"0123456789abcdef".repeat(2)}`;
-    expect(endpointAccountFor(config, { hostname: `${label}.mausbot.si`, provider_account: SECOND.accountId })).toBe(SECOND);
-    expect(endpointAccountFor(config, { hostname: `${label}.openmausbot.com`, provider_account: PRIMARY.accountId })).toBe(PRIMARY);
+    expect(endpointAccountFor(config, { hostname: `${label}.quati.si`, provider_account: SECOND.accountId })).toBe(SECOND);
+    expect(endpointAccountFor(config, { hostname: `${label}.quatibot.invalid`, provider_account: PRIMARY.accountId })).toBe(PRIMARY);
     for (const [providerAccount, hostname] of [
-      [SECOND.accountId, `${label}.openmausbot.com`],
-      [PRIMARY.accountId, `${label}.mausbot.si`],
-      ["9".repeat(32), `${label}.mausbot.si`],
-      [SECOND.accountId, `www.${label}.mausbot.si`],
-      [SECOND.accountId, `${label.toUpperCase()}.mausbot.si`],
-      [SECOND.accountId, "c-abc.mausbot.si"],
-      [SECOND.accountId, `${label}.evilmausbot.si`],
-      [SECOND.accountId, "mausbot.si"],
+      [SECOND.accountId, `${label}.quatibot.invalid`],
+      [PRIMARY.accountId, `${label}.quati.si`],
+      ["9".repeat(32), `${label}.quati.si`],
+      [SECOND.accountId, `www.${label}.quati.si`],
+      [SECOND.accountId, `${label.toUpperCase()}.quati.si`],
+      [SECOND.accountId, "c-abc.quati.si"],
+      [SECOND.accountId, `${label}.evilquati.si`],
+      [SECOND.accountId, "quati.si"],
     ]) {
       expect(endpointAccountFor(config, { hostname, provider_account: providerAccount }), hostname).toBeNull();
     }
@@ -262,23 +262,23 @@ describe("endpoint account rules", () => {
     const config = accounts(PRIMARY, SECOND);
     const label = (index: number) => `c-${index.toString(16).padStart(32, "0")}`;
     const cases: Array<[string, string]> = [
-      [SECOND.accountId, `${label(1)}.mausbot.si`],
-      [PRIMARY.accountId, `${label(2)}.openmausbot.com`],
-      [SECOND.accountId, `c-${"0123456789abcdef".repeat(2)}.mausbot.si`],
-      [SECOND.accountId, `${label(3)}.openmausbot.com`],
-      [PRIMARY.accountId, `${label(4)}.mausbot.si`],
-      ["9".repeat(32), `${label(5)}.mausbot.si`],
-      [SECOND.accountId, `www.${label(6)}.mausbot.si`],
-      [SECOND.accountId, `${label(7).toUpperCase()}.mausbot.si`],
-      [SECOND.accountId, `c-${"0123456789abcdeg".repeat(2)}.mausbot.si`],
-      [SECOND.accountId, "c-abc.mausbot.si"],
-      [SECOND.accountId, `${label(8)}0.mausbot.si`],
-      [SECOND.accountId, `${label(9)}.evilmausbot.si`],
-      [SECOND.accountId, `${label(10)}.mausbot.si.evil.test`],
-      [SECOND.accountId, `${label(11)}.mausbot.si.`],
-      [SECOND.accountId, `d-${"0".repeat(31)}c.mausbot.si`],
-      [SECOND.accountId, `${label(12)}mausbot.si`],
-      [SECOND.accountId, "mausbot.si"],
+      [SECOND.accountId, `${label(1)}.quati.si`],
+      [PRIMARY.accountId, `${label(2)}.quatibot.invalid`],
+      [SECOND.accountId, `c-${"0123456789abcdef".repeat(2)}.quati.si`],
+      [SECOND.accountId, `${label(3)}.quatibot.invalid`],
+      [PRIMARY.accountId, `${label(4)}.quati.si`],
+      ["9".repeat(32), `${label(5)}.quati.si`],
+      [SECOND.accountId, `www.${label(6)}.quati.si`],
+      [SECOND.accountId, `${label(7).toUpperCase()}.quati.si`],
+      [SECOND.accountId, `c-${"0123456789abcdeg".repeat(2)}.quati.si`],
+      [SECOND.accountId, "c-abc.quati.si"],
+      [SECOND.accountId, `${label(8)}0.quati.si`],
+      [SECOND.accountId, `${label(9)}.evilquati.si`],
+      [SECOND.accountId, `${label(10)}.quati.si.evil.test`],
+      [SECOND.accountId, `${label(11)}.quati.si.`],
+      [SECOND.accountId, `d-${"0".repeat(31)}c.quati.si`],
+      [SECOND.accountId, `${label(12)}quati.si`],
+      [SECOND.accountId, "quati.si"],
     ];
     const now = Date.now();
     await env.DB.batch(cases.map(([providerAccount, hostname], index) => env.DB.prepare(

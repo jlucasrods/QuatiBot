@@ -8,7 +8,7 @@ HighLevel brand. Composio is not involved; the server (`server/highlevel/*`) tal
 ## How it works
 
 ```
-OMB server (desktop or Cloud home)         accounts.openmausbot.com (relay)              HighLevel
+QUATI server (desktop or Cloud home)         accounts.quatibot.invalid (relay)              HighLevel
   POST /api/highlevel/sign-in ───────────▶ POST /v1/highlevel/start → state + auth URL
   app opens the auth URL in the browser ─────────────────────────────────────────────▶ sign in, pick a location
                                             ◀── GET /v1/highlevel/callback?code&state ── redirect
@@ -50,13 +50,13 @@ picker can list them. Cloud health merges `{ highlevel: { connected } }` into it
 
 | Variable | Meaning |
 |---|---|
-| `OMB_HIGHLEVEL_RELAY_URL` | The relay. Default `https://accounts.openmausbot.com`. `off` disables the integration (`state: "unavailable"`); a Private Integration token still works. Loopback `http://` is accepted for tests. |
-| `OMB_HIGHLEVEL_API_URL` | Tests only: a fake HighLevel in place of `https://services.leadconnectorhq.com`. |
+| `QUATI_HIGHLEVEL_RELAY_URL` | The relay. Default `https://accounts.quatibot.invalid`. `off` disables the integration (`state: "unavailable"`); a Private Integration token still works. Loopback `http://` is accepted for tests. |
+| `QUATI_HIGHLEVEL_API_URL` | Tests only: a fake HighLevel in place of `https://services.leadconnectorhq.com`. |
 
 ## Tools (bots)
 
 Mounted as the MCP server `highlevel` through the harness proxy (`/api/internal/highlevel/mcp`, token env
-`OMB_MCP_TOKEN_HIGHLEVEL`), so drivers see `mcp__highlevel__HIGHLEVEL_GET_CONTACT` and the like. Every call carries the
+`QUATI_MCP_TOKEN_HIGHLEVEL`), so drivers see `mcp__highlevel__HIGHLEVEL_GET_CONTACT` and the like. Every call carries the
 turn's capability; the server re-reads the live bot on every call for the verdict.
 
 | Tool | Does | Read/write |

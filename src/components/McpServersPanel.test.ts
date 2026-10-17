@@ -50,7 +50,7 @@ beforeEach(() => {
   });
 });
 
-it("loads global extensions and switches an MCP only for MausBot", async () => {
+it("loads global extensions and switches an MCP only for Quati", async () => {
   render();
   for (const effect of fixture.effects) effect();
   await Promise.resolve();

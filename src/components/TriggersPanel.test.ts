@@ -56,7 +56,7 @@ const PROMPT = 8;
 
 const bot = (id: string, name: string) => ({ id, name, hidden: false, modelSelection: { instanceId: "claude", model: "m" } }) as unknown as Bot;
 const webhook = (id: string, extra: Partial<WebhookTrigger> = {}): WebhookTrigger => ({
-  id, endpointId: `ep-${id}`, name: "GitHub", prompt: "", botId: "scout", runOn: "maus", enabled: true,
+  id, endpointId: `ep-${id}`, name: "GitHub", prompt: "", botId: "scout", runOn: "quati", enabled: true,
   createdAt: 1, updatedAt: 1, deliveryCount: 4, lastReceivedAt: Date.now() - 5 * 60_000, ...extra,
 });
 
@@ -125,7 +125,7 @@ describe("Triggers pop-up", () => {
     expect(url).toBe("/api/webhooks");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body)).toEqual({
-      name: "GitHub", prompt: "Summarize the failed build.", botId: "atlas", runOn: "maus",
+      name: "GitHub", prompt: "Summarize the failed build.", botId: "atlas", runOn: "quati",
       enabled: true, verificationPending: false, eventTypes: [], maxPendingRuns: null,
     });
     expect(fixture.dispatch).toHaveBeenCalledWith({ type: "webhookPatched", webhook: created });

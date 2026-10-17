@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_RESULT_BUDGET, trimResultText } from "./mcp-trim.ts";
 
-const BANNER = "⚠️ TRUNCATED by OpenMausBot:";
+const BANNER = "⚠️ TRUNCATED by QuatiBot:";
 /** What was kept, between the banner at the start and the one at the end. */
 const keptBody = (text: string) => text.slice(text.indexOf("\n\n") + 2, text.lastIndexOf(`\n\n${BANNER}`));
 
@@ -105,7 +105,7 @@ describe("trimResultText", () => {
   it("keeps the whole result, banners included, within a small budget", () => {
     const text = JSON.stringify({ products: Array.from({ length: 200 }, (_, i) => product(i)) });
     for (const budget of [512, 700, 1_000, 1_500]) {
-      for (const input of [{ text }, { text: "z".repeat(50_000) }, { text, spillPath: "/tmp/omb-results/a-long-thread-name/search_products-1.json", spillHint: true }]) {
+      for (const input of [{ text }, { text: "z".repeat(50_000) }, { text, spillPath: "/tmp/quati-results/a-long-thread-name/search_products-1.json", spillHint: true }]) {
         const out = trimResultText({ ...input, budget });
         expect(out.text.length).toBeLessThanOrEqual(budget);
         expect(out.text.startsWith(BANNER)).toBe(true);

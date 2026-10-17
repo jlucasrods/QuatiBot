@@ -33,7 +33,7 @@ const voices = [
 beforeEach(() => {
   vi.stubGlobal("localStorage", memoryStorage());
   vi.stubGlobal("window", {
-    ogb: { platform: "darwin", remoteClient: { active: true } },
+    quati: { platform: "darwin", remoteClient: { active: true } },
     SpeechSynthesisUtterance: class {},
     speechSynthesis: { getVoices: () => voices },
   });
@@ -65,7 +65,7 @@ describe("paired desktop voice preferences", () => {
 
   it("never offers Mac voices on a Windows client", () => {
     vi.stubGlobal("window", {
-      ogb: { platform: "win32", remoteClient: { active: true } },
+      quati: { platform: "win32", remoteClient: { active: true } },
       SpeechSynthesisUtterance: class {},
       speechSynthesis: { getVoices: () => voices },
     });

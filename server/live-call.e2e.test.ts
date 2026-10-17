@@ -84,14 +84,14 @@ posixOnly("Live call e2e", () => {
     chmodSync(FAKE_ACP, 0o755);
     chmodSync(FAKE_CODEX, 0o755);
     live = await startFakeOpenAiLive();
-    home = mkdtempSync(join(tmpdir(), "omb-live-call-"));
-    mkdirSync(join(home, ".openmausbot"), { recursive: true });
+    home = mkdtempSync(join(tmpdir(), "quati-live-call-"));
+    mkdirSync(join(home, ".quatibot"), { recursive: true });
     steerGate = join(home, "steer.gate");
     titleRoutes = join(home, "title-routes.json");
     writeFileSync(titleRoutes, JSON.stringify({ "Requests:\nwhat is six times seven": "Times table question" }));
     queueSteerGate = join(home, "queue-steer.gate");
     writeFileSync(
-      join(home, ".openmausbot", "config.json"),
+      join(home, ".quatibot", "config.json"),
       JSON.stringify({
         instances: {
           claude: {
@@ -127,12 +127,12 @@ posixOnly("Live call e2e", () => {
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         HOME: home,
         USERPROFILE: home,
-        OMB_PORT: String(port),
-        OMB_WEBHOOK_PORT: String(port + 1),
-        OMB_OPENAI_LIVE_URL: live.url,
-        OMB_OPENAI_LIVE_KEY: LIVE_KEY,
+        QUATI_PORT: String(port),
+        QUATI_WEBHOOK_PORT: String(port + 1),
+        QUATI_OPENAI_LIVE_URL: live.url,
+        QUATI_OPENAI_LIVE_KEY: LIVE_KEY,
         // Live calls need Pro: how a server the desktop app did not start says so
-        OMB_PRO_PLAN: "1",
+        QUATI_PRO_PLAN: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -165,7 +165,7 @@ posixOnly("Live call e2e", () => {
       expect(JSON.stringify(started.body)).not.toContain(LIVE_KEY);
       expect(call).toMatchObject({ botId: bot.id, threadId: bot.threadId, client: "desktop" });
       expect(session.body).toMatchObject({ session: { client: { data_channel: { allowed_client_events: ["session.close"] } } } });
-      expect((session.body.session as { instructions: string }).instructions).toContain("runs in OpenMausBot on the user's own computer.");
+      expect((session.body.session as { instructions: string }).instructions).toContain("runs in QuatiBot on the user's own computer.");
       await live.waitForAttach(session.id);
       await sse.until((frame) => frame.kind === "live.call" && frame.call?.callId === call.callId && frame.call?.status === "live");
 
@@ -350,7 +350,7 @@ posixOnly("Live call e2e", () => {
 
   it("ends a phone's call, and refuses it another, once the companion says it was unpaired", async () => {
     const bot = await createBot();
-    const phone = { "x-openmausbot-companion": "1", "x-openmausbot-companion-device": "phone-e2e" };
+    const phone = { "x-quatibot-companion": "1", "x-quatibot-companion-device": "phone-e2e" };
     const sse = await openSse(`${base}/api/events`);
     try {
       const before = live.sessions.length;
@@ -361,7 +361,7 @@ posixOnly("Live call e2e", () => {
       await live.waitForAttach(session.id);
       await sse.until((frame) => frame.kind === "live.call" && frame.call?.callId === call.callId && frame.call?.status === "live");
 
-      expect(await post("/api/live/device-revoked", {}, { ...phone, "x-openmausbot-companion-device": "phone-other" }))
+      expect(await post("/api/live/device-revoked", {}, { ...phone, "x-quatibot-companion-device": "phone-other" }))
         .toEqual({ status: 200, body: { call: null } });
       expect(await post("/api/live/device-revoked", {}, phone)).toMatchObject({ status: 200, body: { call: { callId: call.callId } } });
       await live.waitForCommand(session.id, (c) => c.type === "session.close", 5_000);
@@ -624,7 +624,7 @@ posixOnly("Live call e2e", () => {
 
 // Booted as a Cloud home behind its edge, with only loopback reachable.
 posixOnly("Live call on the person's Cloud", () => {
-  const HOST = "omb-t-0123456789ab.fly.dev";
+  const HOST = "quati-t-0123456789ab.fly.dev";
   const secret = randomBytes(32).toString("base64url");
   const OWNER_KEY = "sk-fake-cloud-owner";
   let child: ChildProcess;
@@ -653,8 +653,8 @@ posixOnly("Live call on the person's Cloud", () => {
   beforeAll(async () => {
     chmodSync(FAKE_CLAUDE, 0o755);
     live = await startFakeOpenAiLive();
-    home = mkdtempSync(join(tmpdir(), "omb-live-cloud-"));
-    const dataDir = join(home, ".openmausbot");
+    home = mkdtempSync(join(tmpdir(), "quati-live-cloud-"));
+    const dataDir = join(home, ".quatibot");
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(join(dataDir, "config.json"), JSON.stringify({
       instances: {
@@ -664,7 +664,7 @@ posixOnly("Live call on the person's Cloud", () => {
       },
     }));
     mkdirSync(join(home, "web"));
-    writeFileSync(join(home, "web", "index.html"), "<!doctype html><title>OpenMausBot</title>");
+    writeFileSync(join(home, "web", "index.html"), "<!doctype html><title>QuatiBot</title>");
     const port = await freePortBlock([0, 1]);
     base = `http://127.0.0.1:${port}`;
     // Only loopback answers: the fake GPT-Live. The Admin and OpenAI are offline.
@@ -675,13 +675,13 @@ posixOnly("Live call on the person's Cloud", () => {
       cwd: join(SERVER_DIR, ".."),
       env: {
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-        HOME: home, USERPROFILE: home, OMB_DATA_DIR: dataDir, OMB_STATIC_DIR: join(home, "web"),
-        OMB_PORT: String(port), OMB_WEBHOOK_PORT: String(port + 1),
-        OMB_CLOUD_ROLE: "home", OMB_CLOUD_MACHINE_ID: "3f9c2a4e-8b1d-4c6e-9a7f-2d5e8c1b0a93", OMB_CLOUD_ADMIN_URL: "https://cloud.example.test",
-        OMB_CLOUD_BOOTSTRAP_SECRET: secret, OMB_PUBLIC_URL: `https://${HOST}`,
-        // no OMB_OPENAI_LIVE_KEY: no plan includes one
-        OMB_OPENAI_LIVE_URL: live.url,
-        // and no OMB_PRO_PLAN: a Cloud home is the plan's own machine, so Live
+        HOME: home, USERPROFILE: home, QUATI_DATA_DIR: dataDir, QUATI_STATIC_DIR: join(home, "web"),
+        QUATI_PORT: String(port), QUATI_WEBHOOK_PORT: String(port + 1),
+        QUATI_CLOUD_ROLE: "home", QUATI_CLOUD_MACHINE_ID: "3f9c2a4e-8b1d-4c6e-9a7f-2d5e8c1b0a93", QUATI_CLOUD_ADMIN_URL: "https://cloud.example.test",
+        QUATI_CLOUD_BOOTSTRAP_SECRET: secret, QUATI_PUBLIC_URL: `https://${HOST}`,
+        // no QUATI_OPENAI_LIVE_KEY: no plan includes one
+        QUATI_OPENAI_LIVE_URL: live.url,
+        // and no QUATI_PRO_PLAN: a Cloud home is the plan's own machine, so Live
         // calls need only the key below
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -699,11 +699,11 @@ posixOnly("Live call on the person's Cloud", () => {
       if (Date.now() > deadline) throw new Error(`the Cloud home never came up. output:\n${output}`);
       await new Promise((r) => setTimeout(r, 150));
     }
-    const pairing = JSON.stringify({ label: "OpenMausBot app (Cloud)", ttlSeconds: 300 });
+    const pairing = JSON.stringify({ label: "QuatiBot app (Cloud)", ttlSeconds: 300 });
     const timestamp = String(Math.floor(Date.now() / 1000)), nonce = randomBytes(16).toString("base64url");
     const granted = await request("POST", "/api/cloud/pairing", JSON.parse(pairing), {
-      "x-omb-cloud-timestamp": timestamp, "x-omb-cloud-nonce": nonce,
-      "x-omb-cloud-signature": `v1=${cloudPairingSignature(secret, timestamp, nonce, pairing)}`,
+      "x-quati-cloud-timestamp": timestamp, "x-quati-cloud-nonce": nonce,
+      "x-quati-cloud-signature": `v1=${cloudPairingSignature(secret, timestamp, nonce, pairing)}`,
     });
     expect(granted.status, JSON.stringify(granted.body)).toBe(200);
     const paired = await request("POST", "/api/auth/pair", { code: granted.body.code });
@@ -776,8 +776,8 @@ posixOnly("Live calls need Pro: the desktop app's answer reaches its server", ()
   beforeAll(async () => {
     chmodSync(FAKE_CLAUDE, 0o755);
     live = await startFakeOpenAiLive();
-    home = mkdtempSync(join(tmpdir(), "omb-live-pro-"));
-    const dataDir = join(home, ".openmausbot");
+    home = mkdtempSync(join(tmpdir(), "quati-live-pro-"));
+    const dataDir = join(home, ".quatibot");
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(join(dataDir, "config.json"), JSON.stringify({
       instances: {
@@ -804,12 +804,12 @@ posixOnly("Live calls need Pro: the desktop app's answer reaches its server", ()
       cwd: join(SERVER_DIR, ".."),
       env: {
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-        HOME: home, USERPROFILE: home, OMB_DATA_DIR: dataDir,
-        OMB_PORT: String(port), OMB_WEBHOOK_PORT: String(port + 1),
-        OMB_OPENAI_LIVE_URL: live.url,
-        OMB_OPENAI_LIVE_KEY: LIVE_KEY,
+        HOME: home, USERPROFILE: home, QUATI_DATA_DIR: dataDir,
+        QUATI_PORT: String(port), QUATI_WEBHOOK_PORT: String(port + 1),
+        QUATI_OPENAI_LIVE_URL: live.url,
+        QUATI_OPENAI_LIVE_KEY: LIVE_KEY,
         // as the desktop app starts its server, before its Cloud sign-in is read
-        OMB_PRO_PLAN: "0",
+        QUATI_PRO_PLAN: "0",
       },
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     });
@@ -843,8 +843,8 @@ posixOnly("Live calls need Pro: the desktop app's answer reaches its server", ()
     expect(await start("ios")).toEqual({ status: 402, body: { error: "Live calls from your phone need a Pro plan.", needsPro: true } });
     expect(live.sessions).toHaveLength(0);
 
-    await tellServer({ type: "openmausbot:pro-plan", pro: true });
-    await tellServer({ type: "openmausbot:pro-plan", pro: "yes" });
+    await tellServer({ type: "quatibot:pro-plan", pro: true });
+    await tellServer({ type: "quatibot:pro-plan", pro: "yes" });
     const started = await start("ios");
     expect(started.status, JSON.stringify(started.body)).toBe(201);
     const callId = started.body.call.callId as string;
@@ -855,7 +855,7 @@ posixOnly("Live calls need Pro: the desktop app's answer reaches its server", ()
       await new Promise((r) => setTimeout(r, 50));
     }
 
-    await tellServer({ type: "openmausbot:pro-plan", pro: false });
+    await tellServer({ type: "quatibot:pro-plan", pro: false });
     expect((await request("GET", "/api/live/call")).body).toMatchObject({ call: { callId, status: "live" } });
     expect(await request("POST", "/api/live/call/end", { callId })).toMatchObject({ status: 200, body: { call: { status: "ended", endReason: "hung-up" } } });
     expect(await start("android")).toMatchObject({ status: 402, body: { needsPro: true } });

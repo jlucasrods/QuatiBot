@@ -1,8 +1,8 @@
-// Loaded only with OMB_TEST_FAIL_AUDIO_APPEND_ONCE=1: the first store.appendMessage carrying an audio
+// Loaded only with QUATI_TEST_FAIL_AUDIO_APPEND_ONCE=1: the first store.appendMessage carrying an audio
 // attachment throws, so a test can prove a persistence error leaves the parked voice note retryable.
 import { Store } from "../store.ts";
 
-if (process.env.OMB_TEST_FAIL_AUDIO_APPEND_ONCE === "1") {
+if (process.env.QUATI_TEST_FAIL_AUDIO_APPEND_ONCE === "1") {
   const original = Store.prototype.appendMessage;
   let armed = true;
   Store.prototype.appendMessage = function (...args) {

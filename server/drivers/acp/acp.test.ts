@@ -19,7 +19,7 @@ describe("OpenCode V2 ACP turns", () => {
   beforeEach(() => {
     ensureDirs();
     chmodSync(cli, 0o755);
-    home = mkdtempSync(join(tmpdir(), "omb-opencode-turn-"));
+    home = mkdtempSync(join(tmpdir(), "quati-opencode-turn-"));
   });
 
   afterEach(async () => {

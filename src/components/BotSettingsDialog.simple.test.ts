@@ -141,7 +141,7 @@ const effortElsewhere = (rendered: {
 const skill = (name: string, enabled: boolean): ManagedSkill => ({ name, description: `${name} helper`, enabled, source: "github:x/y", warnings: [] });
 const openTab = (bot: Bot, tab: string) => click(find(panel(bot), "data-simple-tab", tab));
 const routine = (extra: Partial<Routine> = {}): Routine => ({
-    id: "r1", name: "Morning brief", prompt: "Brief me", target: "bot", botId: "scout", runOn: "maus", enabled: true,
+    id: "r1", name: "Morning brief", prompt: "Brief me", target: "bot", botId: "scout", runOn: "quati", enabled: true,
     schedule: { type: "daily", time: "09:00", weekdays: [1, 2, 3, 4, 5] }, durationMinutes: 15,
     nextRunAt: Date.UTC(2099, 0, 5, 9), createdAt: 1, updatedAt: 1, ...extra,
 });

@@ -1,11 +1,11 @@
 # Live browser and profiles
 
 Use installed native engine and Chrome binaries explicitly; the fixture never
-uses the operator's browser profiles, OMB home, provider logins, or API keys.
+uses the operator's browser profiles, QUATI home, provider logins, or API keys.
 
 ```sh
-OMB_VERIFY_BROWSER_BINARY=/absolute/path/to/agent-browser \
-OMB_VERIFY_BROWSER_CHROME=/absolute/path/to/chrome-headless-shell \
+QUATI_VERIFY_BROWSER_BINARY=/absolute/path/to/agent-browser \
+QUATI_VERIFY_BROWSER_CHROME=/absolute/path/to/chrome-headless-shell \
 node --experimental-strip-types scripts/verify-browser-live.ts
 ```
 
@@ -116,9 +116,9 @@ With an installed Playwright module, the same isolated launcher can run an
 automatic native acceptance pass, close its browsers and exit:
 
 ```sh
-OMB_VERIFY_BROWSER_BINARY=/absolute/path/to/agent-browser \
-OMB_VERIFY_BROWSER_CHROME=/absolute/path/to/chrome-headless-shell \
-OMB_VERIFY_PLAYWRIGHT=/absolute/path/to/playwright/index.mjs \
+QUATI_VERIFY_BROWSER_BINARY=/absolute/path/to/agent-browser \
+QUATI_VERIFY_BROWSER_CHROME=/absolute/path/to/chrome-headless-shell \
+QUATI_VERIFY_PLAYWRIGHT=/absolute/path/to/playwright/index.mjs \
 node --experimental-strip-types scripts/verify-browser-live.ts --recovery
 ```
 
@@ -145,10 +145,10 @@ as well: native macOS acceptance alone does not prove Windows process behavior.
 - [Pi author's browser tools](https://github.com/badlogic/agent-tools/blob/main/browser-tools/browser-nav.js)
   disconnect the automation client instead of closing Chrome after navigation.
 - [OpenClaw's CDP connection](https://github.com/openclaw/openclaw/blob/main/extensions/browser/src/browser/cdp-websocket.ts)
-  bounds connection retries before commands have side effects. OMB similarly
+  bounds connection retries before commands have side effects. QUATI similarly
   retries observation only, never clicks, text, navigation or submissions.
 
-No upstream implementation was copied; OMB already ships agent-browser and
+No upstream implementation was copied; QUATI already ships agent-browser and
 keeps its existing license notices and profile/control boundaries.
 
 Verified 2026-09-19 on macOS arm64 with agent-browser 0.37.0 and the packaged
@@ -159,7 +159,7 @@ real preview recovered its injected stream failure without replaying actions
 or restoring a human lease. Windows native acceptance remains outstanding.
 Final fixture evidence: `server-1789811974163-38144.log` and
 `server-1789811974163-38144-browser.png` in the launcher's printed
-`openmausbot-verification-evidence` directory.
+`quatibot-verification-evidence` directory.
 
 ## Real Codex chat-to-action acceptance (opt-in)
 
@@ -169,9 +169,9 @@ does not import personal chats, provider settings, skills or browser profiles.
 Never point its requests at the user's running app.
 
 ```sh
-OMB_VERIFY_CODEX_CLI=/absolute/path/to/codex \
-OMB_VERIFY_CODEX_AUTH=/absolute/path/to/auth.json \
-OMB_VERIFY_CODEX_MODEL=your-supported-model \
+QUATI_VERIFY_CODEX_CLI=/absolute/path/to/codex \
+QUATI_VERIFY_CODEX_AUTH=/absolute/path/to/auth.json \
+QUATI_VERIFY_CODEX_MODEL=your-supported-model \
 node --experimental-strip-types scripts/verify-codex-surface-live.ts
 ```
 

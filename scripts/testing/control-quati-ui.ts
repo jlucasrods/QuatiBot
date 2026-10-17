@@ -1,6 +1,6 @@
-// `control-omb ui`: drives the real renderer headlessly against the fake-engine
+// `control-quati ui`: drives the real renderer headlessly against the fake-engine
 // fixture through the agent-browser binary the harness pins. It touches
-// control-omb.ts's bindings only inside functions, so the import cycle is
+// control-quati.ts's bindings only inside functions, so the import cycle is
 // harmless whichever loads first.
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -8,13 +8,13 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  ControlOmbError,
+  ControlQuatiError,
   HELP_UI,
   launchVerificationServer,
   parse,
-  runControlOmb,
+  runControlQuati,
   type VerificationServer,
-} from "../control-omb.ts";
+} from "../control-quati.ts";
 import {
   closeBrowserSession,
   ensureChrome,
@@ -26,12 +26,12 @@ import { credentialStoreFlags } from "../../server/browser/egress/gate.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 /** Gitignored, persistent: the binary and its Chrome download once per checkout. */
-export const UI_TOOLS_DIR = join(ROOT, ".omb-scratch", "verify-tools");
+export const UI_TOOLS_DIR = join(ROOT, ".quati-scratch", "verify-tools");
 /** Verbs that change the fixture or the page; they take the explicit handle, never discovery. */
 export const UI_MUTATING = new Set(["click", "type", "press", "flag", "eval"]);
 
 const ENTRIES = {
-  threads: { entry: "/scripts/testing/threads-preview.tsx", route: "/__threads.html", title: "Isolated OpenMaus Chat" },
+  threads: { entry: "/scripts/testing/threads-preview.tsx", route: "/__threads.html", title: "Isolated Quati Chat" },
   settings: { entry: "/src/testing/bot-settings.tsx", route: "/__bot-settings.html", title: "Isolated Bot Settings" },
 } as const satisfies Record<string, Parameters<typeof mountPreview>[1]>;
 const FAKE_MODES = ["happy", "exit-early", "hang", "malformed", "stream", "not-logged-in", "slow", "background-result"];
@@ -100,7 +100,7 @@ export function agentBrowser(
     try {
       child = spawn(binary, [...args, "--json"], { env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     } catch (error) {
-      fail(new ControlOmbError(`could not start agent-browser: ${error instanceof Error ? error.message : String(error)}`));
+      fail(new ControlQuatiError(`could not start agent-browser: ${error instanceof Error ? error.message : String(error)}`));
       return;
     }
     let output = "";
@@ -112,11 +112,11 @@ export function agentBrowser(
       if (output.length > OUTPUT_LIMIT) { clearTimeout(timer); child.kill("SIGKILL"); }
     });
     child.stderr?.resume();
-    child.on("error", (error) => { clearTimeout(timer); fail(new ControlOmbError(`could not start agent-browser: ${error.message}`)); });
+    child.on("error", (error) => { clearTimeout(timer); fail(new ControlQuatiError(`could not start agent-browser: ${error.message}`)); });
     child.on("close", (code) => {
       clearTimeout(timer);
       if (timedOut) {
-        fail(new ControlOmbError(`agent-browser ${args[0]} did not finish within ${timeoutMs}ms`, "check the page with `ui screenshot` or `ui console`"));
+        fail(new ControlQuatiError(`agent-browser ${args[0]} did not finish within ${timeoutMs}ms`, "check the page with `ui screenshot` or `ui console`"));
         return;
       }
       let result: { success?: unknown; data?: unknown; error?: unknown } | null = null;
@@ -130,7 +130,7 @@ export function agentBrowser(
         : result?.error && typeof result.error === "object" && typeof (result.error as { message?: unknown }).message === "string"
           ? (result.error as { message: string }).message
           : `exit ${code ?? "by signal"}`;
-      fail(new ControlOmbError(`agent-browser ${args[0]} failed: ${reason.slice(0, 300)}`, "take a fresh `ui snapshot`; refs change after the page updates"));
+      fail(new ControlQuatiError(`agent-browser ${args[0]} failed: ${reason.slice(0, 300)}`, "take a fresh `ui snapshot`; refs change after the page updates"));
     });
   });
 }
@@ -156,7 +156,7 @@ export function installedChrome(toolsDir = UI_TOOLS_DIR, platform: NodeJS.Platfo
   return null;
 }
 
-/** OMB_AGENT_BROWSER_PATH, then the tools directory, then PATH; otherwise the
+/** QUATI_AGENT_BROWSER_PATH, then the tools directory, then PATH; otherwise the
  * pinned download, verified by size and SHA-256. Chrome follows the same rule
  * with AGENT_BROWSER_EXECUTABLE_PATH. Both land once under UI_TOOLS_DIR. */
 export async function ensureUiBrowser(
@@ -173,13 +173,13 @@ export async function ensureUiBrowser(
   }
   const explicit = parentEnv.AGENT_BROWSER_EXECUTABLE_PATH?.trim();
   if (explicit) {
-    if (!existsSync(explicit)) throw new ControlOmbError(`AGENT_BROWSER_EXECUTABLE_PATH does not exist: ${explicit}`, "unset it to use the Chrome agent-browser installs");
+    if (!existsSync(explicit)) throw new ControlQuatiError(`AGENT_BROWSER_EXECUTABLE_PATH does not exist: ${explicit}`, "unset it to use the Chrome agent-browser installs");
     return { binary, chrome: resolve(explicit) };
   }
   let chrome = installedChrome(toolsDir);
   if (!chrome) {
     const started = Date.now();
-    await ensureChrome(binary, { env: sessionEnv({ home: toolsDir, session: "omb-ui-install", chrome: null }, parentEnv), log });
+    await ensureChrome(binary, { env: sessionEnv({ home: toolsDir, session: "quati-ui-install", chrome: null }, parentEnv), log });
     log(`Chrome ready in ${Date.now() - started}ms`);
     chrome = installedChrome(toolsDir);
     if (!chrome) log("no Chrome for Testing under the tools directory; the session will use the browser agent-browser finds itself");
@@ -189,20 +189,20 @@ export async function ensureUiBrowser(
 
 function loadHandle(raw: unknown, verb: string): UiHandle {
   if (typeof raw !== "string" || !raw.trim()) {
-    throw new ControlOmbError(`ui ${verb} requires --ui HANDLE`, "run `ui launch`; it prints the handle path (ui.json inside its data directory)");
+    throw new ControlQuatiError(`ui ${verb} requires --ui HANDLE`, "run `ui launch`; it prints the handle path (ui.json inside its data directory)");
   }
   const path = resolve(raw.trim());
   let handle: Partial<UiHandle>;
   try {
     handle = JSON.parse(readFileSync(path, "utf8"));
   } catch (error) {
-    throw new ControlOmbError(`could not read the ui handle ${path}: ${error instanceof Error ? error.message : String(error)}`, "the launch that wrote it may have stopped; run `ui launch` again");
+    throw new ControlQuatiError(`could not read the ui handle ${path}: ${error instanceof Error ? error.message : String(error)}`, "the launch that wrote it may have stopped; run `ui launch` again");
   }
   for (const key of ["url", "previewUrl", "session", "binary", "home", "botId", "logPath"] as const) {
-    if (typeof handle[key] !== "string" || !handle[key]) throw new ControlOmbError(`the ui handle ${path} lacks ${key}`, "run `ui launch` again and use the handle it prints");
+    if (typeof handle[key] !== "string" || !handle[key]) throw new ControlQuatiError(`the ui handle ${path} lacks ${key}`, "run `ui launch` again and use the handle it prints");
   }
-  if (handle.chrome !== null && typeof handle.chrome !== "string") throw new ControlOmbError(`the ui handle ${path} has an invalid chrome entry`);
-  if (!existsSync(handle.home!)) throw new ControlOmbError(`the ui session's data directory is gone: ${handle.home}`, "its launch was stopped; run `ui launch` again");
+  if (handle.chrome !== null && typeof handle.chrome !== "string") throw new ControlQuatiError(`the ui handle ${path} has an invalid chrome entry`);
+  if (!existsSync(handle.home!)) throw new ControlQuatiError(`the ui session's data directory is gone: ${handle.home}`, "its launch was stopped; run `ui launch` again");
   return handle as UiHandle;
 }
 
@@ -211,7 +211,7 @@ async function requireLiveSession(handle: UiHandle): Promise<void> {
   const data = await agentBrowser(handle.binary, sessionEnv(handle), ["session", "list"], 10_000);
   const sessions = Array.isArray(data.sessions) ? data.sessions : [];
   if (!sessions.includes(handle.session)) {
-    throw new ControlOmbError(`the ui session ${handle.session} is not running`, "its launch was stopped or crashed; run `ui launch` again and use the new handle");
+    throw new ControlQuatiError(`the ui session ${handle.session} is not running`, "its launch was stopped or crashed; run `ui launch` again and use the new handle");
   }
 }
 
@@ -225,9 +225,9 @@ const TARGET_WAIT_MS = 5_000;
 async function resolveTarget(handle: UiHandle, values: Record<string, unknown>, verb: string): Promise<{ target: string; name?: string }> {
   const ref = typeof values.ref === "string" ? values.ref.trim() : "";
   const name = typeof values.name === "string" ? values.name : "";
-  if (Boolean(ref) === Boolean(name)) throw new ControlOmbError(`ui ${verb} needs exactly one of --ref @eN or --name NAME`);
+  if (Boolean(ref) === Boolean(name)) throw new ControlQuatiError(`ui ${verb} needs exactly one of --ref @eN or --name NAME`);
   if (ref) {
-    if (!/^@?e\d+$/.test(ref)) throw new ControlOmbError(`--ref must look like @e12, got ${JSON.stringify(ref)}`, "refs come from `ui snapshot`");
+    if (!/^@?e\d+$/.test(ref)) throw new ControlQuatiError(`--ref must look like @e12, got ${JSON.stringify(ref)}`, "refs come from `ui snapshot`");
     return { target: ref.startsWith("@") ? ref : `@${ref}` };
   }
   // React paints after the previous command returns, so one snapshot races the
@@ -241,8 +241,8 @@ async function resolveTarget(handle: UiHandle, values: Record<string, unknown>, 
     if (matches.length > 1 || Date.now() >= deadline) break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  if (matches.length === 0) throw new ControlOmbError(`no element is named ${JSON.stringify(name)}`, "run `ui snapshot` and use the exact accessible name, or --ref");
-  throw new ControlOmbError(
+  if (matches.length === 0) throw new ControlQuatiError(`no element is named ${JSON.stringify(name)}`, "run `ui snapshot` and use the exact accessible name, or --ref");
+  throw new ControlQuatiError(
     `${matches.length} elements are named ${JSON.stringify(name)}: ${matches.map(([id, element]) => `@${id} (${String(element.role)})`).join(", ")}`,
     "pass --ref to pick one",
   );
@@ -250,7 +250,7 @@ async function resolveTarget(handle: UiHandle, values: Record<string, unknown>, 
 
 function parseFlagPatch(raw: unknown): { features: Record<string, boolean | number | string> } {
   const assignments = Array.isArray(raw) ? raw.filter((value): value is string => typeof value === "string") : [];
-  if (!assignments.length) throw new ControlOmbError("ui flag requires --set features.NAME=VALUE", "example: --set features.showToolCalls=true");
+  if (!assignments.length) throw new ControlQuatiError("ui flag requires --set features.NAME=VALUE", "example: --set features.showToolCalls=true");
   const features: Record<string, boolean | number | string> = {};
   for (const assignment of assignments) {
     const separator = assignment.indexOf("=");
@@ -258,7 +258,7 @@ function parseFlagPatch(raw: unknown): { features: Record<string, boolean | numb
     const value = separator === -1 ? "" : assignment.slice(separator + 1);
     const [scope, name, ...rest] = path.split(".");
     if (scope !== "features" || !name || rest.length || !/^[A-Za-z][\w-]*$/.test(name) || separator === -1) {
-      throw new ControlOmbError(`--set must be features.NAME=VALUE, got ${JSON.stringify(assignment)}`, "example: --set features.showToolCalls=true");
+      throw new ControlQuatiError(`--set must be features.NAME=VALUE, got ${JSON.stringify(assignment)}`, "example: --set features.showToolCalls=true");
     }
     features[name] = value === "true" ? true : value === "false" ? false : /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value;
   }
@@ -282,7 +282,7 @@ async function waitSettle(handle: UiHandle, timeoutSeconds: number): Promise<Rec
   let browser: Record<string, unknown> = { state: "unknown" };
   const state = () => ({ status: "timed-out", bots, renderer, browser, wait });
   for (;;) {
-    wait = await runControlOmb(["wait", "--bot", handle.botId, "--timeout", String(Math.min(120, remaining())), "--url", handle.url]) as Record<string, unknown>;
+    wait = await runControlQuati(["wait", "--bot", handle.botId, "--timeout", String(Math.min(120, remaining())), "--url", handle.url]) as Record<string, unknown>;
     if (wait.status !== "settled") return { ok: false, ...state(), status: wait.status };
     bots = summarizeBots(((await api("GET", "/api/bots?messages=0")) as { bots: Array<Record<string, unknown>> }).bots);
     if (!bots.some((bot) => bot.busy || bot.waitingForTeammates)) break;
@@ -310,11 +310,11 @@ async function waitSettle(handle: UiHandle, timeoutSeconds: number): Promise<Rec
 }
 
 /** The `ui` verbs other than launch. Every one takes the explicit handle. */
-export async function runControlOmbUi(args: string[]): Promise<unknown> {
+export async function runControlQuatiUi(args: string[]): Promise<unknown> {
   const [verb = "help", ...rest] = args;
   if (verb === "help" || verb === "--help" || verb === "-h") return HELP_UI;
   if (verb === "launch") {
-    throw new ControlOmbError("ui launch is available only from the executable CLI", "run `node --experimental-strip-types scripts/control-omb.ts ui launch`");
+    throw new ControlQuatiError("ui launch is available only from the executable CLI", "run `node --experimental-strip-types scripts/control-quati.ts ui launch`");
   }
   const command = `ui ${verb}`;
   const ui = { ui: { type: "string" } } as const;
@@ -330,7 +330,7 @@ export async function runControlOmbUi(args: string[]): Promise<unknown> {
     const values = parse(command, rest, { ...ui, ref: { type: "string" }, name: { type: "string" }, text: { type: "string" } });
     const handle = loadHandle(values.ui, verb);
     const text = verb === "type" ? values.text : undefined;
-    if (verb === "type" && typeof text !== "string") throw new ControlOmbError("ui type requires --text TEXT");
+    if (verb === "type" && typeof text !== "string") throw new ControlQuatiError("ui type requires --text TEXT");
     await requireLiveSession(handle);
     const { target, name } = await resolveTarget(handle, values, verb);
     const data = await agentBrowser(handle.binary, sessionEnv(handle), verb === "click" ? ["click", target] : ["type", target, text as string]);
@@ -340,7 +340,7 @@ export async function runControlOmbUi(args: string[]): Promise<unknown> {
   if (verb === "press") {
     const values = parse(command, rest, { ...ui, keys: { type: "string" } });
     const handle = loadHandle(values.ui, verb);
-    if (typeof values.keys !== "string" || !values.keys.trim()) throw new ControlOmbError("ui press requires --keys KEYS", "example: --keys Enter or --keys Meta+k");
+    if (typeof values.keys !== "string" || !values.keys.trim()) throw new ControlQuatiError("ui press requires --keys KEYS", "example: --keys Enter or --keys Meta+k");
     await requireLiveSession(handle);
     return { ok: true, ...(await agentBrowser(handle.binary, sessionEnv(handle), ["press", values.keys.trim()])) };
   }
@@ -348,14 +348,14 @@ export async function runControlOmbUi(args: string[]): Promise<unknown> {
   if (verb === "screenshot") {
     const values = parse(command, rest, { ...ui, out: { type: "string" } });
     const handle = loadHandle(values.ui, verb);
-    if (typeof values.out !== "string" || extname(values.out).toLowerCase() !== ".png") throw new ControlOmbError("ui screenshot requires --out PATH.png");
+    if (typeof values.out !== "string" || extname(values.out).toLowerCase() !== ".png") throw new ControlQuatiError("ui screenshot requires --out PATH.png");
     const out = resolve(values.out);
     mkdirSync(dirname(out), { recursive: true });
     await requireLiveSession(handle);
     await agentBrowser(handle.binary, sessionEnv(handle), ["screenshot", out], 60_000);
     let bytes = 0;
     try { bytes = statSync(out).size; } catch { /* reported as 0 */ }
-    if (!bytes) throw new ControlOmbError(`agent-browser reported a screenshot it did not write: ${out}`);
+    if (!bytes) throw new ControlQuatiError(`agent-browser reported a screenshot it did not write: ${out}`);
     return { ok: true, path: out, bytes };
   }
 
@@ -369,7 +369,7 @@ export async function runControlOmbUi(args: string[]): Promise<unknown> {
   if (verb === "eval") {
     const values = parse(command, rest, { ...ui, js: { type: "string" } });
     const handle = loadHandle(values.ui, verb);
-    if (typeof values.js !== "string" || !values.js.trim()) throw new ControlOmbError("ui eval requires --js CODE");
+    if (typeof values.js !== "string" || !values.js.trim()) throw new ControlQuatiError("ui eval requires --js CODE");
     await requireLiveSession(handle);
     return { ok: true, ...(await agentBrowser(handle.binary, sessionEnv(handle), ["eval", values.js])) };
   }
@@ -387,12 +387,12 @@ export async function runControlOmbUi(args: string[]): Promise<unknown> {
     const values = parse(command, rest, { ...ui, timeout: { type: "string" } });
     const handle = loadHandle(values.ui, verb);
     const timeout = values.timeout === undefined ? 30 : Number(values.timeout);
-    if (!Number.isInteger(timeout) || timeout < 1 || timeout > 600) throw new ControlOmbError("--timeout must be an integer from 1 to 600");
+    if (!Number.isInteger(timeout) || timeout < 1 || timeout > 600) throw new ControlQuatiError("--timeout must be an integer from 1 to 600");
     await requireLiveSession(handle);
     return waitSettle(handle, timeout);
   }
 
-  throw new ControlOmbError(`unknown ui command ${JSON.stringify(verb)}`, "run control-omb ui help");
+  throw new ControlQuatiError(`unknown ui command ${JSON.stringify(verb)}`, "run control-quati ui help");
 }
 
 function parkUntilSignalOrExit(child: ChildProcess, stopRequested: () => boolean): Promise<"signal" | "exit"> {
@@ -424,7 +424,7 @@ export async function launchUi(
   const values = parse("ui launch", args, { entry: { type: "string" }, "tool-calls": { type: "string" }, mode: { type: "string" } });
   const entryName = typeof values.entry === "string" ? values.entry : "threads";
   if (!Object.hasOwn(ENTRIES, entryName)) {
-    throw new ControlOmbError(`unknown --entry ${JSON.stringify(entryName)}`, `available entries: ${Object.keys(ENTRIES).join(", ")}`);
+    throw new ControlQuatiError(`unknown --entry ${JSON.stringify(entryName)}`, `available entries: ${Object.keys(ENTRIES).join(", ")}`);
   }
   const entry = ENTRIES[entryName as keyof typeof ENTRIES];
   const fakeEnv: NodeJS.ProcessEnv = {};
@@ -432,12 +432,12 @@ export async function launchUi(
     let calls: unknown;
     try { calls = JSON.parse(String(values["tool-calls"])); } catch { calls = undefined; }
     if (!Array.isArray(calls) || !calls.every((call) => call && typeof call === "object" && typeof (call as { name?: unknown }).name === "string")) {
-      throw new ControlOmbError("--tool-calls must be a JSON array of {name, input?, ok?}", 'example: --tool-calls \'[{"name":"Bash","input":{"command":"echo hi"},"ok":true}]\'');
+      throw new ControlQuatiError("--tool-calls must be a JSON array of {name, input?, ok?}", 'example: --tool-calls \'[{"name":"Bash","input":{"command":"echo hi"},"ok":true}]\'');
     }
     fakeEnv.FAKE_CLAUDE_TOOL_CALLS = JSON.stringify(calls);
   }
   if (values.mode !== undefined) {
-    if (!FAKE_MODES.includes(String(values.mode))) throw new ControlOmbError(`unknown --mode ${JSON.stringify(values.mode)}`, `fake engine modes: ${FAKE_MODES.join(", ")}`);
+    if (!FAKE_MODES.includes(String(values.mode))) throw new ControlQuatiError(`unknown --mode ${JSON.stringify(values.mode)}`, `fake engine modes: ${FAKE_MODES.join(", ")}`);
     fakeEnv.FAKE_CLAUDE_MODE = String(values.mode);
   }
   const note = (line: string) => io.stderr.write(`ui launch: ${line}\n`);
@@ -449,7 +449,7 @@ export async function launchUi(
   const requestStop = () => { stopRequested = true; startup.abort(); };
   process.once("SIGINT", requestStop);
   process.once("SIGTERM", requestStop);
-  const checkpoint = () => { if (stopRequested) throw new ControlOmbError("ui launch cancelled"); };
+  const checkpoint = () => { if (stopRequested) throw new ControlQuatiError("ui launch cancelled"); };
 
   let fixture: VerificationServer | undefined;
   let preview: MountedPreview | undefined;
@@ -462,13 +462,13 @@ export async function launchUi(
     checkpoint();
     const api = fixtureApi(fixture.info.url);
     await api("PATCH", "/api/config", { language: "en" });
-    const created = await runControlOmb(["new-bot", "--name", SEEDED_BOT, "--url", fixture.info.url]) as { bot: { id: string } };
+    const created = await runControlQuati(["new-bot", "--name", SEEDED_BOT, "--url", fixture.info.url]) as { bot: { id: string } };
     checkpoint();
     // stdout carries the handle and nothing else; Vite's port and dependency
     // notes would otherwise land there first.
     preview = await mountPreview(fixture, { ...entry, logLevel: "warn" });
     checkpoint();
-    const session: SessionEnv = { home: fixture.info.dataDir, session: `omb-ui-${new URL(fixture.info.url).port}`, chrome };
+    const session: SessionEnv = { home: fixture.info.dataDir, session: `quati-ui-${new URL(fixture.info.url).port}`, chrome };
     const env = sessionEnv(session, parentEnv);
     opened = { binary, env };
     await agentBrowser(binary, env, ["open", preview.previewUrl], 120_000);

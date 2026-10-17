@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { DesktopCapabilitiesProvider } from "@/components/DesktopCapabilities";
 import { WelcomeFlow } from "@/components/onboarding/WelcomeFlow";
 import { Select } from "@/components/Select";
-import type { MausMotion } from "@/lib/mascot";
+import type { QuatiMotion } from "@/lib/mascot";
 import { type BeatId, beatsFor } from "@/lib/onboarding";
 import { SKINS, type SkinId } from "@/lib/skins";
 import { StoreProvider, type Bot } from "@/state/store";
@@ -12,7 +12,7 @@ import "./styles.css";
 
 const PREVIEW_BOT = {
   id: "preview-bot",
-  name: "Maus",
+  name: "Quati",
   color: "green",
   soul: "",
 } as unknown as Bot;
@@ -29,11 +29,11 @@ function fromUrl() {
     skin: skin && SKINS.some((s) => s.id === skin) ? skin : ("midnight" as SkinId),
     reduced: params.get("reduced") === "1",
     all: params.get("all") === "1",
-    entrance: (params.get("entrance") ?? "arrive") as Exclude<MausMotion, "none">,
+    entrance: (params.get("entrance") ?? "arrive") as Exclude<QuatiMotion, "none">,
   };
 }
 
-function Stage({ skin, beat, run, scale = 1, entrance }: { skin: SkinId; beat: BeatId; run: number; scale?: number; entrance: Exclude<MausMotion, "none"> }) {
+function Stage({ skin, beat, run, scale = 1, entrance }: { skin: SkinId; beat: BeatId; run: number; scale?: number; entrance: Exclude<QuatiMotion, "none"> }) {
   const width = 1100;
   const height = 720;
   return (
@@ -73,12 +73,12 @@ function Preview() {
   useEffect(() => {
     if (!new URLSearchParams(location.search).has("debug")) return;
     const timer = setTimeout(() => {
-      const paths = document.querySelectorAll<SVGPathElement>(".welcome-maus svg path");
+      const paths = document.querySelectorAll<SVGPathElement>(".welcome-quati svg path");
       paths.forEach((el, i) => {
-        console.log(`[maus-debug] path ${i} d=${(el.getAttribute("d") ?? "").slice(0, 60)} transform=${el.getAttribute("transform") ?? ""} opacity=${el.style.opacity}`);
+        console.log(`[quati-debug] path ${i} d=${(el.getAttribute("d") ?? "").slice(0, 60)} transform=${el.getAttribute("transform") ?? ""} opacity=${el.style.opacity}`);
       });
-      const groups = document.querySelectorAll<SVGGElement>(".welcome-maus svg g[transform]");
-      groups.forEach((el, i) => console.log(`[maus-debug] g ${i} transform=${el.getAttribute("transform")}`));
+      const groups = document.querySelectorAll<SVGGElement>(".welcome-quati svg g[transform]");
+      groups.forEach((el, i) => console.log(`[quati-debug] g ${i} transform=${el.getAttribute("transform")}`));
     }, 3500);
     return () => clearTimeout(timer);
   }, []);

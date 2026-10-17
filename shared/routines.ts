@@ -37,7 +37,7 @@ export type RoutineScheduleInput =
     endsAt?: number | null;
   };
 
-export type RoutineRunOn = "maus" | "cloud";
+export type RoutineRunOn = "quati" | "cloud";
 
 export type RoutineTarget = "bot" | "room-goal";
 export type RoutineGoalStatus =
@@ -96,7 +96,7 @@ export interface Routine {
   overlap?: "skip" | "queue";
   /** Each run starts with the previous run's report. */
   continuity?: boolean;
-  /** Also run once each time OpenMausBot starts. */
+  /** Also run once each time QuatiBot starts. */
   runOnStartup?: boolean;
   skippedRuns?: number;
   lastSkippedAt?: number;

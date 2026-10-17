@@ -5,7 +5,7 @@ import { connect, type Socket } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
-import { launchVerificationServer, runControlOmb, verificationServerEnvironment } from "../scripts/control-omb.ts";
+import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 
 it("reports every run into the bot's main thread while fresh executions, approvals, deletion and unread stay reachable", async () => {
@@ -22,7 +22,7 @@ it("reports every run into the bot's main thread while fresh executions, approva
     if (method !== "GET") evidence.push({ method, path, body, status: response.status, result: value });
     return value;
   };
-  const control = (args: string[]) => runControlOmb([...args, "--url", fixture.info.url]);
+  const control = (args: string[]) => runControlQuati([...args, "--url", fixture.info.url]);
   const runState = async (id: string) => (await api("GET", "/api/routines")).runs.find((run: any) => run.id === id);
   const messages = async (id: string) => (await api("GET", `/api/threads/${id}/messages?limit=100`)).messages as any[];
   try {
@@ -104,10 +104,10 @@ it("reports every run into the bot's main thread while fresh executions, approva
     const active = await runState(pending.id);
     await expect.poll(() => {
       if (!existsSync(fixture.fixtureDumpPath)) return false;
-      return JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).mcpConfig?.mcpServers?.agents?.env?.OMB_THREAD_ID === active.threadId;
+      return JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).mcpConfig?.mcpServers?.agents?.env?.QUATI_THREAD_ID === active.threadId;
     }, { timeout: 15_000 }).toBe(true);
     const launched = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
-    const socketPath = launched.mcpConfig.mcpServers.ogb.args.at(-1);
+    const socketPath = launched.mcpConfig.mcpServers.quati.args.at(-1);
     broker = connect(socketPath);
     broker.on("error", () => {});
     await new Promise<void>((resolve, reject) => { broker!.once("connect", resolve); broker!.once("error", reject); });
@@ -158,7 +158,7 @@ it("reports a routine made in a chat into that chat once the person writes there
     if (method !== "GET") evidence.push({ method, path, body, status: response.status, result: value });
     return value;
   };
-  const cli = (...args: string[]) => runControlOmb([...args, "--url", fixture.info.url]) as Promise<any>;
+  const cli = (...args: string[]) => runControlQuati([...args, "--url", fixture.info.url]) as Promise<any>;
   const messages = async (id: string) => (await api("GET", `/api/threads/${id}/messages?limit=100`)).messages as any[];
   try {
     const { bot } = await cli("new-bot", "--name", "Chat routine fixture");
@@ -214,7 +214,7 @@ async function resultsFixture() {
     expect(response.status, `${method} ${path}: ${JSON.stringify(value)}`).toBe(status);
     return value;
   };
-  const control = (...args: string[]) => runControlOmb([...args, "--url", url]) as Promise<any>;
+  const control = (...args: string[]) => runControlQuati([...args, "--url", url]) as Promise<any>;
   const messages = async (id: string) => (await api("GET", `/api/threads/${id}/messages?limit=100`)).messages as any[];
   const savedBot = async (id: string) => (await api("GET", "/api/bots")).bots.find((candidate: any) => candidate.id === id);
   const destination = async (id: string) => (await api("GET", "/api/routines")).routines.find((candidate: any) => candidate.id === id).resultsThreadId;

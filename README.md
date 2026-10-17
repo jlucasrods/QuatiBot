@@ -1,23 +1,23 @@
-# OpenMausBot — OpenCode V2
+# QuatiBot — OpenCode V2
 
 This fork uses **OpenCode V2 exclusively**, through its local ACP interface.
-Every chat turn is processed by OpenCode. OpenMausBot provides bots, conversations,
+Every chat turn is processed by OpenCode. QuatiBot provides bots, conversations,
 channels, memory, routines and tool integrations; it does not implement a second
 model client.
 
 ## Setup
 
-1. Install [OpenCode V2](https://opencode.ai/v2/docs/) on the machine running OpenMausBot.
+1. Install [OpenCode V2](https://opencode.ai/v2/docs/) on the machine running QuatiBot.
 2. Configure providers and sign in **in OpenCode**, for example with `opencode auth login`.
-3. Start OpenMausBot and refresh its models. Select an available model and variant
+3. Start QuatiBot and refresh its models. Select an available model and variant
    for each bot or conversation.
 
-OpenMausBot discovers models from ACP `session/new` configuration options. It
+QuatiBot discovers models from ACP `session/new` configuration options. It
 does not accept model-provider keys, install another engine, inject local-provider
 configuration, or edit OpenCode's global configuration. OpenCode V1, Claude Code,
 Codex and other engine adapters are not supported.
 
-Existing OpenMausBot provider secrets are left untouched on disk, but are not
+Existing provider secrets are left untouched on disk, but are not
 used or migrated. Configure those providers yourself in OpenCode. Boat, self-hosted
 VPS and Composio integrations are removed, including their remote lifecycle and
 connection flows. Existing secrets and remote resources are not deleted.
@@ -28,7 +28,7 @@ control. External tools are configured through OpenCode.
 
 Browser and computer tools are passed to OpenCode for the ACP session. Configure
 other MCP servers, plugins and skills in OpenCode. The Extensions panel lists
-global entries; its MCP switches affect only MausBot sessions, on the next turn,
+global entries; its MCP switches affect only Quati sessions, on the next turn,
 without editing OpenCode configuration or changing other clients.
 
 ## Run on Linux
@@ -44,6 +44,11 @@ corepack pnpm start
 Open http://127.0.0.1:8799. One Node process serves the built interface and API.
 Keep the default loopback address. Remote deployments require authentication and
 HTTPS; do not expose the trusted-local development server to the internet.
+
+QuatiBot uses `~/.quatibot` by default and `QUATI_*` environment variables.
+Existing workspaces are not moved or deleted. To reuse one explicitly, start with
+`QUATI_DATA_DIR=/path/to/your/workspace corepack pnpm start`; back it up first.
+Old environment-variable names are not imported automatically.
 
 OpenCode terminal commands run on the backend host, not automatically inside a
 VM. The agent browser has its own profile. Isolated desktops require Docker or
@@ -90,5 +95,8 @@ against your personal workspace.
 
 ## Upstream
 
-Based on [OpenMausBot](https://github.com/milind-soni/OpenMausBot) by Milind Soni.
+Based on [OpenMausBot](https://github.com/milind-soni/OpenMausBot) by Milind Soni
+and its contributors. QuatiBot is an independent fork, not an official release.
 Licensed under [Apache-2.0](LICENSE).
+Original attribution notices are retained in [NOTICE](NOTICE). The separately
+licensed upstream enterprise directory is not included in this fork.

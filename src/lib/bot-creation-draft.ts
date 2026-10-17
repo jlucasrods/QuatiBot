@@ -98,7 +98,7 @@ export class BotCreationDraft {
     } : schedule;
     return {
       id: previous?.id ?? `draft-${crypto.randomUUID()}`, createdAt: previous?.createdAt ?? Date.now(),
-      updatedAt: Date.now(), nextRunAt: null, runOn: "maus", ...previous, ...fields,
+      updatedAt: Date.now(), nextRunAt: null, runOn: "quati", ...previous, ...fields,
       enabled: input.enabled ?? previous?.enabled ?? true, target: "bot", botId: this.id,
       timeoutMinutes: input.timeoutMinutes ?? undefined,
       durationMinutes: input.durationMinutes ?? previous?.durationMinutes ?? 30,

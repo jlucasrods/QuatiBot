@@ -8,7 +8,7 @@ import {
   type TeamManifestMember,
   type TeamManifestV2,
 } from "./team-manifest.ts";
-import type { MausColor } from "./store.ts";
+import type { QuatiColor } from "./store.ts";
 
 export type ScoutRole =
   | "frontend"
@@ -221,7 +221,7 @@ export function scoutProject(cwd: string): ProjectProfile {
 interface RoleTemplate {
   name: string;
   title: string;
-  color: MausColor;
+  color: QuatiColor;
   describe: (profile: ProjectProfile, evidence: string[]) => string;
 }
 

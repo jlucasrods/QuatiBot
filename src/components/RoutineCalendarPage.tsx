@@ -20,7 +20,7 @@ import { WebhooksPanel } from "@/components/WebhooksPanel";
 import type { CalendarCall, CalendarCallAttachment, CalendarCallInput } from "@/lib/calendar-calls";
 import { cn } from "@/lib/cn";
 import { imageAttachmentFromFile, intakeFiles, type Attachment, } from "@/lib/composer-attachments";
-import { MAUS_COLORS, type MausState } from "@/lib/mascot";
+import { MAUS_COLORS, type QuatiState } from "@/lib/mascot";
 import { addDays, atLocalTime, CALENDAR_SLOT_MINUTES, calendarRangeLabel, formatGmtOffset, fromLocalDateAndTime, intervalAnchorForSave, nextIntervalForSave, packCalendarCollisions, projectedRoutineItems, scheduleAt, slotAt, startOfDay, startOfWeek, toLocalDateInput, toLocalTimeInput, type RoutineCalendarItem, } from "@/lib/routine-calendar";
 import { DAY_NAMES, durationLabel, intervalLabel, niceDate, niceTime, scheduleLabel } from "@/lib/schedule-label";
 import { Select } from "./Select";
@@ -33,8 +33,8 @@ const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const WEEKDAYS = [1, 2, 3, 4, 5];
 const INTERVAL_PRESETS = [5, 10, 15, 30, 60];
 const EVENT_DURATION_OPTIONS = Array.from({ length: 240 / CALENDAR_SLOT_MINUTES }, (_, index) => (index + 1) * CALENDAR_SLOT_MINUTES);
-const BOT_DRAG_TYPE = "application/x-openmaus-bot";
-const EVENT_DRAG_TYPE = "application/x-openmaus-calendar-event";
+const BOT_DRAG_TYPE = "application/x-quati-bot";
+const EVENT_DRAG_TYPE = "application/x-quati-calendar-event";
 type EventKind = "routine" | "call";
 type RoutinesLayout = "day" | "week" | "list";
 type CalendarRecurrenceChoice = "none" | "daily" | "weekdays" | "weekly" | "custom";
@@ -172,7 +172,7 @@ function projectCalls(calls: CalendarCall[], from: number, to: number): CallOccu
     }
     return items.sort((left, right) => left.at - right.at);
 }
-function statusState(status: RoutineRunStatus): MausState {
+function statusState(status: RoutineRunStatus): QuatiState {
     if (status === "running")
         return "working";
     if (status === "waiting")
@@ -296,7 +296,7 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
     };
     const [routineTarget, setRoutineTarget] = useState<RoutineTarget>(existingRoutine?.target ?? "bot");
     const [groupId, setGroupId] = useState(existingRoutine?.groupId ?? "");
-    const [runOn, setRunOn] = useState<RoutineRunOn>(existingRoutine?.runOn ?? defaultRunOn ?? "maus");
+    const [runOn, setRunOn] = useState<RoutineRunOn>(existingRoutine?.runOn ?? defaultRunOn ?? "quati");
     const [attachments, setAttachments] = useState<Array<RoutineContextAttachment | CalendarCallAttachment>>(existingRoutine?.target === "room-goal" ? [] : existingRoutine?.attachments ?? existingCall?.attachments ?? []);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -368,7 +368,7 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
             setGroupId("");
             return;
         }
-        setRunOn("maus");
+        setRunOn("quati");
         setAttachments([]);
         setAttachmentNotice("");
         const room = selectedRoom ?? rooms[0];
@@ -396,7 +396,7 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
             if (added.length) {
                 setAttachments((current) => [...current, ...added].slice(0, 20));
                 if (runOn === "cloud")
-                    setRunOn("maus");
+                    setRunOn("quati");
             }
             if (result.notice)
                 setAttachmentNotice(result.notice);
@@ -431,7 +431,7 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
                     target: routineTarget,
                     botId: lockedBotId ?? botIds[0] ?? "",
                     groupId: routineTarget === "room-goal" ? groupId : null,
-                    runOn: routineTarget === "room-goal" ? "maus" : runOn,
+                    runOn: routineTarget === "room-goal" ? "quati" : runOn,
                     enabled: existingRoutine ? undefined : true,
                     schedule: nextSchedule,
                     durationMinutes,
@@ -684,9 +684,9 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
               <div className="min-w-0 flex-1">
                 {isRoomGoal ? (<div className="rounded-xl border border-accent/35 bg-accent/[0.07] p-3">
                     <div className="text-[12.5px] font-medium text-ink">{cloudHome ? "Runs on My Cloud" : "Runs on this computer"}</div>
-                    <div className="mt-1 text-[11px] leading-relaxed text-ink-secondary">OpenMausBot keeps the group and its member hand-offs together for the full goal.</div>
+                    <div className="mt-1 text-[11px] leading-relaxed text-ink-secondary">QuatiBot keeps the group and its member hand-offs together for the full goal.</div>
                   </div>) : <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setRunOn("maus")} className={cn("rounded-xl border p-3 text-left", runOn === "maus" ? "border-accent/60 bg-accent/10" : "border-hairline/50 bg-inset hover:bg-raised")}><div className="text-[12.5px] font-medium text-ink">Bot’s current setup</div><div className="mt-1 text-[11px] text-ink-secondary">Keeps its model and configured computer, including a self-hosted VPS.</div></button>
+                  <button type="button" onClick={() => setRunOn("quati")} className={cn("rounded-xl border p-3 text-left", runOn === "quati" ? "border-accent/60 bg-accent/10" : "border-hairline/50 bg-inset hover:bg-raised")}><div className="text-[12.5px] font-medium text-ink">Bot’s current setup</div><div className="mt-1 text-[11px] text-ink-secondary">Keeps its model and configured computer, including a self-hosted VPS.</div></button>
                   <button type="button" disabled={!cloudReady || attachments.length > 0} onClick={() => setRunOn("cloud")} className={cn("rounded-xl border p-3 text-left disabled:cursor-not-allowed disabled:opacity-45", runOn === "cloud" ? "border-accent/60 bg-accent/10" : "border-hairline/50 bg-inset hover:bg-raised")}><div className="text-[12.5px] font-medium text-ink">{t("routines.runsOn.boat")}</div><div className="mt-1 text-[11px] text-ink-secondary">{t(cloudHome ? "routines.runsOn.boatHintCloudHome" : "routines.runsOn.boatHint")}</div></button>
                 </div>}
               </div>
@@ -878,7 +878,7 @@ function QuickComposer({ seed, bots, routinesOnly = false, onClose, onMore, onSa
                         name,
                         prompt: description,
                         botId: botIds[0],
-                        runOn: "maus",
+                        runOn: "quati",
                         enabled: true,
                         schedule: { type: "once", at: seed.at },
                         durationMinutes,

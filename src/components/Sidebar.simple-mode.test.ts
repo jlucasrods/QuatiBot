@@ -244,7 +244,7 @@ describe("bot-first sidebar", () => {
     editProfile().props.onClick!({} as MouseEvent);
     expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: bot.id }]]);
 
-    vi.stubGlobal("window", { innerWidth: 1024, innerHeight: 768, ogb: { remoteClient: { active: true } } });
+    vi.stubGlobal("window", { innerWidth: 1024, innerHeight: 768, quati: { remoteClient: { active: true } } });
     fixture.dispatch.mockClear();
     fixture.state.settingsOpen = false;
     render();

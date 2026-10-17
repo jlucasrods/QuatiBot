@@ -16,9 +16,9 @@ import {
 const frame: NotifyFrame = {
   kind: "done",
   botId: "bot-1",
-  botName: "Maus",
+  botName: "Quati",
   threadId: "thread-1",
-  title: "Maus finished",
+  title: "Quati finished",
   body: "All done",
 };
 
@@ -89,7 +89,7 @@ describe("desktop notifications", () => {
     const { notices } = installNotification("granted");
     showNotification(frame, vi.fn());
     expect(notices).toHaveLength(1);
-    expect(notices[0]).toMatchObject({ title: frame.title, options: { body: frame.body, tag: `openmausbot:${frame.botId}` } });
+    expect(notices[0]).toMatchObject({ title: frame.title, options: { body: frame.body, tag: `quatibot:${frame.botId}` } });
   });
 
   it("stays quiet only when the exact target thread is already visible", () => {
@@ -106,7 +106,7 @@ describe("desktop notifications", () => {
     showNotification({ ...frame, kind: "spend", title: "Monthly spend limit reached" }, vi.fn(), "https://avatar.test/a.png", frame.threadId);
 
     expect(notices).toHaveLength(1);
-    expect(notices[0]!.options).toMatchObject({ tag: "openmausbot:spend", icon: undefined });
+    expect(notices[0]!.options).toMatchObject({ tag: "quatibot:spend", icon: undefined });
   });
 
   it("still alerts a focused app when another task is visible", () => {
@@ -141,10 +141,10 @@ describe("desktop notifications", () => {
       vi.fn(),
     );
 
-    expect(notices[0]?.options?.tag).toBe(`openmausbot:${frame.botId}`);
-    expect(notices[1]?.options?.tag).toBe(`openmausbot:${frame.botId}`);
+    expect(notices[0]?.options?.tag).toBe(`quatibot:${frame.botId}`);
+    expect(notices[1]?.options?.tag).toBe(`quatibot:${frame.botId}`);
     showNotification({ ...frame, botId: "bot-2" }, vi.fn());
-    expect(notices[2]?.options?.tag).toBe(`openmausbot:bot-2`);
+    expect(notices[2]?.options?.tag).toBe(`quatibot:bot-2`);
   });
 
   it("carries the bot's avatar when its profile has one", () => {
@@ -178,7 +178,7 @@ describe("notification sounds", () => {
 describe("buildNotificationOptions", () => {
   it("keys coalescing on botId and omits a missing avatar", () => {
     expect(buildNotificationOptions({ id: "bot-9" })).toEqual({
-      tag: "openmausbot:bot-9",
+      tag: "quatibot:bot-9",
       icon: undefined,
     });
   });

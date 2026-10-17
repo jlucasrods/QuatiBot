@@ -1,4 +1,4 @@
-import "../testing/scrub-ambient-omb-env.ts";
+import "../testing/scrub-ambient-quati-env.ts";
 
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
@@ -12,7 +12,7 @@ import { writeTokenFile } from "./connect.ts";
 import type { HeadlessIo } from "./output.ts";
 import { runHeadless } from "./main.ts";
 
-const dir = mkdtempSync(join(tmpdir(), "omb-connect-"));
+const dir = mkdtempSync(join(tmpdir(), "quati-connect-"));
 let server: Server;
 let origin: string;
 const requests: Array<{ path: string; body: any }> = [];
@@ -23,12 +23,12 @@ beforeAll(async () => {
     for await (const chunk of req) raw += chunk;
     requests.push({ path: req.url ?? "", body: raw ? JSON.parse(raw) : undefined });
     const send = (status: number, body: unknown) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
-    if (req.url === "/.well-known/openmausbot/environment") return send(200, { environmentId: "env-1", label: "Sandbox", version: "0.1.109" });
+    if (req.url === "/.well-known/quatibot/environment") return send(200, { environmentId: "env-1", label: "Sandbox", version: "0.1.109" });
     if (req.url === "/api/auth/pairing") return send(200, { code: "ABCD1234" });
     if (req.url === "/api/auth/pair") {
       const body = JSON.parse(raw);
       return body.code === "ABCD1234"
-        ? send(200, { token: "omb_sess_secret_token_value", session: { id: "s1", label: body.label, scopes: ["admin", "client"], expiresAt: Date.UTC(2026, 11, 1) } })
+        ? send(200, { token: "quati_sess_secret_token_value", session: { id: "s1", label: body.label, scopes: ["admin", "client"], expiresAt: Date.UTC(2026, 11, 1) } })
         : send(401, { error: "invalid or expired pairing code" });
     }
     send(404, {});
@@ -53,12 +53,12 @@ describe("connect", () => {
     const file = join(dir, "token");
     const { io, out, err } = capture();
     expect(await runHeadless(["connect", origin, "--out", file, "--label", "CI runner", "--json"], { io, env: {} })).toBe(0);
-    expect(readFileSync(file, "utf8")).toBe("omb_sess_secret_token_value\n");
+    expect(readFileSync(file, "utf8")).toBe("quati_sess_secret_token_value\n");
     if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
     const result = JSON.parse(out[0]!);
     expect(result).toMatchObject({ ok: true, tokenFile: file, workspace: { label: "Sandbox", environmentId: "env-1" }, session: { label: "CI runner", scopes: ["admin", "client"] } });
-    expect(JSON.stringify([out, err])).not.toContain("omb_sess_secret_token_value");
-    expect(requests.map((request) => request.path)).toEqual(["/.well-known/openmausbot/environment", "/api/auth/pairing", "/api/auth/pair"]);
+    expect(JSON.stringify([out, err])).not.toContain("quati_sess_secret_token_value");
+    expect(requests.map((request) => request.path)).toEqual(["/.well-known/quatibot/environment", "/api/auth/pairing", "/api/auth/pair"]);
     expect(requests[1]!.body).toEqual({ label: "CI runner" });
   });
 
@@ -69,7 +69,7 @@ describe("connect", () => {
     expect(await runHeadless(["connect", origin, "--code", "ABCD 1234", "--out", file], { io: refused.io, env: {} })).toBe(2);
     expect(refused.err[0]).toContain("already exists");
     expect(await runHeadless(["connect", origin, "--code", "ABCD 1234", "--out", file, "--force"], { io: capture().io, env: {} })).toBe(0);
-    expect(readFileSync(file, "utf8")).toBe("omb_sess_secret_token_value\n");
+    expect(readFileSync(file, "utf8")).toBe("quati_sess_secret_token_value\n");
     // the file it replaced was readable by others; the token in it is not
     if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
     const wrong = capture();
@@ -79,7 +79,7 @@ describe("connect", () => {
 
   it("needs a code for a workspace elsewhere, and never writes a token to the terminal", async () => {
     const remote = capture();
-    expect(await runHeadless(["connect", "https://maus.example.com", "--out", join(dir, "t")], { io: remote.io, env: {} })).toBe(2);
+    expect(await runHeadless(["connect", "https://quati.example.com", "--out", join(dir, "t")], { io: remote.io, env: {} })).toBe(2);
     expect(remote.err[0]).toBe("error: a workspace elsewhere needs a pairing code");
     expect(() => writeTokenFile("-", "x", false)).toThrow("never to the terminal");
     expect(() => writeTokenFile("/dev/stdout", "x", true)).toThrow("never to the terminal");

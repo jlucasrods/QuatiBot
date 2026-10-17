@@ -49,7 +49,7 @@ export function localComputerDisabledReason({
     return "Local computer control requires the desktop app.";
   }
   if (capabilities.host.platform === "win32") {
-    return "The bundled Cua Driver could not start. Restart OpenMausBot and check Diagnostics if it still fails.";
+    return "The bundled Cua Driver could not start. Restart QuatiBot and check Diagnostics if it still fails.";
   }
   return "CUA Driver is not ready for local computer control.";
 }

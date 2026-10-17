@@ -38,7 +38,7 @@ export function BuiltInBrowserRow() {
       <Switch checked={browser} aria-label={t("settings.experimental.browserAria")} disabled={saving || (!browser && !desktopBrowser && !browserInstallable)} onClick={() => void toggle(!browser)} className="disabled:cursor-wait disabled:opacity-50"/>
     </SettingRow>);
 }
-/** browserEngine.engine: the bots' browsers run on OpenMausBot's own Chrome driver instead of agent-browser. */
+/** browserEngine.engine: the bots' browsers run on QuatiBot's own Chrome driver instead of agent-browser. */
 export function NewBrowserSettings() {
     const { state, dispatch } = useStore();
     const on = state.config?.browserEngine?.engine === "chrome";

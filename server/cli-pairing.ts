@@ -1,4 +1,4 @@
-// What `openmausbot serve` and `openmausbot pair` print for a pairing code. A browser on this computer is no longer the
+// What `quatibot serve` and `quatibot pair` print for a pairing code. A browser on this computer is no longer the
 // owner just by being here, so it signs in once with the link printed for it.
 import qrcode from "qrcode-terminal";
 
@@ -24,7 +24,7 @@ export function browserSignInLines(localUrl: string, code: string, expiresAt: nu
   return [
     "Sign in from a browser on this computer with this link (single use, until",
     `${new Date(expiresAt).toLocaleTimeString()}): ${localUrl}`,
-    `or type the code ${code} on the sign-in page. Later: openmausbot pair`,
+    `or type the code ${code} on the sign-in page. Later: quatibot pair`,
   ].join("\n");
 }
 

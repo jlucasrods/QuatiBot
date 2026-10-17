@@ -119,7 +119,7 @@ export function codexLocalProviderArgs(
   if (!inject || CODEX_RESERVED_PROVIDERS.has(inject.host)) return [];
   const host = localHost(inject.host);
   if (!host) return [];
-  const envKey = `OPENMAUSBOT_LOCAL_${host.id.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_API_KEY`;
+  const envKey = `QUATIBOT_LOCAL_${host.id.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_API_KEY`;
   env[envKey] = hostApiKey(host, env);
   return [
     "-c",
@@ -336,7 +336,7 @@ export async function mergeLocalInject(
   fetchImpl: typeof fetch = fetch,
 ): Promise<ModelCatalog> {
   const vitest = env.VITEST ?? process.env.VITEST;
-  const probe = env.OPENMAUSBOT_PROBE_LOCAL_INJECT ?? process.env.OPENMAUSBOT_PROBE_LOCAL_INJECT;
+  const probe = env.QUATIBOT_PROBE_LOCAL_INJECT ?? process.env.QUATIBOT_PROBE_LOCAL_INJECT;
   if (vitest === "true" && probe !== "1") return catalog;
   const extras = await probeLocalInjects(env, fetchImpl);
   if (!extras.length) return catalog;

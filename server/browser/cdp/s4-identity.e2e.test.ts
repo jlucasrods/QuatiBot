@@ -94,7 +94,7 @@ suite("S4 identity, quietness, exit and speed on real Chrome", () => {
     expect(calibrated.userAgentMetadata.fullVersion).toBe(calibrated.product.slice("Chrome/".length));
     expect(calibrated.userAgentMetadata.architecture).not.toBe("");
     expect(calibrated.userAgentMetadata.brands.map((brand) => brand.brand).join()).not.toContain("Headless");
-    const data = mkdtempSync(join(testRoot(), "omb-cdp-data-"));
+    const data = mkdtempSync(join(testRoot(), "quati-cdp-data-"));
     try {
       const first = await loadOrCalibrateIdentity(data, { executablePath: CHROME!, host: HOST, tmpRoot: testRoot(), sandbox });
       const second = await loadOrCalibrateIdentity(data, { executablePath: CHROME!, host: HOST, tmpRoot: testRoot(), sandbox });
@@ -107,7 +107,7 @@ suite("S4 identity, quietness, exit and speed on real Chrome", () => {
   }, hostTimeout(60_000));
 
   it.runIf(canShowWindow)("matches what the same binary reports in a window, byte for byte", async () => {
-    const dir = mkdtempSync(join(testRoot(), "omb-cdp-headed-"));
+    const dir = mkdtempSync(join(testRoot(), "quati-cdp-headed-"));
     const chrome = await launchChrome({ executablePath: CHROME!, userDataDir: join(dir, "profile"), mode: "window", host: HOST, sandbox, windowPosition: { x: -2400, y: -2400 }, handshakeTimeoutMs: FIRST_LAUNCH_MS });
     try {
       const browser = await CdpBrowser.connect(chrome.transport, { identity: null, headless: false, permissions: false });
@@ -181,7 +181,7 @@ suite("S4 identity, quietness, exit and speed on real Chrome", () => {
   }, hostTimeout(60_000));
 
   it("lets Chrome exit within 5 seconds of the process that launched it being killed", async () => {
-    const dir = mkdtempSync(join(testRoot(), "omb-cdp-hold-"));
+    const dir = mkdtempSync(join(testRoot(), "quati-cdp-hold-"));
     const script = fileURLToPath(new URL("./testing/hold-chrome.ts", import.meta.url));
     const holder = spawn(process.execPath, [script, CHROME!, join(dir, "profile"), HOST, sandbox ? "1" : "0"], { stdio: ["ignore", "pipe", "inherit"] });
     try {
@@ -249,7 +249,7 @@ suite("S4 identity, quietness, exit and speed on real Chrome", () => {
     }
     const report = (samples: number[]) => ({ p50: Math.round(percentile(samples, 50)), p95: Math.round(percentile(samples, 95)) });
     const measured = { axNodes: nodes.nodes.length, coldStart: report(coldStarts), click: report(click), fill: report(fill), type20: report(type), snapshot: report(snapshot), openSnapshotOverhead: report(openOverhead) };
-    console.log(`omb-cdp latency (ms): ${JSON.stringify(measured)}`);
+    console.log(`quati-cdp latency (ms): ${JSON.stringify(measured)}`);
     expect(nodes.nodes.length).toBeGreaterThan(2_500);
     const factor = HOST_TIMEOUT_FACTOR;
     expect(measured.click.p50).toBeLessThanOrEqual(120 * factor);

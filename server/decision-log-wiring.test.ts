@@ -97,10 +97,10 @@ async function makePermissionBot(patch: Record<string, unknown>) {
 posixOnly("authorization decisions are logged", () => {
   beforeAll(async () => {
     chmodSync(FAKE_CLI, 0o755);
-    home = mkdtempSync(join(tmpdir(), "omb-decisions-e2e-"));
-    mkdirSync(join(home, ".openmausbot"), { recursive: true });
+    home = mkdtempSync(join(tmpdir(), "quati-decisions-e2e-"));
+    mkdirSync(join(home, ".quatibot"), { recursive: true });
     writeFileSync(
-      join(home, ".openmausbot", "config.json"),
+      join(home, ".quatibot", "config.json"),
       JSON.stringify({
         instances: {
           grok: {
@@ -123,7 +123,7 @@ posixOnly("authorization decisions are logged", () => {
         ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
         HOME: home,
         USERPROFILE: home,
-        OMB_PORT: String(PORT),
+        QUATI_PORT: String(PORT),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -256,7 +256,7 @@ posixOnly("authorization decisions are logged", () => {
         name: "Nightly build",
         prompt: "Handle the incoming build event",
         botId: bot.id,
-        runOn: "maus",
+        runOn: "quati",
       });
       expect(hook.status).toBe(201);
       const delivered = await fetch(hook.body.credential.url, {

@@ -18,7 +18,7 @@ import { removeTempDir } from "./testing/cleanup.ts";
 import { createWorkspaceBackupSnapshot } from "./workspace-backup.ts";
 
 let dataDir: string, desktop: string;
-beforeEach(() => { dataDir = mkdtempSync(join(tmpdir(), "omb-cloud-move-")); desktop = mkdtempSync(join(tmpdir(), "omb-cloud-move-desktop-")); });
+beforeEach(() => { dataDir = mkdtempSync(join(tmpdir(), "quati-cloud-move-")); desktop = mkdtempSync(join(tmpdir(), "quati-cloud-move-desktop-")); });
 afterEach(async () => { await removeTempDir(dataDir); await removeTempDir(desktop); });
 
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -234,7 +234,7 @@ it("a workspace shared with other people never receives one, and says why", asyn
 
 it("a server is shared only when someone besides its owner can sign in: the owner's own email alone is not", () => {
   const lists = (admins: string[], members: string[] = []) => ({ hosted: false, cloudHome: false, signIn: { admins, members } });
-  // `openmausbot access add me@example.test`: the owner signs in from a browser.
+  // `quatibot access add me@example.test`: the owner signs in from a browser.
   expect(workspaceShared(lists(["me@example.test"]))).toBe(false);
   expect(workspaceShared(lists([]))).toBe(false);
   // Anyone else: a member, a second admin, a whole domain.

@@ -107,9 +107,9 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
   // Keyed to the workspace's identity, so switching hosted workspaces never shares a layout.
   useEffect(() => {
     let active = true;
-    void api("/.well-known/openmausbot/environment", { signal: AbortSignal.timeout(5_000) }).then((environment) => {
+    void api("/.well-known/quatibot/environment", { signal: AbortSignal.timeout(5_000) }).then((environment) => {
       if (!active || typeof environment.environmentId !== "string") return;
-      storageKey.current = `omb-team-canvas:${environment.environmentId}`;
+      storageKey.current = `quati-team-canvas:${environment.environmentId}`;
       try {
         const saved = parsePositions(localStorage.getItem(storageKey.current));
         setPositions((previous) => ({ ...saved, ...previous }));

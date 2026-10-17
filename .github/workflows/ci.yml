@@ -126,7 +126,7 @@ jobs:
         env:
           # scripts/testing/ci-retry-runner.ts records each listed flaky test
           # that needed a retry here (the runner context is step-level only).
-          OMB_VITEST_RETRY_LOG: ${{ runner.temp }}/vitest-retries.jsonl
+          QUATI_VITEST_RETRY_LOG: ${{ runner.temp }}/vitest-retries.jsonl
         run: pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=github-actions
       - name: Report flaky tests that needed a retry
         # Known flakes (scripts/testing/ci-retry-list.json) get two retries in
@@ -134,7 +134,7 @@ jobs:
         # flake stays visible until its entry is fixed and removed.
         if: ${{ !cancelled() }}
         env:
-          OMB_VITEST_RETRY_LOG: ${{ runner.temp }}/vitest-retries.jsonl
+          QUATI_VITEST_RETRY_LOG: ${{ runner.temp }}/vitest-retries.jsonl
         run: node scripts/testing/ci-retry-summary.mjs
       - name: Broker and Electron unit tests
         if: matrix.shard == 1
@@ -146,7 +146,7 @@ jobs:
     # The offline behavior-eval tiers (#1503): the evals' own vitest gate
     # (redaction, trace, golden replay), the tier-1 scenario runner, and the
     # tier-2 golden replay through the same entrypoint developers use. Tier
-    # 3's live models stay opt-in: CI never sets OMB_EVAL_LIVE or any live
+    # 3's live models stay opt-in: CI never sets QUATI_EVAL_LIVE or any live
     # env, and the last step proves the offline gate holds by asserting the
     # skip line is what CI gets.
     name: behavior evals (offline tiers 1-3)
@@ -303,12 +303,12 @@ jobs:
           node-version: 24
       - name: Install and reuse the pinned connector in an isolated fixture
         env:
-          OMB_ARM64_FIXTURE: ${{ runner.temp }}/omb-cloudflared-arm64
+          QUATI_ARM64_FIXTURE: ${{ runner.temp }}/quati-cloudflared-arm64
         run: |
           node --input-type=module -e 'import assert from "node:assert/strict"; assert.equal(process.platform, "linux"); assert.equal(process.arch, "arm64");'
-          node scripts/prepare-cloudflared.mjs --current --root "$OMB_ARM64_FIXTURE"
-          node scripts/prepare-cloudflared.mjs --current --root "$OMB_ARM64_FIXTURE"
-          "$OMB_ARM64_FIXTURE/dist-native/cloudflared/linux-arm64/cloudflared" version
+          node scripts/prepare-cloudflared.mjs --current --root "$QUATI_ARM64_FIXTURE"
+          node scripts/prepare-cloudflared.mjs --current --root "$QUATI_ARM64_FIXTURE"
+          "$QUATI_ARM64_FIXTURE/dist-native/cloudflared/linux-arm64/cloudflared" version
 
   foss:
     needs: static
@@ -333,14 +333,14 @@ jobs:
       - run: pnpm exec vitest run server/enterprise.test.ts server/brand.test.ts
       - name: The server boots and reports the open-source edition
         run: |
-          mkdir -p /tmp/omb-foss/home
-          HOME=/tmp/omb-foss/home OMB_DATA_DIR=/tmp/omb-foss/data OMB_PORT=18797 OMB_WEBHOOK_PORT=18796 \
-            OMB_BROWSER_CONNECTION=/tmp/omb-foss/browser-connection.json OMB_LICENSE_KEY=omb1.not.real \
-            node --experimental-strip-types server/index.ts > /tmp/omb-foss/server.log 2>&1 &
+          mkdir -p /tmp/quati-foss/home
+          HOME=/tmp/quati-foss/home QUATI_DATA_DIR=/tmp/quati-foss/data QUATI_PORT=18797 QUATI_WEBHOOK_PORT=18796 \
+            QUATI_BROWSER_CONNECTION=/tmp/quati-foss/browser-connection.json QUATI_LICENSE_KEY=omb1.not.real \
+            node --experimental-strip-types server/index.ts > /tmp/quati-foss/server.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:18797/api/health >/dev/null && break; sleep 1; done
-          curl -sf http://127.0.0.1:18797/api/edition | tee /tmp/omb-foss/edition.json; echo
-          grep -q '"edition":"oss"' /tmp/omb-foss/edition.json
-          grep -q 'no enterprise layer exists' /tmp/omb-foss/edition.json
+          curl -sf http://127.0.0.1:18797/api/edition | tee /tmp/quati-foss/edition.json; echo
+          grep -q '"edition":"oss"' /tmp/quati-foss/edition.json
+          grep -q 'no enterprise layer exists' /tmp/quati-foss/edition.json
           kill %1; wait %1 || true
 
   control-plane:
@@ -417,7 +417,7 @@ jobs:
     # docs/verification/chat-ui.md run by a machine. It downloads the pinned
     # agent-browser release (digest verified) and its Chrome, drives the real
     # <App/> against the isolated fake-engine fixture, and keeps the screenshot.
-    name: renderer smoke (control-omb ui, Ubuntu 24.04)
+    name: renderer smoke (control-quati ui, Ubuntu 24.04)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -436,20 +436,20 @@ jobs:
         # This is Chrome's own documented fix for 23.10+; a developer machine
         # needs nothing, and the sandbox itself stays on.
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - name: Drive the real renderer through control-omb ui
+      - name: Drive the real renderer through control-quati ui
         env:
-          OMB_UI_E2E: "1"
-          OMB_UI_EVIDENCE_DIR: .omb-scratch/verify-evidence
-        run: pnpm exec vitest run scripts/testing/control-omb-ui.e2e.test.ts scripts/testing/bot-tools-ui.e2e.test.ts scripts/testing/thinking-timer-ui.e2e.test.ts scripts/testing/team-share-ui.e2e.test.ts scripts/testing/org-library-ui.e2e.test.ts scripts/testing/presets-ui.e2e.test.ts scripts/testing/browser-evidence.e2e.test.ts
+          QUATI_UI_E2E: "1"
+          QUATI_UI_EVIDENCE_DIR: .quati-scratch/verify-evidence
+        run: pnpm exec vitest run scripts/testing/control-quati-ui.e2e.test.ts scripts/testing/bot-tools-ui.e2e.test.ts scripts/testing/thinking-timer-ui.e2e.test.ts scripts/testing/team-share-ui.e2e.test.ts scripts/testing/org-library-ui.e2e.test.ts scripts/testing/presets-ui.e2e.test.ts scripts/testing/browser-evidence.e2e.test.ts
       - name: Upload the renderer screenshot
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: control-omb-ui-chat-screenshot
+          name: control-quati-ui-chat-screenshot
           path: |
-            .omb-scratch/verify-evidence/chat-ui.png
-            .omb-scratch/verify-evidence/thinking-timer-anchored.png
-            .omb-scratch/verify-evidence/share-team-dialog.png
+            .quati-scratch/verify-evidence/chat-ui.png
+            .quati-scratch/verify-evidence/thinking-timer-anchored.png
+            .quati-scratch/verify-evidence/share-team-dialog.png
           if-no-files-found: warn
           retention-days: 7
 
@@ -457,11 +457,11 @@ jobs:
     needs: static
     if: needs.static.outputs.runtime == 'true'
     # Advisory, outside the required gate: the pinned agent-browser drives a
-    # real Chrome for Testing through OMB's launcher and identity connection
+    # real Chrome for Testing through QUATI's launcher and identity connection
     # (scripts/testing/browser-identity.e2e.test.ts): a 1280x720 page whose
     # user agent and client hints are the browser's own in the page, a
     # worker, a service worker and a cross-site frame. On Windows this is
-    # also the check that the 0.36.0-omb.1 engine starts Chrome through the
+    # also the check that the 0.36.0-quati.1 engine starts Chrome through the
     # generated batch file. The same platforms as the vitest matrix.
     name: browser identity (${{ matrix.os }})
     strategy:
@@ -485,7 +485,7 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Drive a real Chrome through the launcher
         env:
-          OMB_UI_E2E: "1"
+          QUATI_UI_E2E: "1"
         run: pnpm exec vitest run scripts/testing/browser-identity.e2e.test.ts
 
   package-linux:
@@ -536,23 +536,23 @@ jobs:
           sudo chmod 4755 release/linux-unpacked/chrome-sandbox
           test "$(stat -c '%U:%G %a' release/linux-unpacked/chrome-sandbox)" = "root:root 4755"
       - name: Verify the installed browser with Ubuntu sandbox restrictions
-        run: node scripts/smoke-browser-bundle.mjs --resources /opt/OpenMausBot/resources
+        run: node scripts/smoke-browser-bundle.mjs --resources /opt/QuatiBot/resources
       - name: Launch packaged app and verify lifecycle
         env:
-          OMB_KEEP_SMOKE_DIR: "1"
-          OMB_SMOKE_INSTALLED_DEB: "1"
+          QUATI_KEEP_SMOKE_DIR: "1"
+          QUATI_SMOKE_INSTALLED_DEB: "1"
         run: pnpm smoke:linux-package
       - name: Remove the installed upgrade fixture
         if: always()
-        run: sudo dpkg --purge openmausbot || true
+        run: sudo dpkg --purge quatibot || true
       - name: Upload smoke diagnostics on failure
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
-          name: openmausbot-ubuntu-smoke-diagnostics
+          name: quatibot-ubuntu-smoke-diagnostics
           path: |
-            /tmp/omb-linux-smoke-*
-            /tmp/omb-linux-smoke-runtime-*
+            /tmp/quati-linux-smoke-*
+            /tmp/quati-linux-smoke-runtime-*
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 7
@@ -561,7 +561,7 @@ jobs:
     needs: static
     if: needs.static.outputs.runtime == 'true'
     # Advisory, outside the CI gate until it has run green for a while: the
-    # omb-cdp S4 conformance suites and the new browser's checklist and viewer
+    # quati-cdp S4 conformance suites and the new browser's checklist and viewer
     # suites on the runner's own Google Chrome (PRs run Linux and Windows;
     # main pushes, merge groups and manual runs add macOS, as for the vitest
     # shards), then on Linux inside the server image's runtime as a non-root
@@ -594,23 +594,23 @@ jobs:
       - name: S4 on the runner's Google Chrome
         # The headed-identity case needs a display, which Linux runners get from Xvfb.
         env:
-          OMB_CDP_E2E: "1"
+          QUATI_CDP_E2E: "1"
         shell: bash
         run: |
           run=(pnpm exec vitest run server/browser/cdp/s4- server/browser/checklist.e2e server/browser/viewers/viewers.e2e --reporter=verbose --silent=false --reporter=github-actions)
           if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a "${run[@]}"; else "${run[@]}"; fi
       - name: S4 inside the server image's runtime, as its own user
-        # maus, with its real home, as the server runs there. The image's
+        # quati, with its real home, as the server runs there. The image's
         # Chrome for Testing has no setuid sandbox helper yet, so this leg
         # runs with the operator opt-out; the host legs keep the sandbox.
         # Vitest writes its bundled config beside it and its cache under
-        # node_modules/.vite, so those two places are opened to maus. It runs
+        # node_modules/.vite, so those two places are opened to quati. It runs
         # even when the host leg failed: they test different Chromes.
         if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: |
-          docker build --target runtime -t omb-runtime:s4 .
+          docker build --target runtime -t quati-runtime:s4 .
           mkdir -p node_modules/.vite && chmod a+w . node_modules/.vite
-          docker run --rm --init --shm-size=512m --user maus -e CI=true \
-            -e OMB_CDP_CHROME=/opt/openmausbot-browser/chrome -e OMB_CDP_HOST=container -e OMB_BROWSER_SANDBOX=0 \
-            -v "$PWD:/src" -w /src omb-runtime:s4 \
+          docker run --rm --init --shm-size=512m --user quati -e CI=true \
+            -e QUATI_CDP_CHROME=/opt/quatibot-browser/chrome -e QUATI_CDP_HOST=container -e QUATI_BROWSER_SANDBOX=0 \
+            -v "$PWD:/src" -w /src quati-runtime:s4 \
             node node_modules/vitest/vitest.mjs run server/browser/cdp/s4- server/browser/checklist.e2e server/browser/viewers/viewers.e2e --reporter=verbose --silent=false

@@ -67,7 +67,7 @@ describe("call modes", () => {
   });
 
   it("hangs up from the call button while this window is on a Live call", () => {
-    vi.stubGlobal("window", { ogb: { speechStop: vi.fn(async () => {}) } });
+    vi.stubGlobal("window", { quati: { speechStop: vi.fn(async () => {}) } });
     setCallMode("live");
     configureLiveMedia({ getUserMedia: () => new Promise<MediaStream>(() => {}) });
     void startLiveCall({ botId: bot.id, threadId: bot.threadId });
@@ -77,7 +77,7 @@ describe("call modes", () => {
   });
 
   it("blocks other chats' call buttons while this window is on a Live call", () => {
-    vi.stubGlobal("window", { ogb: { speechStop: vi.fn(async () => {}) } });
+    vi.stubGlobal("window", { quati: { speechStop: vi.fn(async () => {}) } });
     configureLiveMedia({ getUserMedia: () => new Promise<MediaStream>(() => {}) });
     void startLiveCall({ botId: bot.id, threadId: bot.threadId });
     for (const mode of ["live", "turns"] as const) {
@@ -92,7 +92,7 @@ describe("call modes", () => {
   });
 
   it("asks for the OpenAI key under the call button when the harness has none", async () => {
-    vi.stubGlobal("window", { ogb: { speechStop: vi.fn(async () => {}) } });
+    vi.stubGlobal("window", { quati: { speechStop: vi.fn(async () => {}) } });
     const track = { enabled: true, stop: vi.fn() };
     configureLiveMedia({
       getUserMedia: async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }) as unknown as MediaStream,
@@ -124,7 +124,7 @@ describe("call modes", () => {
   });
 
   it("shows the Pro card under the call button, never the key form, when Live calls need Pro", async () => {
-    vi.stubGlobal("window", { ogb: { speechStop: vi.fn(async () => {}) } });
+    vi.stubGlobal("window", { quati: { speechStop: vi.fn(async () => {}) } });
     const track = { enabled: true, stop: vi.fn() };
     configureLiveMedia({
       getUserMedia: async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }) as unknown as MediaStream,
@@ -164,7 +164,7 @@ describe("call modes", () => {
   });
 
   it("leaves a Live call to the call bar and covers the chat only for Take turns", async () => {
-    vi.stubGlobal("window", { ogb: { speechStop: vi.fn(async () => {}) } });
+    vi.stubGlobal("window", { quati: { speechStop: vi.fn(async () => {}) } });
     configureLiveMedia({ getUserMedia: () => new Promise<MediaStream>(() => {}) });
     void startLiveCall({ botId: bot.id, threadId: bot.threadId });
     expect(render(createElement(CallOverlay, { bot }))).toBe("");

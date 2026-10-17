@@ -3,10 +3,10 @@ import { PRO_PLAN_MESSAGE, proPlanEnvironment, proPlanMessage } from "./platform
 import { ProPlan } from "./pro-plan.ts";
 
 describe("ProPlan", () => {
-  it("is Pro on a server the desktop app did not start only with OMB_PRO_PLAN=1", () => {
+  it("is Pro on a server the desktop app did not start only with QUATI_PRO_PLAN=1", () => {
     expect(new ProPlan({ cloudHome: false, env: {} }).liveCallsAllowed()).toBe(false);
-    expect(new ProPlan({ cloudHome: false, env: { OMB_PRO_PLAN: "1" } }).liveCallsAllowed()).toBe(true);
-    expect(new ProPlan({ cloudHome: false, env: { OMB_PRO_PLAN: "true" } }).liveCallsAllowed()).toBe(false);
+    expect(new ProPlan({ cloudHome: false, env: { QUATI_PRO_PLAN: "1" } }).liveCallsAllowed()).toBe(true);
+    expect(new ProPlan({ cloudHome: false, env: { QUATI_PRO_PLAN: "true" } }).liveCallsAllowed()).toBe(false);
   });
 
   it("starts with the answer the desktop app spawned it with, and takes each change after", () => {
@@ -23,7 +23,7 @@ describe("ProPlan", () => {
 
   it("lets other private messages pass, and refuses a malformed one without changing the answer", () => {
     const plan = new ProPlan({ cloudHome: false, env: proPlanEnvironment(true), log: () => {} });
-    expect(plan.receive({ type: "openmausbot:managed-composio", access: null })).toBe(false);
+    expect(plan.receive({ type: "quatibot:managed-composio", access: null })).toBe(false);
     expect(plan.receive(undefined)).toBe(false);
     expect(() => plan.receive({ type: PRO_PLAN_MESSAGE, pro: "no" })).toThrow(/Pro plan/);
     expect(plan.liveCallsAllowed()).toBe(true);

@@ -7,7 +7,7 @@ import { expect, it } from "vitest";
 import { removeTempDir, waitForExit } from "./cleanup.ts";
 
 it.each(["stream", "text", "text-fallback"])("%s capture stays complete while another process writes it", async (mode) => {
-  const home = mkdtempSync(join(tmpdir(), "omb-claude-dump-"));
+  const home = mkdtempSync(join(tmpdir(), "quati-claude-dump-"));
   const dump = join(home, "capture.json");
   const writing = join(home, "writing");
   const release = join(home, "release");

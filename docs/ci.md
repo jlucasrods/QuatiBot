@@ -68,7 +68,7 @@ half hours. Now:
 
 ## Browser driver (S4)
 
-`browser driver S4 (<os>)` runs the omb-cdp conformance suites
+`browser driver S4 (<os>)` runs the quati-cdp conformance suites
 (`server/browser/cdp/s4-*.e2e.test.ts`) against real Chrome: snapshots across
 out-of-process frames and closed shadow roots, every action, dialogs,
 downloads, popups and tabs, both evaluation worlds, waiting, the calibrated
@@ -91,19 +91,19 @@ at the screen's device scale, resizes, presets, acknowledged frames, a
 scroll ending on a sharp frame, and the phone's v1 live view against its
 golden from agent-browser).
 
-- The job uses the runner's installed Google Chrome (`OMB_CDP_E2E=1`) on the
+- The job uses the runner's installed Google Chrome (`QUATI_CDP_E2E=1`) on the
   same platforms as the vitest shards: Linux and Windows on PRs, plus macOS
   on main, merge groups and manual runs. Linux runs under Xvfb so the
   headed-identity case has a display.
 - On Linux it then builds the server image's `runtime` stage and runs the
   suites inside it as a non-root user against the image's Chrome for
-  Testing, with `OMB_BROWSER_SANDBOX=0` because the image has no setuid
+  Testing, with `QUATI_BROWSER_SANDBOX=0` because the image has no setuid
   sandbox helper yet.
 - It is advisory, outside the `CI` gate, until it has run green for a while.
-- Locally: `OMB_CDP_CHROME=<chrome executable> pnpm exec vitest run
+- Locally: `QUATI_CDP_CHROME=<chrome executable> pnpm exec vitest run
   server/browser/cdp/s4- server/browser/checklist.e2e
-  server/browser/viewers/viewers.e2e` (or `OMB_CDP_E2E=1` for the installed
-  Google Chrome). Without either the suites skip. `OMB_CDP_TEST_TMP` moves the
+  server/browser/viewers/viewers.e2e` (or `QUATI_CDP_E2E=1` for the installed
+  Google Chrome). Without either the suites skip. `QUATI_CDP_TEST_TMP` moves the
   throwaway profiles.
 
 ## Main and releases

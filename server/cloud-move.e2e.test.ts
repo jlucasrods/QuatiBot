@@ -17,9 +17,9 @@ import { stageWorkspaceBackup } from "./workspace-backup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
-const HOST = "omb-t-0123456789ab.fly.dev";
+const HOST = "quati-t-0123456789ab.fly.dev";
 const ORIGIN = `https://${HOST}`;
-// A self-hosted server the person added in the desktop app (`openmausbot serve`).
+// A self-hosted server the person added in the desktop app (`quatibot serve`).
 const SERVER_HOST = "bots.example.test";
 const SERVER_ORIGIN = `https://${SERVER_HOST}`;
 const bootstrapSecret = randomBytes(32).toString("base64url");
@@ -70,8 +70,8 @@ async function boot(fixture: Fixture): Promise<void> {
 }
 
 async function launch(name: "desktop" | "cloud" | "server"): Promise<Fixture> {
-  const home = mkdtempSync(join(tmpdir(), `omb-move-${name}-`));
-  const dataDir = join(home, ".openmausbot");
+  const home = mkdtempSync(join(tmpdir(), `quati-move-${name}-`));
+  const dataDir = join(home, ".quatibot");
   mkdirSync(dataDir, { recursive: true });
   const cli = join(home, "fixture-claude.mjs");
   writeFileSync(cli, `#!/usr/bin/env node
@@ -98,12 +98,12 @@ await import(${JSON.stringify(pathToFileURL(join(SERVER_DIR, "testing", "fake-cl
     PATH: process.env.PATH,
     ...(process.env.PATHEXT ? { PATHEXT: process.env.PATHEXT } : {}),
     ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-    HOME: home, USERPROFILE: home, OMB_DATA_DIR: dataDir, OMB_PORT: String(port), OMB_WEBHOOK_PORT: String(port + 1),
+    HOME: home, USERPROFILE: home, QUATI_DATA_DIR: dataDir, QUATI_PORT: String(port), QUATI_WEBHOOK_PORT: String(port + 1),
     ...(name === "cloud" ? {
-      OMB_CLOUD_ROLE: "home", OMB_CLOUD_MACHINE_ID: "3f9c2a4e-8b1d-4c6e-9a7f-2d5e8c1b0a93", OMB_CLOUD_ADMIN_URL: "https://cloud.example.test",
-      OMB_CLOUD_BOOTSTRAP_SECRET: bootstrapSecret, OMB_PUBLIC_URL: ORIGIN,
+      QUATI_CLOUD_ROLE: "home", QUATI_CLOUD_MACHINE_ID: "3f9c2a4e-8b1d-4c6e-9a7f-2d5e8c1b0a93", QUATI_CLOUD_ADMIN_URL: "https://cloud.example.test",
+      QUATI_CLOUD_BOOTSTRAP_SECRET: bootstrapSecret, QUATI_PUBLIC_URL: ORIGIN,
     } : {}),
-    ...(name === "server" ? { OMB_PUBLIC_URL: SERVER_ORIGIN } : {}),
+    ...(name === "server" ? { QUATI_PUBLIC_URL: SERVER_ORIGIN } : {}),
   };
   const fixture: Fixture = { name, host: name === "server" ? SERVER_HOST : HOST, home, dataDir, base: `http://127.0.0.1:${port}`, env, log: "", closing: false, boots: 0 };
   await boot(fixture);
@@ -146,11 +146,11 @@ async function api(fixture: Fixture, method: string, path: string, options: { bo
 }
 
 async function cloudGrant(): Promise<{ origin: string; code: string; expiresAt: number }> {
-  const body = JSON.stringify({ label: "OpenMausBot app (Cloud)", ttlSeconds: 300 });
+  const body = JSON.stringify({ label: "QuatiBot app (Cloud)", ttlSeconds: 300 });
   const timestamp = String(Math.floor(Date.now() / 1000)), nonce = randomBytes(16).toString("base64url");
   const response = await fetch(`${cloud.base}/api/cloud/pairing`, { method: "POST", body, headers: {
-    ...forwarded, "content-type": "application/json", "x-omb-cloud-timestamp": timestamp, "x-omb-cloud-nonce": nonce,
-    "x-omb-cloud-signature": `v1=${cloudPairingSignature(bootstrapSecret, timestamp, nonce, body)}`,
+    ...forwarded, "content-type": "application/json", "x-quati-cloud-timestamp": timestamp, "x-quati-cloud-nonce": nonce,
+    "x-quati-cloud-signature": `v1=${cloudPairingSignature(bootstrapSecret, timestamp, nonce, body)}`,
   } });
   const granted = await response.json() as { code: string; expiresAt: number };
   expect(response.status, JSON.stringify(granted)).toBe(200);
@@ -218,21 +218,21 @@ function filesUnder(root: string): string[] {
 }
 
 beforeAll(async () => {
-  scratch = mkdtempSync(join(tmpdir(), "omb-move-scratch-"));
+  scratch = mkdtempSync(join(tmpdir(), "quati-move-scratch-"));
   [source, cloud, server] = await Promise.all([launch("desktop"), launch("cloud"), launch("server")]);
   // The desktop window's own session on the Cloud, from Connect to my Cloud.
   const paired = await api(cloud, "POST", "/api/auth/pair", { remote: true, body: { code: (await cloudGrant()).code } });
   expect(paired.status, JSON.stringify(paired.body)).toBe(200);
   windowToken = paired.body.token;
   // …and on the self-hosted server, from Connect to a server with an owner
-  // code (`openmausbot pair`): its /pair page sets this window's cookie.
+  // code (`quatibot pair`): its /pair page sets this window's cookie.
   const owner = await api(server, "POST", "/api/auth/pairing", { body: { scopes: ["admin", "client"], label: "Owner code" } });
   expect(owner.status, JSON.stringify(owner.body)).toBe(200);
   const pairPage = await viaEdge(`${server.base}/api/auth/pair`, { method: "POST", headers: { ...edge(server), "content-type": "application/json", origin: SERVER_ORIGIN },
-    body: JSON.stringify({ code: owner.body.code, cookie: true, label: "OpenMausBot desktop" }) });
+    body: JSON.stringify({ code: owner.body.code, cookie: true, label: "QuatiBot desktop" }) });
   expect(pairPage.status).toBe(200);
   serverCookie = (pairPage.headers.get("set-cookie") ?? "").split(";")[0]!;
-  expect(serverCookie).toMatch(/^omb_session_\d+_\w+=omb_sess_/);
+  expect(serverCookie).toMatch(/^quati_session_\d+_\w+=quati_sess_/);
   // The desktop's work: a bot with a real conversation, and a room.
   const planner = await newBot(source, "Moved Planner");
   expect((await api(source, "POST", `/api/bots/${planner.id}/messages`, { body: { text: "Plan the launch party" } })).status).toBe(202);
@@ -310,7 +310,7 @@ it("the bundle a move sends carries no key, sign-in, credential or session of th
   const password = "fixture bundle password";
   const exported = await api(source, "POST", "/api/workspace-backup/export", { body: { password, clientState: {} } });
   expect(exported.status, JSON.stringify(exported.body)).toBe(200);
-  const archive = join(scratch, "bundle.ombbackup");
+  const archive = join(scratch, "bundle.quatibackup");
   writeFileSync(archive, Buffer.from(await (await fetch(`${source.base}/api/workspace-backup/download/${exported.body.id}`)).arrayBuffer()));
   const inspect = mkdtempSync(join(scratch, "bundle-"));
   const staged = await stageWorkspaceBackup(inspect, archive, { password });
@@ -348,7 +348,7 @@ it("backs up a Cloud that has work before replacing it; swapping back keeps what
   const backups = join(cloud.dataDir, ".backups");
   expect(readdirSync(backups).filter((name) => name.startsWith("safety-") || /^[0-9a-f-]{36}$/.test(name) || name === "cloud-previous.next")).toEqual([]);
   const held = (await api(cloud, "GET", "/api/cloud-move", { token: windowToken })).body;
-  const archive = lstatSync(join(backups, "cloud-previous", "workspace.ombbackup")).size;
+  const archive = lstatSync(join(backups, "cloud-previous", "workspace.quatibackup")).size;
   expect(held.previous.bytes).toBe(archive);
   expect(held.heldBytes).toBeLessThan(archive + 256 * 1024);
   const config = JSON.parse(readFileSync(join(cloud.dataDir, "config.json"), "utf8"));
@@ -423,10 +423,10 @@ it("a self-hosted server whose email sign-in lets other people in never receives
     server.closing = false;
     await boot(server);
   };
-  // `openmausbot access add me@example.test`: only its owner signs in, from a browser too. Still theirs alone.
+  // `quatibot access add me@example.test`: only its owner signs in, from a browser too. Still theirs alone.
   await signIn({ admins: ["me@example.test"] });
   expect((await api(server, "GET", "/api/cloud-move", { cookie: serverCookie })).status).toBe(200);
-  // `openmausbot access add` lets someone else sign in: the server is shared now.
+  // `quatibot access add` lets someone else sign in: the server is shared now.
   await signIn({ admins: ["me@example.test"], members: ["colleague@example.test"] });
   const refused = await api(server, "GET", "/api/cloud-move", { cookie: serverCookie });
   expect(refused).toMatchObject({ status: 403, body: { code: "shared_workspace" } });

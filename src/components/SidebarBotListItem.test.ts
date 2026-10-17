@@ -153,9 +153,9 @@ describe("BotListItem", () => {
 
     it("previews a failed turn's row when the record follows it", () => {
       const markup = draw(bot({
-        messages: [spoken, { id: "e1", role: "bot", kind: "activity", at: at(1), tool: { name: "error: This computer isn't a place on your OMB Cloud: its bots run in the cloud.", ok: false } }, record] as Bot["messages"],
+        messages: [spoken, { id: "e1", role: "bot", kind: "activity", at: at(1), tool: { name: "error: This computer isn't a place on your QUATI Cloud: its bots run in the cloud.", ok: false } }, record] as Bot["messages"],
       }));
-      expect(markup).toContain("This computer isn&#x27;t a place on your OMB Cloud: its bots run in the cloud.");
+      expect(markup).toContain("This computer isn&#x27;t a place on your QUATI Cloud: its bots run in the cloud.");
       expect(markup).not.toContain("Call with Atlas");
     });
 
@@ -185,10 +185,10 @@ describe("BotListItem", () => {
     const markup = renderRow(bot({
       messages: [
         { id: "u1", role: "user", kind: "text", text: "check the site", at: 1 },
-        { id: "e1", role: "bot", kind: "activity", at: 2, tool: { name: "error: This computer isn't a place on your OMB Cloud: its bots run in the cloud.", ok: false } },
+        { id: "e1", role: "bot", kind: "activity", at: 2, tool: { name: "error: This computer isn't a place on your QUATI Cloud: its bots run in the cloud.", ok: false } },
       ] as Bot["messages"],
     }));
-    expect(markup).toContain("This computer isn&#x27;t a place on your OMB Cloud: its bots run in the cloud.");
+    expect(markup).toContain("This computer isn&#x27;t a place on your QUATI Cloud: its bots run in the cloud.");
     expect(markup).not.toContain("error:");
   });
 
@@ -286,9 +286,9 @@ describe("BotListItem", () => {
 
   it("previews the last reply as plain text, without its markdown", () => {
     const markup = renderRow(bot({
-      messages: [{ id: "b1", role: "bot", kind: "text", text: "I read **[Prudctual/OpenMausBot](https://github.com/Prudctual/OpenMausBot)**. Run `pnpm install` first.", at: 1 }] as Bot["messages"],
+      messages: [{ id: "b1", role: "bot", kind: "text", text: "I read **[Prudctual/QuatiBot](https://github.com/Prudctual/QuatiBot)**. Run `pnpm install` first.", at: 1 }] as Bot["messages"],
     }));
-    expect(markup).toContain(">I read Prudctual/OpenMausBot. Run pnpm install first.<");
+    expect(markup).toContain(">I read Prudctual/QuatiBot. Run pnpm install first.<");
     expect(markup).not.toContain("**");
     expect(markup).not.toContain("](https://");
   });
@@ -309,7 +309,7 @@ describe("BotListItem", () => {
   it("marks the bot this window is on a Live call with by a green phone badge", () => {
     expect(renderRow(bot())).not.toContain('data-testid="live-call-badge"');
 
-    vi.stubGlobal("window", { ogb: { speechStop: vi.fn(async () => {}) } });
+    vi.stubGlobal("window", { quati: { speechStop: vi.fn(async () => {}) } });
     configureLiveMedia({ getUserMedia: () => new Promise<MediaStream>(() => {}) });
     void startLiveCall({ botId: "atlas", threadId: "thread-atlas" });
 

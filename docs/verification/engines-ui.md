@@ -18,7 +18,7 @@ synthetic instances for the lifetime of the preview process.
 **Toggle sample ChatGPT plan** changes only the synthetic account state; it
 does not sign in or contact OpenAI.
 Vite's generated source cache stays in the checkout's ignored
-`.omb-scratch/engine-preview-vite` directory; fixture accounts, home, and app data
+`.quati-scratch/engine-preview-vite` directory; fixture accounts, home, and app data
 remain disposable. Keeping these separate prevents late cache writes from
 recreating a removed fixture directory.
 
@@ -68,7 +68,7 @@ recreating a removed fixture directory.
 8. Expand **ChatGPT plan**. Its setup card offers **Continue with ChatGPT**,
    not a device code or terminal login. Toggle the sample plan connection:
    the first-use dialog should focus **Got it**, fit at 390px, and explain
-   ChatGPT plan usage separately from MausBot Cloud. Dismiss it, disconnect
+   ChatGPT plan usage separately from Quati Cloud. Dismiss it, disconnect
    and reconnect the sample: it must not return. The connected card retains
    **Using ChatGPT plan**, **Manage usage**, the synthetic account address,
    and protected sign-out. Check Midnight and Atelier; no horizontal overflow.
@@ -80,7 +80,7 @@ CLI through refresh failure, installation, sign-in required, and ready on focus,
 without reopening the app. It uses synthetic provider responses and verifies the
 isolated server reports its own installer platform; it never installs or signs
 in to a real provider. Evidence and a 390px screenshot are written under
-`.omb-scratch/provider-setup`:
+`.quati-scratch/provider-setup`:
 
 ```sh
 node --experimental-strip-types scripts/verify-provider-setup.ts

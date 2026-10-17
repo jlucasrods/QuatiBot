@@ -1210,7 +1210,7 @@ describe("Store", () => {
     const store = new Store(selection);
     const chief = store.createBot({ name: "Chief", section: "Ops" });
     store.patchBot(chief.id, { chiefOfStaff: true });
-    const folder = mkdtempSync(join(tmpdir(), "omb-store-cwd-"));
+    const folder = mkdtempSync(join(tmpdir(), "quati-store-cwd-"));
     store.applyTeamSetup({ version: 1, requestId: "setup-cwd", botId: chief.id, threadId: chief.threadId,
       reason: "Requested", createdAt: 1, requesterRevision: "fixture", newTeams: [], operations: [
         { action: "create", botId: "cwd-bot", threadId: "cwd-thread", fields: { name: "Foldered", section: "Ops", modelSelection: selection(), cwd: folder } },
@@ -1998,7 +1998,7 @@ describe("Store redacts bot-authored secrets on write", () => {
               name: `Use ${key}`,
               instructions: `Send a request with ${key}`,
               schedule: { type: "daily", time: "09:00", weekdays: [1] },
-              runOn: "maus",
+              runOn: "quati",
               durationMinutes: 30,
             },
           },

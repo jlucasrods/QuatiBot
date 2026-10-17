@@ -69,7 +69,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
       throw error instanceof RelayTimeout ? new TransportError(error.message) : error;
     }),
     steps: browserSteps,
-    onTiming: process.env.OMB_BROWSER_TIMING === "1" ? (timing) => console.info(formatBrowserTiming(timing)) : undefined,
+    onTiming: process.env.QUATI_BROWSER_TIMING === "1" ? (timing) => console.info(formatBrowserTiming(timing)) : undefined,
   });
   const agentBrowserLive = new BrowserLive({ runtime: agentBrowserRuntime });
   const host: HostKind = DESKTOP_MANAGED ? "desktop" : CLOUD_HOME || existsSync("/.dockerenv") ? "container" : "server";
@@ -172,7 +172,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
       kind: "browser", depth: 0, skillAuthoring: false, createdBots: 0, openedThreads: 0 });
     return {
       command: process.execPath, args: [SPAWNED_PROXIES.harnessMcp, "browser"], env: {
-         [harnessMcpTokenEnv("browser")]: token, OMB_HARNESS_URL: `http://127.0.0.1:${PORT}`,
+         [harnessMcpTokenEnv("browser")]: token, QUATI_HARNESS_URL: `http://127.0.0.1:${PORT}`,
       },
     };
   }
@@ -246,7 +246,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
   }
   /** A deleted bot's or profile's browser on the new engine, whatever the flag says now. */
   function eraseChromeBrowser(request: { type: string; botId?: string; partitionId?: string }): Promise<boolean> {
-    if (request.type === "openmausbot:browser-bot-deleted" && request.botId) return chromeEngine.erase({ kind: "bot", id: request.botId, partitionId: "" });
+    if (request.type === "quatibot:browser-bot-deleted" && request.botId) return chromeEngine.erase({ kind: "bot", id: request.botId, partitionId: "" });
     if (request.partitionId) return chromeEngine.erase({ kind: "profile", id: request.partitionId, partitionId: request.partitionId });
     return Promise.resolve(true);
   }

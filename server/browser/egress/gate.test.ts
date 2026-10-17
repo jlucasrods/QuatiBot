@@ -13,7 +13,7 @@ import { ownAddresses, refusalFor, type EgressRules, type Refusal } from "./poli
 const OWN_PUBLIC_IPV4 = "198.51.100.7";
 const interfaces = (): NodeJS.Dict<NetworkInterfaceInfo[]> => ({
   ...NodeOS.networkInterfaces(),
-  "omb-test": [{ address: OWN_PUBLIC_IPV4, netmask: "255.255.255.0", family: "IPv4", mac: "00:00:00:00:00:00", internal: false, cidr: `${OWN_PUBLIC_IPV4}/24` }],
+  "quati-test": [{ address: OWN_PUBLIC_IPV4, netmask: "255.255.255.0", family: "IPv4", mac: "00:00:00:00:00:00", internal: false, cidr: `${OWN_PUBLIC_IPV4}/24` }],
 });
 
 const serverRules: EgressRules = { host: "server", ownPort: () => false, botPort: async () => false, localNetwork: false, allowed: () => false };

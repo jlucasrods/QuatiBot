@@ -1,4 +1,4 @@
-// The Cloud home image's entry point: a root supervisor of two `maus` children, the server on 127.0.0.1:8799 and the Caddy
+// The Cloud home image's entry point: a root supervisor of two `quati` children, the server on 127.0.0.1:8799 and the Caddy
 // edge on 0.0.0.0:8080, the only listener the network reaches, always forwarding X-Forwarded-*, so no remote request gets
 // loopback trust. Secrets never ride a child's environment (/proc/<pid>/environ stays readable by the same user): the
 // server reads them from an inherited pipe. Root runs and trusts only the image's code, never the volume's.
@@ -12,7 +12,7 @@ import {
 } from "./cloud-home.ts";
 import { restartPolicy } from "./restart.ts";
 
-const SERVICE_USER = "maus";
+const SERVICE_USER = "quati";
 const SECRETS_FD = 3;
 
 /** uid/gid from /etc/passwd; Node has no getpwnam. */
@@ -27,10 +27,10 @@ export function passwdIds(passwd: string, name: string): { uid: number; gid: num
 /** An allow-list by name, so a secret the platform adds later never reaches the server. */
 const SERVER_ENV_NAMES = new Set([
   "PATH", "SHELL", "HOSTNAME", "LANG", "LANGUAGE", "TZ", "TERM", "TMPDIR", "NO_COLOR", "NODE_ENV", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
-  "AGENT_BROWSER_EXECUTABLE_PATH", "OMB_STATIC_DIR", "OMB_DATA_DIR",
-  "OMB_CLOUD_ROLE", "OMB_CLOUD_MACHINE_ID", "OMB_CLOUD_ADMIN_URL", "OMB_CLOUD_IMAGE", "OMB_PUBLIC_URL", "OMB_WEBHOOK_PUBLIC_URL",
-  "OMB_CLOUD_BOAT_URL", "OMB_CLOUD_VOICE_URL", "OMB_CLOUD_DECIDER_URL", "OMB_CLOUD_AI_URL", "OMB_TTS_DEFAULT_VOICE",
-  "OMB_HIGHLEVEL_RELAY_URL",
+  "AGENT_BROWSER_EXECUTABLE_PATH", "QUATI_STATIC_DIR", "QUATI_DATA_DIR",
+  "QUATI_CLOUD_ROLE", "QUATI_CLOUD_MACHINE_ID", "QUATI_CLOUD_ADMIN_URL", "QUATI_CLOUD_IMAGE", "QUATI_PUBLIC_URL", "QUATI_WEBHOOK_PUBLIC_URL",
+  "QUATI_CLOUD_BOAT_URL", "QUATI_CLOUD_VOICE_URL", "QUATI_CLOUD_DECIDER_URL", "QUATI_CLOUD_AI_URL", "QUATI_TTS_DEFAULT_VOICE",
+  "QUATI_HIGHLEVEL_RELAY_URL",
 ]);
 export function serverEnvironmentAllowed(name: string): boolean {
   return SERVER_ENV_NAMES.has(name) || name.startsWith("LC_");
@@ -41,21 +41,21 @@ export function cloudHomeChildEnvironments(config: CloudHomeConfig, env: NodeJS.
   const allowed = Object.fromEntries(Object.entries(offered).filter(([name, value]) => value !== undefined && serverEnvironmentAllowed(name)));
   const dropped = Object.keys(offered).filter((name) => !serverEnvironmentAllowed(name) && name !== "HOME").sort();
   const server: NodeJS.ProcessEnv = {
-    ...allowed, HOME: home, OMB_DATA_DIR: env.OMB_DATA_DIR || posix.join(home, ".openmausbot"),
-    OMB_PORT: "8799", OMB_WEBHOOK_PORT: "8800", OMB_PUBLIC_URL: config.publicOrigin,
-    OMB_WEBHOOK_PUBLIC_URL: env.OMB_WEBHOOK_PUBLIC_URL || config.publicOrigin,
+    ...allowed, HOME: home, QUATI_DATA_DIR: env.QUATI_DATA_DIR || posix.join(home, ".quatibot"),
+    QUATI_PORT: "8799", QUATI_WEBHOOK_PORT: "8800", QUATI_PUBLIC_URL: config.publicOrigin,
+    QUATI_WEBHOOK_PUBLIC_URL: env.QUATI_WEBHOOK_PUBLIC_URL || config.publicOrigin,
     [CLOUD_SECRETS_FD_ENV]: String(SECRETS_FD),
   };
   const edge: NodeJS.ProcessEnv = {
-    PATH: env.PATH ?? "/usr/local/bin:/usr/bin:/bin", HOME: "/tmp/omb-edge",
-    XDG_DATA_HOME: "/tmp/omb-edge/data", XDG_CONFIG_HOME: "/tmp/omb-edge/config",
-    OMB_CLOUD_PUBLIC_HOST: cloudHomeHost(config),
+    PATH: env.PATH ?? "/usr/local/bin:/usr/bin:/bin", HOME: "/tmp/quati-edge",
+    XDG_DATA_HOME: "/tmp/quati-edge/data", XDG_CONFIG_HOME: "/tmp/quati-edge/config",
+    QUATI_CLOUD_PUBLIC_HOST: cloudHomeHost(config),
   };
   return { server, edge, secrets: cloudHomeSecrets(env), dropped };
 }
 
-/** Each file and every folder above it must be root's and not writable by others, and never on the `maus`-owned volume:
- * otherwise `maus` could rewrite what runs as root at the next start. */
+/** Each file and every folder above it must be root's and not writable by others, and never on the `quati`-owned volume:
+ * otherwise `quati` could rewrite what runs as root at the next start. */
 export function codeTrustProblem(files: readonly string[], home: string, stat: (path: string) => Pick<Stats, "uid" | "mode"> = statSync): string | null {
   const volume = posix.join(home, "/");
   for (const file of files) {
@@ -87,7 +87,7 @@ export function spawnWithSecrets(command: string, args: string[], env: NodeJS.Pr
 export function startCloudHome(env: NodeJS.ProcessEnv = process.env) {
   process.umask(0o077);
   const config = cloudHomeConfiguration(env);
-  if (!config) throw new Error("This image runs a My Cloud machine for MausBot Cloud; set its boot contract (docs/cloud-pro.md).");
+  if (!config) throw new Error("This image runs a My Cloud machine for Quati Cloud; set its boot contract (docs/cloud-pro.md).");
   // Logged here once: the server child never sees what they are about.
   for (const warning of config.warnings) console.warn(`cloud home: ${warning}`);
   const home = env.HOME || "/data";
@@ -99,7 +99,7 @@ export function startCloudHome(env: NodeJS.ProcessEnv = process.env) {
     const stat = statSync(home);
     if (stat.uid !== ids.uid || stat.gid !== ids.gid) chownSync(home, ids.uid, ids.gid);
     process.setgroups?.([]);
-    // The volume is prepared as `maus`, so what it creates is theirs.
+    // The volume is prepared as `quati`, so what it creates is theirs.
     process.setegid!(ids.gid);
     process.seteuid!(ids.uid);
     try { prepareCloudHomeVolume(home, config.machineId); } finally {
@@ -110,8 +110,8 @@ export function startCloudHome(env: NodeJS.ProcessEnv = process.env) {
     prepareCloudHomeVolume(home, config.machineId);
   }
   const here = dirname(fileURLToPath(import.meta.url));
-  const edgeBin = env.OMB_CLOUD_EDGE_BIN || "/usr/local/bin/caddy";
-  const edgeConfig = env.OMB_CLOUD_EDGE_CONFIG || "/app/cloud/Caddyfile";
+  const edgeBin = env.QUATI_CLOUD_EDGE_BIN || "/usr/local/bin/caddy";
+  const edgeConfig = env.QUATI_CLOUD_EDGE_CONFIG || "/app/cloud/Caddyfile";
   if (ids) {
     const problem = codeTrustProblem([process.execPath, fileURLToPath(import.meta.url), join(here, "index.js"), edgeBin, edgeConfig], home);
     if (problem) throw new Error(`This image's code is not safe to run as root: ${problem}. Rebuild it with docker build --target cloud-home.`);

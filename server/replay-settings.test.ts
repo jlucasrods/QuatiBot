@@ -40,14 +40,14 @@ describe("replayToolHistoryEnabled", () => {
     expect(replayToolHistoryEnabled(ON, NO_ENV)).toBe(true);
   });
 
-  it("lets OMB_REPLAY_TOOL_HISTORY win over the file, both ways", () => {
-    expect(replayToolHistoryEnabled(undefined, { OMB_REPLAY_TOOL_HISTORY: "1" })).toBe(true);
-    expect(replayToolHistoryEnabled({ replayToolHistory: false }, { OMB_REPLAY_TOOL_HISTORY: "1" })).toBe(true);
-    expect(replayToolHistoryEnabled(ON, { OMB_REPLAY_TOOL_HISTORY: "0" })).toBe(false);
+  it("lets QUATI_REPLAY_TOOL_HISTORY win over the file, both ways", () => {
+    expect(replayToolHistoryEnabled(undefined, { QUATI_REPLAY_TOOL_HISTORY: "1" })).toBe(true);
+    expect(replayToolHistoryEnabled({ replayToolHistory: false }, { QUATI_REPLAY_TOOL_HISTORY: "1" })).toBe(true);
+    expect(replayToolHistoryEnabled(ON, { QUATI_REPLAY_TOOL_HISTORY: "0" })).toBe(false);
     // anything else is not an answer: the file decides
     for (const value of ["", "true", "yes", "2"]) {
-      expect(replayToolHistoryEnabled(ON, { OMB_REPLAY_TOOL_HISTORY: value })).toBe(true);
-      expect(replayToolHistoryEnabled(undefined, { OMB_REPLAY_TOOL_HISTORY: value })).toBe(false);
+      expect(replayToolHistoryEnabled(ON, { QUATI_REPLAY_TOOL_HISTORY: value })).toBe(true);
+      expect(replayToolHistoryEnabled(undefined, { QUATI_REPLAY_TOOL_HISTORY: value })).toBe(false);
     }
   });
 });

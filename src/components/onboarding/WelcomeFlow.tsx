@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { MausAvatar } from "@/components/Avatar";
+import { QuatiAvatar } from "@/components/Avatar";
 import { useDesktopCapabilities } from "@/components/DesktopCapabilities";
 import { setEmailGateDone } from "@/lib/onboarding-status";
 import { brand } from "@/lib/brand";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import type { MausMotion, MausState } from "@/lib/mascot";
+import type { QuatiMotion, QuatiState } from "@/lib/mascot";
 import {
   beatWidth,
   beatsFor,
@@ -25,7 +25,7 @@ import { withViewTransition } from "./view-transition";
 import { ProgressDots } from "./ProgressDots";
 import { FeatureReel } from "./reel/FeatureReel";
 
-const MASCOT_FOR_BEAT: Record<BeatId, MausState> = {
+const MASCOT_FOR_BEAT: Record<BeatId, QuatiState> = {
   hello: "happy",
   reel: "curious",
   engines: "searching",
@@ -48,7 +48,7 @@ function beatTitle(beat: BeatId): string | null {
   }
 }
 
-type Motion = Exclude<MausMotion, "none">;
+type Motion = Exclude<QuatiMotion, "none">;
 
 export function WelcomeFlow({
   bot,
@@ -77,7 +77,7 @@ export function WelcomeFlow({
   const { capabilities } = useDesktopCapabilities();
   const beats = beatsFor({ dictation: dictation ?? capabilities.dictation.available, reel, hosted });
   const [beat, setBeat] = useState<BeatId>(() => (initialBeat && beats.includes(initialBeat) ? initialBeat : "hello"));
-  const [mascot, setMascot] = useState<MausState>(MASCOT_FOR_BEAT[beat]);
+  const [mascot, setMascot] = useState<QuatiState>(MASCOT_FOR_BEAT[beat]);
   const [motion, setMotion] = useState<{ kind: Motion; key: number }>({ kind: "blink", key: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
   const finishing = useRef(false);
@@ -191,11 +191,11 @@ export function WelcomeFlow({
         </QuietButton>
 
         <div className={cn("flex shrink-0", hello ? "flex-col items-center" : "items-center gap-3")}>
-          <div className="welcome-maus flex shrink-0">
+          <div className="welcome-quati flex shrink-0">
             {logo ? (
               <img src={logo} alt="" width={72} height={72} className="h-[72px] w-[72px] object-contain" />
             ) : (
-              <MausAvatar
+              <QuatiAvatar
                 color="green"
                 state={mascot}
                 motion={motion.kind}

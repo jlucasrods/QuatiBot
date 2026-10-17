@@ -321,7 +321,7 @@ export class LiveCallController {
     const timer = setTimeout(done, ATTACH_TIMEOUT_MS);
     timer.unref?.();
     socket.onopen = () => {
-      try { socket.send(JSON.stringify({ type: "session.close", event_id: "omb_cancelled" })); } catch {}
+      try { socket.send(JSON.stringify({ type: "session.close", event_id: "quati_cancelled" })); } catch {}
       done();
     };
     socket.onerror = done;
@@ -778,7 +778,7 @@ export class LiveCallController {
     const socket = call.socket;
     if (!socket || socket.readyState !== SOCKET_OPEN || call.state.status === "ended") return false;
     try {
-      socket.send(JSON.stringify({ ...event, event_id: `omb_${++call.eventCounter}` }));
+      socket.send(JSON.stringify({ ...event, event_id: `quati_${++call.eventCounter}` }));
       return true;
     } catch {
       return false;

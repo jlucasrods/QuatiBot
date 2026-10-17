@@ -1,4 +1,4 @@
-// The browser service on the real Chrome the driver's suites use (OMB_CDP_CHROME, or OMB_CDP_E2E=1 for the installed
+// The browser service on the real Chrome the driver's suites use (QUATI_CDP_CHROME, or QUATI_CDP_E2E=1 for the installed
 // one): pages from a loopback fixture server, a calibrated identity, and a data folder of its own.
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
@@ -34,7 +34,7 @@ export async function startService({ screen, ...options }: Partial<BrowserServic
   const sandbox = !sandboxDisabled(process.env);
   identity ??= calibrateIdentity({ executablePath, host: HOST, tmpRoot: testRoot(), sandbox, handshakeTimeoutMs: FIRST_LAUNCH_MS });
   const calibrated = await identity;
-  const dataDir = mkdtempSync(join(testRoot(), "omb-browser-service-"));
+  const dataDir = mkdtempSync(join(testRoot(), "quati-browser-service-"));
   const backend = new LocalBackend({
     dataDir,
     host: HOST,

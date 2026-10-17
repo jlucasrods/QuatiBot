@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Check, Info, KeyRound, RefreshCw } from "lucide-react";
-import { MausAvatar } from "@/components/Avatar";
+import { QuatiAvatar } from "@/components/Avatar";
 import { startCloudSetup } from "@/components/CloudIntent";
 import { engineReady } from "@/components/EngineLibrary";
 import { EngineSetup } from "@/components/EngineSetup";
@@ -10,7 +10,7 @@ import { brand } from "@/lib/brand";
 import { reopenCloudIntent, setPendingIntent, useCloudIntent } from "@/lib/cloud-intent";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import type { MausMotion, MausState } from "@/lib/mascot";
+import type { QuatiMotion, QuatiState } from "@/lib/mascot";
 import { withViewTransition } from "@/components/onboarding/view-transition";
 import { useStore, type InstanceInfo } from "@/state/store";
 
@@ -25,7 +25,7 @@ export function CloudEngineSignIn() {
   const { state, dispatch, refreshInstances } = useStore();
   const [open, setOpen] = useState<Choice | null>(null);
   const [checking, setChecking] = useState(false);
-  const [motion, setMotion] = useState<{ kind: MausMotion; key: number }>({ kind: "none", key: 0 });
+  const [motion, setMotion] = useState<{ kind: QuatiMotion; key: number }>({ kind: "none", key: 0 });
   // One frame late: a motion issued in the avatar's mounting commit is lost.
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMotion({ kind: "arrive", key: 1 }));
@@ -61,7 +61,7 @@ export function CloudEngineSignIn() {
       ? [{ id: "grok" as const, driverKind: "grokAgent" as const, label: t("cloudSignIn.grok"), hint: t("cloudSignIn.grokHint") }]
       : []),
   ];
-  let face: MausState = "curious";
+  let face: QuatiState = "curious";
   if (handing) face = "proud";
   else if (checking) face = "searching";
   else if (open) face = "listening";
@@ -75,7 +75,7 @@ export function CloudEngineSignIn() {
       />
       <div className="stagger relative mx-auto flex w-full max-w-[540px] flex-col px-6 pb-12 pt-[clamp(48px,10vh,112px)]">
         <div className="animate-rise flex flex-col items-center text-center" style={staggerIndex(0)}>
-          <MausAvatar color="green" state={face} motion={motion.kind} motionKey={motion.key} size={64} label={brand().name} />
+          <QuatiAvatar color="green" state={face} motion={motion.kind} motionKey={motion.key} size={64} label={brand().name} />
         </div>
         {pending && (
           <figure data-cloud-intent-pending className="mt-6 rounded-2xl bg-composer px-4 pb-3 pt-2.5 ring-1 ring-composer-ring" style={{ viewTransitionName: "cloud-intent" }}>

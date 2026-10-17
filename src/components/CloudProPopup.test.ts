@@ -44,19 +44,19 @@ describe("what the popup offers, by plan", () => {
     expect(signedOut.points).toContain("$5 of Claude credit to start");
     const costlier = { ...PLAIN_OFFER, plans: PLAIN_OFFER.plans.map(plan => ({ ...plan, amount: plan.amount + 1000 })) };
     expect(cloudProPopupView(free, costlier)).toMatchObject({ primary: { action: "upgrade", via: "checkout", label: "Upgrade to Cloud Pro" },
-      plan: "none", badge: null, price: "MausBot Cloud plans from $39/month + tax.", moneyBack: null });
+      plan: "none", badge: null, price: "Quati Cloud plans from $39/month + tax.", moneyBack: null });
     expect((cloudProPopupView(free, costlier) as CloudProPopupView).points).toContain("Cloud computers and voice included");
   });
 
-  it("a plan: Manage plan in Settings → MausBot Cloud for every plan, no Compare plans, never a checkout, a price or the browser", () => {
+  it("a plan: Manage plan in Settings → Quati Cloud for every plan, no Compare plans, never a checkout, a price or the browser", () => {
     const cases: Array<[CloudAccountState, string, string, string | null]> = [
-      [onPlan("personal"), "personal", "Manage plan", "Personal active · verified by MausBot Cloud"],
-      [onPlan("pro", { trial: running }), "trial", "Manage plan", "Pro free trial · verified by MausBot Cloud"],
-      [onPlan("pro"), "pro", "Manage plan", "Pro active · verified by MausBot Cloud"],
-      [onPlan(undefined), "pro", "Manage plan", "Pro active · verified by MausBot Cloud"],
-      [onPlan("max"), "max", "Manage plan", "Max active · verified by MausBot Cloud"],
-      [onPlan("ultra"), "other", "Manage plan", "Cloud active · verified by MausBot Cloud"],
-      [{ ...free, purchase: { state: "confirming" } }, "none", "Manage plan", "MausBot Cloud · payment received"],
+      [onPlan("personal"), "personal", "Manage plan", "Personal active · verified by Quati Cloud"],
+      [onPlan("pro", { trial: running }), "trial", "Manage plan", "Pro free trial · verified by Quati Cloud"],
+      [onPlan("pro"), "pro", "Manage plan", "Pro active · verified by Quati Cloud"],
+      [onPlan(undefined), "pro", "Manage plan", "Pro active · verified by Quati Cloud"],
+      [onPlan("max"), "max", "Manage plan", "Max active · verified by Quati Cloud"],
+      [onPlan("ultra"), "other", "Manage plan", "Cloud active · verified by Quati Cloud"],
+      [{ ...free, purchase: { state: "confirming" } }, "none", "Manage plan", "Quati Cloud · payment received"],
       [{ ...free, entitlement: { plan: "pro", tier: "pro", status: "inactive", expiresAt: null, version: 3 } }, "none", "Manage plan", "Pro · not active right now"],
       [{ status: "reauth-required", message: "expired", lastPlan: { tier: "pro", active: true } }, "unknown", "Manage plan", "Sign in again to use My Cloud on this computer. Your plan is not affected."],
       [{ status: "signed-out", message: "restore-removed" }, "none", "Manage plan", null],
@@ -92,7 +92,7 @@ describe("the popup as a dialog", () => {
     show();
     const dialog = container.querySelector('[role="dialog"]')!;
     expect(dialog.getAttribute("aria-modal")).toBe("true");
-    expect(document.getElementById(dialog.getAttribute("aria-labelledby")!)!.textContent).toBe("MausBot Cloud Pro");
+    expect(document.getElementById(dialog.getAttribute("aria-labelledby")!)!.textContent).toBe("Quati Cloud Pro");
     expect(document.getElementById(dialog.getAttribute("aria-describedby")!)!.textContent).toContain("Then from $29/month + tax.");
     expect(document.activeElement!.id).toBe("cloud-pro-popup-title");
     const order: Array<string | null> = [];

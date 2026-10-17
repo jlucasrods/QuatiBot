@@ -1,7 +1,7 @@
-# Verifying OpenMausBot
+# Verifying QuatiBot
 
-OpenMausBot has one development control surface: `pnpm control:omb`. It runs
-the published `openmausbot` verbs (docs/headless-cli.md), which call the MCP
+QuatiBot has one development control surface: `pnpm control:quati`. It runs
+the published `quatibot` verbs (docs/headless-cli.md), which call the MCP
 tools in `scripts/mcp-server.ts`, so verification uses the same URL
 validation, task pinning, bounded transcripts, wait states, and redaction as
 external MCP clients and scripts.
@@ -11,7 +11,7 @@ external MCP clients and scripts.
 Start a fixture in one terminal:
 
 ```sh
-node --experimental-strip-types scripts/control-omb.ts launch
+node --experimental-strip-types scripts/control-quati.ts launch
 ```
 
 Run the foreground launcher directly rather than through `pnpm`; this ensures
@@ -20,21 +20,21 @@ it receives Ctrl-C and can stop its child before removing the temporary data.
 It gives the child a temporary data directory and home, chooses a free
 harness/webhook port pair, installs only the repository's fake engine, prints
 the URL, PID, data directory, and persistent log path, then stays attached to
-that exact child. The parent shell and the user's OpenMausBot data are
+that exact child. The parent shell and the user's QuatiBot data are
 untouched. Only `FAKE_ACP_*` variables cross from the launcher's
 environment into that child, so a recipe can script the fake engine's mode,
 replies and tool calls without writing a wrapper CLI. Live calls add one
-exception: `OMB_OPENAI_LIVE_URL` crosses when it is a loopback
+exception: `QUATI_OPENAI_LIVE_URL` crosses when it is a loopback
 `http://127.0.0.1:PORT` (the fake GPT-Live that
 `node --experimental-strip-types server/testing/fake-openai-live.ts` prints),
-and `OMB_OPENAI_LIVE_KEY` crosses only with it, so that key can only ever
-reach the fake. `OMB_PRO_PLAN` crosses only as `1`: Live calls from a phone need a Pro plan,
+and `QUATI_OPENAI_LIVE_KEY` crosses only with it, so that key can only ever
+reach the fake. `QUATI_PRO_PLAN` crosses only as `1`: Live calls from a phone need a Pro plan,
 and that is how a server the desktop app did not start says so.
 
 Pass the printed URL explicitly from a second terminal:
 
 ```sh
-pnpm control:omb doctor --url http://127.0.0.1:PORT
+pnpm control:quati doctor --url http://127.0.0.1:PORT
 ```
 
 Mutating commands refuse silent port discovery. This prevents a verification
@@ -97,7 +97,7 @@ specific to removed engines are not applicable to this fork.
 - [Spend cap and sell prices](spend-cap.md)
 - [Enterprise layer loading and license expiry](enterprise-license.md)
 
-`control-omb ui` ([Chat UI, driven headlessly](chat-ui.md)) drives the real
+`control-quati ui` ([Chat UI, driven headlessly](chat-ui.md)) drives the real
 renderer in a headless Chrome by accessible name, so composer sends, transcript
 rows, tool chips and server feature flags are provable from the command line.
 Other renderer-only behavior—Settings, sidebar drag-and-drop, the VM modal, the
@@ -196,7 +196,7 @@ in a disposable workspace with synthetic data.
 
 The [people invitation fixture](people.md) checks hosted workspace sign-in,
 roles and device revocation through the real HTTP API with a stubbed email
-service. It does not drive the People settings UI through `control-omb`.
+service. It does not drive the People settings UI through `control-quati`.
 
 The [sidebar fixture](sidebar.md) checks archive and delete confirmations, their
 default focus, keyboard wrapping and focus return against two disposable bots.
@@ -223,7 +223,7 @@ interrupting a newer request.
 
 The [Live calls fixture](live-calls.md) checks the call id on spoken requests,
 the one "call" row a finished call leaves, its generated title and the desktop's
-record row, against the fake GPT-Live in a disposable workspace. `control-omb`
+record row, against the fake GPT-Live in a disposable workspace. `control-quati`
 cannot start a call, so the recipe also calls the harness's own routes. It
 proves no real audio, OpenAI key or phone.
 

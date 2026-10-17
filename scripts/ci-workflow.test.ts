@@ -144,7 +144,7 @@ describe("CI concurrency", () => {
     // The runner context exists only at step level, never in a job's env.
     expect(workflow.jobs.vitest.env).toBeUndefined();
     for (const step of [steps[tests]!, steps[report]!]) {
-      expect(step.env).toEqual({ OMB_VITEST_RETRY_LOG: "${{ runner.temp }}/vitest-retries.jsonl" });
+      expect(step.env).toEqual({ QUATI_VITEST_RETRY_LOG: "${{ runner.temp }}/vitest-retries.jsonl" });
     }
     expect(readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8")).toContain('runner: "./scripts/testing/ci-retry-runner.ts"');
   });

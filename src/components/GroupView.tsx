@@ -15,7 +15,7 @@ import { showToolCallsEnabled } from "@/lib/feature-flags";
 import { CompactionChip, DigestChip } from "./DigestChip";
 import { roomActivityVisible } from "@/lib/room-activity";
 import { StatusActivityRow } from "@/components/StatusActivityRow";
-import { MAUS_COLOR_NAMES, normalizeState, type MausColor } from "@/lib/mascot";
+import { MAUS_COLOR_NAMES, normalizeState, type QuatiColor } from "@/lib/mascot";
 import { botTextShowsSpeaker, laterTextOwns, runShowsSpeaker } from "@/lib/room-speaker";
 import { defaultResponderName, effectiveDefaultResponder, groupResponseHint, jevRoomRoutingOn } from "@/lib/group-routing";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -120,7 +120,7 @@ export function RoomToolChip({ message, roomId }: {
       </div>
     </div>);
 }
-function isPaletteColor(color: string): color is MausColor {
+function isPaletteColor(color: string): color is QuatiColor {
     return (MAUS_COLOR_NAMES as readonly string[]).includes(color);
 }
 function ClusterLabel({ bot, name, color }: {
@@ -875,7 +875,7 @@ export function GroupView({ group }: {
         }
     };
     const contextWarnings = roomContextWarnings(group, members);
-    const memberMauses = members.map((b) => {
+    const memberAvatars = members.map((b) => {
         const busy = group.busyBotId === b.id;
         const queueTitle = busy ? undefined : roomMemberQueueTitle(group, members, b);
         const contextWarning = contextWarnings.find((warning) => warning.bot.id === b.id);
@@ -925,10 +925,10 @@ export function GroupView({ group }: {
           <GroupUsageChip usage={group.usage}/>
           {!setupPending && !group.dm && <RoomWorkingFolderChip group={group} onToggle={() => setFolderOpen((open) => !open)}/>}
           {!setupPending && !group.dm && <DefaultResponderSelect group={group} members={members}/>}
-          {group.dm || false ? (memberMauses) : (<button ref={membersTriggerRef} type="button" onClick={() => setMembersOpen(true)} title={t("room.members.manage")} aria-label={members.length === 1
+          {group.dm || false ? (memberAvatars) : (<button ref={membersTriggerRef} type="button" onClick={() => setMembersOpen(true)} title={t("room.members.manage")} aria-label={members.length === 1
                 ? t("room.members.ariaOne")
                 : t("room.members.ariaMany", { count: members.length })} className="flex items-center gap-1.5 rounded-full py-0.5 pl-1 pr-1.5 hover:bg-raised/60">
-              {memberMauses}
+              {memberAvatars}
               <span className="flex size-[18px] items-center justify-center rounded-full border border-dashed border-hairline/70 text-ink-secondary">
                 <Plus size={11}/>
               </span>

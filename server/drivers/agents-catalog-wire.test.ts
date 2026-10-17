@@ -34,10 +34,10 @@ function profiles(): Record<string, Profile> {
             .filter(Boolean).join("+") || "default";
           all[name] = {
             env: {
-              OMB_SKILL_AUTHORING_ENABLED: flag(skills),
-              OMB_SHARED_COMPUTERS_ENABLED: flag(shared),
-              OMB_VOICE_NOTES: flag(voice),
-              OMB_CHIEF_OF_STAFF: flag(chief),
+              QUATI_SKILL_AUTHORING_ENABLED: flag(skills),
+              QUATI_SHARED_COMPUTERS_ENABLED: flag(shared),
+              QUATI_VOICE_NOTES: flag(voice),
+              QUATI_CHIEF_OF_STAFF: flag(chief),
             },
           };
         }
@@ -45,11 +45,11 @@ function profiles(): Record<string, Profile> {
     }
   }
   for (const name of ["skills+shared+voice", "skills+shared+voice+non-chief"]) {
-    all[`${name}+cloud-home`] = { env: { ...all[name]!.env, OMB_CLOUD_HOME: "1" } };
+    all[`${name}+cloud-home`] = { env: { ...all[name]!.env, QUATI_CLOUD_HOME: "1" } };
   }
-  all["skills+shared+voice+escalations"] = { env: { ...all["skills+shared+voice"]!.env, OMB_ESCALATIONS: "1" } };
+  all["skills+shared+voice+escalations"] = { env: { ...all["skills+shared+voice"]!.env, QUATI_ESCALATIONS: "1" } };
   all["default+legacy-switches"] = {
-    env: { ...all.default!.env, OMB_ROOM_TURN: "1", OMB_OWN_THREAD_CREATION: "1", OMB_EXTERNAL_RUNTIME: "1" },
+    env: { ...all.default!.env, QUATI_ROOM_TURN: "1", QUATI_OWN_THREAD_CREATION: "1", QUATI_EXTERNAL_RUNTIME: "1" },
   };
   return all;
 }
@@ -90,10 +90,10 @@ const RPC_PREFIX = '{"jsonrpc":"2.0","id":1,"result":';
 
 /** One tools/list `result` from a fresh proxy, sliced out of the raw stdout line, never re-serialized. */
 async function toolsListWire(entry: string, env: Record<string, string>): Promise<string> {
-  // A developer shell or an OpenMausBot turn can carry OMB_* switches; the profile must be the only source.
-  const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("OMB_")));
+  // A developer shell or an QuatiBot turn can carry QUATI_* switches; the profile must be the only source.
+  const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("QUATI_")));
   const child = spawn(process.execPath, [entry], {
-    env: { ...inherited, OMB_HARNESS_URL: "http://127.0.0.1:9", OMB_BOT_ID: "bot-golden", OMB_THREAD_ID: "thread-golden", OMB_COMMS_TOKEN: "unused", OMB_TURN_DEPTH: "0", ...env },
+    env: { ...inherited, QUATI_HARNESS_URL: "http://127.0.0.1:9", QUATI_BOT_ID: "bot-golden", QUATI_THREAD_ID: "thread-golden", QUATI_COMMS_TOKEN: "unused", QUATI_TURN_DEPTH: "0", ...env },
     stdio: ["pipe", "pipe", "inherit"],
   });
   try {
@@ -173,8 +173,8 @@ describe("agents proxy tools/list golden", () => {
     const full = new Map(toolsOf(wires[FULL]!).map((tool) => [tool.name, JSON.stringify(tool)]));
     for (const [name, profile] of Object.entries(PROFILES)) {
       for (const tool of toolsOf(wires[name]!)) {
-        if (profile.env.OMB_CLOUD_HOME === "1" && tool.name === "select_computer") continue;
-        if (profile.env.OMB_CHIEF_OF_STAFF === "0" && CHIEF_TARGET_TOOLS.includes(tool.name)) continue;
+        if (profile.env.QUATI_CLOUD_HOME === "1" && tool.name === "select_computer") continue;
+        if (profile.env.QUATI_CHIEF_OF_STAFF === "0" && CHIEF_TARGET_TOOLS.includes(tool.name)) continue;
         expect(JSON.stringify(tool), `${name}: ${tool.name}`).toBe(full.get(tool.name));
       }
     }
@@ -201,13 +201,13 @@ describe("agents proxy tools/list golden", () => {
     const names = (wire: string) => toolsOf(wire).map((tool) => tool.name);
     expect(names(wires[FULL]!).filter((tool) => tool !== "raise_escalation")).toEqual(names(wires["skills+shared+voice"]!));
     for (const [name, profile] of Object.entries(PROFILES)) {
-      expect(names(wires[name]!).includes("raise_escalation"), name).toBe(profile.env.OMB_ESCALATIONS === "1");
+      expect(names(wires[name]!).includes("raise_escalation"), name).toBe(profile.env.QUATI_ESCALATIONS === "1");
     }
   });
 
   it("ignores the switches that once picked a catalog profile", () => {
     expect(wires["default+legacy-switches"]).toBe(wires.default);
-    const profile = catalogProfileFromEnv({ OMB_BOT_ID: "bot-golden", OMB_CHIEF_OF_STAFF: "1", OMB_ROOM_TURN: "1", OMB_OWN_THREAD_CREATION: "1", OMB_EXTERNAL_RUNTIME: "1" });
+    const profile = catalogProfileFromEnv({ QUATI_BOT_ID: "bot-golden", QUATI_CHIEF_OF_STAFF: "1", QUATI_ROOM_TURN: "1", QUATI_OWN_THREAD_CREATION: "1", QUATI_EXTERNAL_RUNTIME: "1" });
     expect(JSON.stringify({ tools: availableTools(profile) })).toBe(wires.default);
     expect(profile).not.toHaveProperty("coordinating");
     expect(profile).not.toHaveProperty("externalRuntime");
@@ -233,7 +233,7 @@ describe("agents proxy tools/list golden", () => {
 
   it("shows only a Chief of Staff the Chief-only tools, and for_bot_id on another bot's profile or model", () => {
     type SchemaTool = Tool & { description: string; inputSchema: { properties: Record<string, unknown> } };
-    const nonChief = Object.keys(PROFILES).filter((name) => PROFILES[name]!.env.OMB_CHIEF_OF_STAFF === "0");
+    const nonChief = Object.keys(PROFILES).filter((name) => PROFILES[name]!.env.QUATI_CHIEF_OF_STAFF === "0");
     expect(nonChief).toHaveLength(9);
     for (const name of nonChief) {
       const chiefTools = toolsOf(wires[name === "non-chief" ? "default" : name.replace("+non-chief", "")]!) as SchemaTool[];
@@ -259,7 +259,7 @@ describe("agents proxy tools/list golden", () => {
 
   it("is what the catalog module computes in-process, so another front end mounts the same tools", () => {
     for (const [name, profile] of Object.entries(PROFILES)) {
-      const tools = availableTools(catalogProfileFromEnv({ OMB_BOT_ID: "bot-golden", ...profile.env }));
+      const tools = availableTools(catalogProfileFromEnv({ QUATI_BOT_ID: "bot-golden", ...profile.env }));
       expect(JSON.stringify({ tools }), name).toBe(wires[name]);
     }
   });
@@ -289,7 +289,7 @@ describe("agents proxy tools/list from the packaged bundle", () => {
 
   it("serves the same bytes with no source tree beside it", async () => {
       // Same esbuild options as scripts/bundle-server.mjs: the proxy runs as its own process from one inlined file.
-    directory = realpathSync(mkdtempSync(join(tmpdir(), "omb-agents-proxy-bundle-")));
+    directory = realpathSync(mkdtempSync(join(tmpdir(), "quati-agents-proxy-bundle-")));
     await build({
       entryPoints: [PROXY_SOURCE],
       bundle: true,

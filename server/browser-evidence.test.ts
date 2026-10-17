@@ -14,7 +14,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 function store(options: { free?: number; now?: () => number } = {}) {
-  const root = join(mkdtempSync(join(tmpdir(), "omb-evidence-")), "evidence");
+  const root = join(mkdtempSync(join(tmpdir(), "quati-evidence-")), "evidence");
   roots.push(join(root, ".."));
   const free = options.free ?? 100 * 1024 ** 3;
   return new BrowserEvidence({ root, statfs: async () => ({ bavail: free / 4096, bsize: 4096 }), ...(options.now ? { now: options.now } : {}) });

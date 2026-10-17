@@ -8,13 +8,13 @@ import { classifyContinuable, writeTurnHandoff } from "./turn-continuation.ts";
 let temp: string | undefined;
 afterEach(() => {
   if (temp) { rmSync(temp, { recursive: true, force: true }); temp = undefined; }
-  delete process.env.OMB_DATA_DIR;
+  delete process.env.QUATI_DATA_DIR;
   vi.restoreAllMocks();
 });
 
 function withTempDataDir(): string {
-  temp = mkdtempSync(join(tmpdir(), "omb-handoff-"));
-  process.env.OMB_DATA_DIR = temp;
+  temp = mkdtempSync(join(tmpdir(), "quati-handoff-"));
+  process.env.QUATI_DATA_DIR = temp;
   return temp;
 }
 
@@ -48,9 +48,9 @@ describe("writeTurnHandoff", () => {
   });
 
   it("returns null when the handoff cannot be written", () => {
-    process.env.OMB_DATA_DIR = join(tmpdir(), "omb-handoff-", "does-not-exist", "nested");
+    process.env.QUATI_DATA_DIR = join(tmpdir(), "quati-handoff-", "does-not-exist", "nested");
     expect(writeTurnHandoff({ threadId: "t", turnId: "u", toolCalls: 0, messages: [] })).not.toBeNull();
-    rmSync(join(tmpdir(), "omb-handoff-"), { recursive: true, force: true });
+    rmSync(join(tmpdir(), "quati-handoff-"), { recursive: true, force: true });
   });
 });
 

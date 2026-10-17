@@ -67,11 +67,11 @@ export async function transitionComputerControlLease<
 }): Promise<Snapshot> {
   const { action, syncNativeBrowser, requestControl, setNativeBrowserControl } = input;
   if (action === "take" && syncNativeBrowser && !(await setNativeBrowserControl(true))) {
-    throw new Error("OpenMausBot could not pause this bot's browser safely");
+    throw new Error("QuatiBot could not pause this bot's browser safely");
   }
   const snap = await requestControl(action);
   if (snap.held !== (action === "take")) {
-    throw new Error(`OpenMausBot could not ${action === "take" ? "confirm" : "release"} computer control`);
+    throw new Error(`QuatiBot could not ${action === "take" ? "confirm" : "release"} computer control`);
   }
   if (action === "release" && syncNativeBrowser && !(await setNativeBrowserControl(false))) {
     throw new Error("The computer was released, but the browser remains paused for safety");

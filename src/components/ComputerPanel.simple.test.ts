@@ -7,14 +7,14 @@ import type { FeatureFlagConfig } from "@/lib/feature-flags";
 // tree. `seed` presets what the resolve effect would have reached.
 const fixture = vi.hoisted(() => {
     const view = { current: "computer" as string };
-    const ogb: Record<string, unknown> = {};
-    vi.stubGlobal("window", { ogb });
+    const quati: Record<string, unknown> = {};
+    vi.stubGlobal("window", { quati });
     vi.stubGlobal("document", { visibilityState: "visible" });
-    vi.stubGlobal("localStorage", { getItem: (key: string) => key.startsWith("omb-computer-panel-view") ? view.current : null, setItem: () => { } });
+    vi.stubGlobal("localStorage", { getItem: (key: string) => key.startsWith("quati-computer-panel-view") ? view.current : null, setItem: () => { } });
     return {
         advanced: false,
         view,
-        ogb,
+        quati,
         platform: "darwin" as "darwin" | "win32" | "linux",
         values: [] as unknown[],
         index: 0,
@@ -179,8 +179,8 @@ beforeEach(() => {
     fixture.api = vi.fn(() => Promise.resolve({ features: { browser: true } }));
     fixture.setAdvancedMode = vi.fn();
     fixture.ownerOrAdmin = null;
-    for (const key of Object.keys(fixture.ogb))
-        delete fixture.ogb[key];
+    for (const key of Object.keys(fixture.quati))
+        delete fixture.quati[key];
 });
 describe("Computer panel tabs", () => {
     it("centres the tabs as a pill with close pinned right, in both modes", () => {
@@ -262,10 +262,10 @@ describe("Computer panel tabs", () => {
     it("keeps showing the pinned private folder after the bot default is cleared", () => {
         fixture.view.current = "files";
         const rendered = render(makeBot({ tasks: [
-                { threadId: "thread-scout", title: "Existing chat", createdAt: 1, cwd: "/Users/me/.openmausbot/task-workspaces/scout/thread-scout" },
+                { threadId: "thread-scout", title: "Existing chat", createdAt: 1, cwd: "/Users/me/.quatibot/task-workspaces/scout/thread-scout" },
             ] }));
-        expect(rendered.html).toContain('title="/Users/me/.openmausbot/task-workspaces/scout/thread-scout"');
-        expect(rendered.html).toContain("~/.openmausbot/task-workspaces/scout/thread-scout");
+        expect(rendered.html).toContain('title="/Users/me/.quatibot/task-workspaces/scout/thread-scout"');
+        expect(rendered.html).toContain("~/.quatibot/task-workspaces/scout/thread-scout");
         expect(rendered.html).not.toContain("Scout&#x27;s private folder");
     });
     it("shows a legacy home-folder pin instead of the new bot default", () => {

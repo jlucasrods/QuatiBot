@@ -7,7 +7,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { MAUS_COLORS, type MausColor, type MausMotion, type MausState } from "@/lib/mascot";
+import { MAUS_COLORS, type QuatiColor, type QuatiMotion, type QuatiState } from "@/lib/mascot";
 import { CursorAvatar, type CursorAvatarHandle } from "./CursorAvatar";
 import { avatarCropRadius, botAvatarProfile, clampAvatarFocus, clampAvatarZoom, type BotAvatarCrop } from "../../shared/bot-avatar";
 import { MASCOT_BODIES, botMascotBody, type MascotBodyId } from "../../shared/mascot-bodies";
@@ -19,7 +19,7 @@ const POINTER_GAZE = { forward: 1, authored: 0.25 };
 
 interface MotionFaces
   extends Partial<
-    Record<Exclude<MausMotion, "none">, { state?: MausState; blink?: boolean; spin?: number }>
+    Record<Exclude<QuatiMotion, "none">, { state?: QuatiState; blink?: boolean; spin?: number }>
   > {}
 
 const MOTION_FACE: MotionFaces = {
@@ -52,12 +52,12 @@ function mix(hex: string, toward: string, t: number): string {
     .join("")}`;
 }
 
-const gradientFor = (color: MausColor): [string, string, string] => {
+const gradientFor = (color: QuatiColor): [string, string, string] => {
   const fill = MAUS_COLORS[color] ?? MAUS_COLORS.green;
   return [mix(fill, "#ffffff", 0.55), fill, mix(fill, "#000000", 0.42)];
 };
 
-export function roomAvatarGradient(color: MausColor): [string, string, string] {
+export function roomAvatarGradient(color: QuatiColor): [string, string, string] {
   const fill = `var(--identity-${color})`;
   return [
     `color-mix(in srgb, ${fill} 82%, #ffffff)`,
@@ -66,15 +66,15 @@ export function roomAvatarGradient(color: MausColor): [string, string, string] {
   ];
 }
 
-export type MausAvatarHandle = CursorAvatarHandle;
+export type QuatiAvatarHandle = CursorAvatarHandle;
 
-export type MausAvatarProps = {
-  color: MausColor;
-  state?: MausState;
+export type QuatiAvatarProps = {
+  color: QuatiColor;
+  state?: QuatiState;
   expression?: number;
   size?: number;
   label?: string;
-  motion?: MausMotion;
+  motion?: QuatiMotion;
   motionKey?: number;
   turn?: number;
   gaze?: { x?: number; y?: number };
@@ -90,7 +90,7 @@ export type MausAvatarProps = {
   gradient?: [string, string, string];
 };
 
-function MausAvatarComponent(
+function QuatiAvatarComponent(
   {
     color,
     state = "idle",
@@ -111,8 +111,8 @@ function MausAvatarComponent(
     animated = true,
     bodyId,
     gradient,
-  }: MausAvatarProps,
-  ref: React.Ref<MausAvatarHandle>,
+  }: QuatiAvatarProps,
+  ref: React.Ref<QuatiAvatarHandle>,
 ) {
   const silhouette = MASCOT_BODIES[botMascotBody(bodyId)];
   const inner = useRef<CursorAvatarHandle>(null);
@@ -122,7 +122,7 @@ function MausAvatarComponent(
     setExpression: (index: number) => inner.current?.setExpression(index),
   }));
 
-  const [motionState, setMotionState] = useState<MausState | null>(null);
+  const [motionState, setMotionState] = useState<QuatiState | null>(null);
   useEffect(() => {
     if (motion === "none" || !animated) return;
     const beat = MOTION_FACE[motion];
@@ -174,13 +174,13 @@ function MausAvatarComponent(
   );
 }
 
-export const MausAvatar = memo(forwardRef(MausAvatarComponent));
+export const QuatiAvatar = memo(forwardRef(QuatiAvatarComponent));
 
-export type BotAvatarProps = Omit<MausAvatarProps, "color" | "gradient"> & {
+export type BotAvatarProps = Omit<QuatiAvatarProps, "color" | "gradient"> & {
   readable?: boolean;
   bot: {
     name?: string;
-    color: MausColor;
+    color: QuatiColor;
     avatarUrl?: string | null;
     avatarCrop?: BotAvatarCrop;
     avatarZoom?: number;
@@ -219,7 +219,7 @@ export function BotAvatar({ bot, size = 44, label, readable = false, ...mascotPr
 
   if (outcome !== "flatImage") {
     return (
-      <MausAvatar
+      <QuatiAvatar
         bodyId={bot.mascotBody ?? undefined}
         {...mascotProps}
         color={bot.color}

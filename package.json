@@ -1,16 +1,15 @@
 {
-  "name": "openmausbot",
+  "name": "quatibot",
   "private": true,
   "version": "0.1.112",
   "description": "A local-first chat app for running a team of AI agents.",
-  "homepage": "https://github.com/milind-soni/OpenMausBot",
+  "homepage": "https://github.com/jlucasrods/QuatiBot",
   "repository": {
     "type": "git",
-    "url": "https://github.com/milind-soni/OpenMausBot.git"
+    "url": "https://github.com/jlucasrods/QuatiBot.git"
   },
   "author": {
-    "name": "Milind Soni",
-    "email": "46266943+milind-soni@users.noreply.github.com"
+    "name": "QuatiBot contributors"
   },
   "license": "Apache-2.0",
   "type": "module",
@@ -25,15 +24,15 @@
     "check:contrast": "node scripts/check-skin-contrast.mjs",
     "i18n:check": "node scripts/generate-locale.mjs --check",
     "dev": "vite",
-    "docs:dev": "pnpm --filter @openmausbot/docs dev",
-    "docs:build": "pnpm --filter @openmausbot/docs build",
-    "docs:preview": "pnpm --filter @openmausbot/docs preview",
+    "docs:dev": "pnpm --filter @quatibot/docs dev",
+    "docs:build": "pnpm --filter @quatibot/docs build",
+    "docs:preview": "pnpm --filter @quatibot/docs preview",
     "companion": "node --experimental-strip-types companion/src/index.ts",
-    "omb": "node --experimental-strip-types server/openmausbot.ts",
-    "pair": "node --experimental-strip-types server/openmausbot.ts pair",
+    "quati": "node --experimental-strip-types server/quatibot.ts",
+    "pair": "node --experimental-strip-types server/quatibot.ts pair",
     "dev:server": "node --experimental-strip-types server/dev-server.ts",
     "mcp": "node --experimental-strip-types scripts/mcp-server.ts",
-    "control:omb": "node --experimental-strip-types scripts/control-omb.ts",
+    "control:quati": "node --experimental-strip-types scripts/control-quati.ts",
     "eval": "node --experimental-strip-types evals/runners/run-evals.ts",
     "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
     "typecheck": "tsc -b && tsc -p tsconfig.server.json",
@@ -51,12 +50,12 @@
     "build:duckdb": "node scripts/prepare-duckdb.mjs",
     "smoke:browser": "node scripts/smoke-browser-bundle.mjs",
     "test:packaged-server": "pnpm build:server && node scripts/smoke-packaged-server.mjs",
-    "control-plane:types": "pnpm --filter @openmausbot/control-plane types",
-    "control-plane:check": "pnpm --filter @openmausbot/control-plane check",
-    "control-plane:test": "pnpm --filter @openmausbot/control-plane test",
-    "control-plane:dry-run": "pnpm --filter @openmausbot/control-plane dry-run",
+    "control-plane:types": "pnpm --filter @quatibot/control-plane types",
+    "control-plane:check": "pnpm --filter @quatibot/control-plane check",
+    "control-plane:test": "pnpm --filter @quatibot/control-plane test",
+    "control-plane:dry-run": "pnpm --filter @quatibot/control-plane dry-run",
     "test": "vitest run && pnpm test:packaged-server",
-    "start": "node --experimental-strip-types server/openmausbot.ts serve"
+    "start": "node --experimental-strip-types server/quatibot.ts serve"
   },
   "dependencies": {
     "@1password/sdk": "0.5.0",

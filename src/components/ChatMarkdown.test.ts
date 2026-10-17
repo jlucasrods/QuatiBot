@@ -535,17 +535,17 @@ describe("#Title thread links in markdown", () => {
   });
 
   it("renders a sent canonical link as a chip that opens the thread", () => {
-    const markup = render("done in [QA PR 245](openmausbot://thread/qa-245?bot=scout) today");
+    const markup = render("done in [QA PR 245](quatibot://thread/qa-245?bot=scout) today");
     expect(markup).toContain('<button type="button" data-thread-link="qa-245"');
     expect(markup).toContain(">QA PR 245</button>");
-    expect(markup).not.toContain('href="openmausbot://');
+    expect(markup).not.toContain('href="quatibot://');
   });
 
   it("keeps a dead thread link as plain text, never an external anchor", () => {
-    const markup = render("see [Gone](openmausbot://thread/dead?bot=scout)");
+    const markup = render("see [Gone](quatibot://thread/dead?bot=scout)");
     expect(markup).toContain(">Gone<");
     expect(markup).not.toContain("data-thread-link");
-    expect(markup).not.toContain('href="openmausbot://');
+    expect(markup).not.toContain('href="quatibot://');
     expect(markup).not.toContain('target="_blank"');
   });
 });
@@ -555,7 +555,7 @@ describe("Markdown image metadata", () => {
     expect(markdownImageName("https://example.test/random.png", "Final render")).toBe("Final render");
     expect(markdownImageName("https://example.test/output/Launch%20art.webp")).toBe("Launch art.webp");
     expect(markdownImageName("")).toBe("Image");
-    expect(markdownImageName("C:\\Users\\Maus\\chart.png")).toBe("chart.png");
+    expect(markdownImageName("C:\\Users\\Quati\\chart.png")).toBe("chart.png");
   });
 
   it("only offers an external action for HTTP sources", () => {
@@ -579,7 +579,7 @@ describe("message-scoped file targets", () => {
     expect(localFilePath("file://server/share/report.pdf")).toBe("//server/share/report.pdf");
     expect(localFilePath("//cdn.example.test/report.pdf")).toBeNull();
     expect(localFilePath("/C:/posix/report.pdf")).toBe("/C:/posix/report.pdf");
-    expect(localFilePath("file:///C:/Users/Maus/report.pdf")).toBe("C:/Users/Maus/report.pdf");
+    expect(localFilePath("file:///C:/Users/Quati/report.pdf")).toBe("C:/Users/Quati/report.pdf");
     expect(localFilePath("https://example.test/report.pdf")).toBeNull();
     expect(localFilePath("#section")).toBeNull();
     expect(localFilePath("javascript:alert(1)")).toBeNull();
@@ -587,9 +587,9 @@ describe("message-scoped file targets", () => {
 
   it("preserves supported local file spellings without widening unsafe protocols", () => {
     expect(chatUrlTransform("file:///Users/milind/report.md")).toBe("file:///Users/milind/report.md");
-    expect(chatUrlTransform("C:/Users/Maus/report.md")).toBe("C:/Users/Maus/report.md");
+    expect(chatUrlTransform("C:/Users/Quati/report.md")).toBe("C:/Users/Quati/report.md");
     expect(chatUrlTransform("\\\\server\\share\\report.md")).toBe("\\\\server\\share\\report.md");
-    expect(chatUrlTransform("C:%5CUsers%5CMaus%5Crelease%20notes.md")).toBe("C:\\Users\\Maus\\release%20notes.md");
+    expect(chatUrlTransform("C:%5CUsers%5CQuati%5Crelease%20notes.md")).toBe("C:\\Users\\Quati\\release%20notes.md");
     expect(chatUrlTransform("javascript:alert(1)")).toBe("");
     expect(chatUrlTransform("https://example.test/report.md")).toBe("https://example.test/report.md");
   });
@@ -618,12 +618,12 @@ describe("ChatMarkdown attachments", () => {
 
   it("keeps host paths private while routing them through the scoped file handler", () => {
     const html = renderToStaticMarkup(createElement(ChatMarkdown, {
-      text: "[macOS](file:///Users/milind/report.md) [Windows](C:/Users/Maus/report.md)",
+      text: "[macOS](file:///Users/milind/report.md) [Windows](C:/Users/Quati/report.md)",
       message: { threadId: "thread-1", messageId: "message-1" },
     }));
     expect(html).toContain('title="Save a copy"');
     expect(html).not.toContain("/Users/milind/report.md");
-    expect(html).not.toContain("C:/Users/Maus/report.md");
+    expect(html).not.toContain("C:/Users/Quati/report.md");
   });
 
   it("says an image with no source is unavailable in the person's language", () => {
@@ -660,14 +660,14 @@ describe("ChatMarkdown attachments", () => {
     const preview = vi.spyOn(AttachmentPreview, "MarkdownImagePreview");
     try {
       const html = renderToStaticMarkup(createElement(ChatMarkdown, {
-        text: "[Report](C:\\Users\\Maus\\.openmausbot\\report.md)\n\n![Chart](C:\\Users\\Maus\\.openmausbot\\chart.png)",
+        text: "[Report](C:\\Users\\Quati\\.quatibot\\report.md)\n\n![Chart](C:\\Users\\Quati\\.quatibot\\chart.png)",
         message: { threadId: "thread-1", messageId: "message-1" },
       }));
       expect(html).toContain('title="Save a copy"');
       expect(html).not.toContain('href=""');
       expect(html).not.toContain("Image unavailable");
-      expect(save.mock.calls[0]?.[0]).toBe("C:\\Users\\Maus\\.openmausbot\\report.md");
-      expect(preview.mock.calls[0]?.[0].filePath).toBe("C:\\Users\\Maus\\.openmausbot\\chart.png");
+      expect(save.mock.calls[0]?.[0]).toBe("C:\\Users\\Quati\\.quatibot\\report.md");
+      expect(preview.mock.calls[0]?.[0].filePath).toBe("C:\\Users\\Quati\\.quatibot\\chart.png");
     } finally {
       save.mockRestore();
       preview.mockRestore();
@@ -676,7 +676,7 @@ describe("ChatMarkdown attachments", () => {
 
   it("preserves dollar signs in Windows file destinations", () => {
     const save = vi.spyOn(AttachmentPreview, "useLocalFileSave");
-    const filePath = "C:\\Users\\Maus\\R$5\\receipt.pdf";
+    const filePath = "C:\\Users\\Quati\\R$5\\receipt.pdf";
     try {
       renderToStaticMarkup(createElement(ChatMarkdown, {
         text: `[Receipt](${filePath})`, message: { threadId: "thread-1", messageId: "message-1" },
@@ -724,7 +724,7 @@ describe("ChatMarkdown attachments", () => {
   });
 
   describe("a file link outside the conversation's workspace", () => {
-    const filePath = "C:\\Users\\Maus\\_draft\\ollama-gen.js";
+    const filePath = "C:\\Users\\Quati\\_draft\\ollama-gen.js";
     const render = (outsideWorkspace: boolean, href = filePath) => {
       const save = vi.spyOn(AttachmentPreview, "useLocalFileSave").mockReturnValue({
         state: "failed",
@@ -745,7 +745,7 @@ describe("ChatMarkdown attachments", () => {
     const revealInFolder = vi.fn(async () => "shown" as const);
 
     it("offers Show in folder in the local desktop app, without printing the path", () => {
-      vi.stubGlobal("window", { ogb: { revealInFolder, remoteClient: { active: false } } });
+      vi.stubGlobal("window", { quati: { revealInFolder, remoteClient: { active: false } } });
       try {
         const html = render(true);
         expect(html).toContain("This file is outside this chat&#x27;s working folder, so it can&#x27;t be saved from here");
@@ -758,11 +758,11 @@ describe("ChatMarkdown attachments", () => {
     });
 
     it("shows the full path as selectable text to a remote client instead", () => {
-      vi.stubGlobal("window", { ogb: { revealInFolder, remoteClient: { active: true } } });
+      vi.stubGlobal("window", { quati: { revealInFolder, remoteClient: { active: true } } });
       try {
         const html = render(true);
         expect(html).not.toContain("Show in folder");
-        expect(html).toMatch(/<code[^>]*select-all[^>]*>C:\\Users\\Maus\\_draft\\ollama-gen\.js<\/code>/);
+        expect(html).toMatch(/<code[^>]*select-all[^>]*>C:\\Users\\Quati\\_draft\\ollama-gen\.js<\/code>/);
       } finally {
         vi.unstubAllGlobals();
       }
@@ -770,7 +770,7 @@ describe("ChatMarkdown attachments", () => {
 
     it("does not offer a retry for a refusal that happens on every try", () => {
       expect(render(true)).not.toContain("lucide-rotate-ccw");
-      expect(render(true, "file:///Users/maus/Desktop/designs/Posts/2026-10-08_News")).not.toContain("lucide-rotate-ccw");
+      expect(render(true, "file:///Users/quati/Desktop/designs/Posts/2026-10-08_News")).not.toContain("lucide-rotate-ccw");
       expect(render(false)).toContain("lucide-rotate-ccw");
     });
 
@@ -779,7 +779,7 @@ describe("ChatMarkdown attachments", () => {
     });
 
     it("leaves other failures alone", () => {
-      vi.stubGlobal("window", { ogb: { revealInFolder, remoteClient: { active: false } } });
+      vi.stubGlobal("window", { quati: { revealInFolder, remoteClient: { active: false } } });
       try {
         const html = render(false);
         expect(html).toContain("the linked file is outside this conversation&#x27;s workspace");
@@ -1146,7 +1146,7 @@ describe("bidi: message content carries its own direction", () => {
     expect(labelled).toContain('dir="auto"');
 
     const path = renderToStaticMarkup(createElement(ChatMarkdown, {
-      text: `${ARABIC} [report](/Users/maus/out/report.md) ${ARABIC}`,
+      text: `${ARABIC} [report](/Users/quati/out/report.md) ${ARABIC}`,
       message: { threadId: "thread-1", messageId: "message-1" },
     }));
     expect(path).toContain('<span dir="ltr"');

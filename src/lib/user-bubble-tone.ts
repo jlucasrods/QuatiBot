@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { contrastRatio, fromOklch, mixSrgb, toOklch } from "./color-contrast";
-import { MAUS_COLORS, type MausColor } from "./mascot";
+import { MAUS_COLORS, type QuatiColor } from "./mascot";
 
 const WHITE = "#ffffff";
 const INK = "#101410";
@@ -186,7 +186,7 @@ function darkInkTone(palette: string): UserBubbleTone {
   };
 }
 
-export function userBubbleTone(color: MausColor): UserBubbleTone {
+export function userBubbleTone(color: QuatiColor): UserBubbleTone {
   const palette = MAUS_COLORS[color];
   const { h } = toOklch(palette);
   return h >= YELLOW_HUES.from && h <= YELLOW_HUES.to ? darkInkTone(palette) : whiteInkTone(palette);
@@ -204,7 +204,7 @@ export function quoteSurface(inset: string, background: string): string {
   return mixSrgb(inset, background, 0.7);
 }
 
-export function userBubbleStyle(color: MausColor): CSSProperties {
+export function userBubbleStyle(color: QuatiColor): CSSProperties {
   const tone = userBubbleTone(color);
   return {
     backgroundColor: tone.background,

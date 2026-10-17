@@ -2,12 +2,13 @@
 // packaged app ships no node_modules. Entry points keep their exact relative
 // paths under dist-server, where the server locates each proxy by path.
 import { build } from "esbuild";
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const server = join(root, "server");
+rmSync(join(root, "dist-server", "enterprise"), { recursive: true, force: true });
 
 // yaml's Node export is CommonJS with dynamic requires that cannot run once
 // inlined into ESM; its browser export is the same parser without them.
@@ -24,11 +25,11 @@ const yamlEsmPlugin = {
 const ENTRY_POINTS = [
   "index.ts",
   "message-search.worker.ts",
-  // the `openmausbot` command
-  "openmausbot.ts",
+  // the `quatibot` command
+  "quatibot.ts",
   "pair-cli.ts",
   "workspace-backup.worker.ts",
-  // the OMB Cloud Pro home image's entry point
+  // the QUATI Cloud Pro home image's entry point
   "cloud-home-start.ts",
   // the container image's entry point
   "server-launcher.ts",
@@ -36,7 +37,7 @@ const ENTRY_POINTS = [
   // because tsc may emit its own copy under dist-server/server/.
   "proxy-paths.ts",
   // the hook helper Claude Code runs at PostToolUse/PreCompact/SessionStart/Stop
-  "hooks/omb-hook.ts",
+  "hooks/quati-hook.ts",
   "container-mcp.ts",
   "permission-proxy.ts",
   "mcp-gate.ts",
@@ -74,7 +75,7 @@ await build({
   logLevel: "info",
 });
 
-// `openmausbot serve --tunnel` spawns the connector guardian as its own
+// `quatibot serve --tunnel` spawns the connector guardian as its own
 // process, so it must exist as a file beside the server.
 await build({
   entryPoints: [join(server, "platform", "managed-companion-guardian-main.mjs")],
@@ -99,24 +100,6 @@ await build({
   allowOverwrite: true,
   logLevel: "info",
 });
-
-// The enterprise layer (enterprise/LICENSE; delete the folder for pure OSS).
-// Shipped bundled to dist-server/enterprise/server/index.js, where the server
-// finds it; its own license travels with it.
-if (existsSync(join(root, "enterprise", "server", "index.ts"))) {
-  await build({
-    entryPoints: [join(root, "enterprise", "server", "index.ts")],
-    bundle: true,
-    platform: "node",
-    target: "node20",
-    format: "esm",
-    outfile: join(root, "dist-server", "enterprise", "server", "index.js"),
-    allowOverwrite: true,
-    logLevel: "info",
-  });
-  copyFileSync(join(root, "enterprise", "LICENSE"), join(root, "dist-server", "enterprise", "LICENSE"));
-}
-
 
 // The model catalog snapshot (server/model-catalog/catalog.ts) is read from
 // disk, not inlined: 1.5 MB of JSON has no place in index.js. The bundle looks

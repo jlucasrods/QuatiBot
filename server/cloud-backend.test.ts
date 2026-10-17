@@ -24,7 +24,7 @@ describe("cloud backend switching", () => {
   });
 
   it("allows Boat token rotation only when the replacement sees the same resources", () => {
-    const current = [{ boxId: "bx_23456789", name: "ogb-scope-bot-hash" }];
+    const current = [{ boxId: "bx_23456789", name: "quati-scope-bot-hash" }];
     expect(boatAccountResourceChangeError(current, [...current])).toBeNull();
     expect(boatAccountResourceChangeError(current, null)).toBe(BOAT_ACCOUNT_RESOURCES_ERROR);
     expect(boatAccountResourceChangeError(current, [{ ...current[0]!, boxId: "bx_3456789a" }]))

@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from "react";
 
-export const NOTIFICATION_SOUNDS_KEY = "omb-notification-sounds";
-export const NOTIFICATION_FEED_KEY = "omb-notification-feed";
-export const FINISHED_NOTIFICATIONS_KEY = "omb-finished-notifications";
+export const NOTIFICATION_SOUNDS_KEY = "quati-notification-sounds";
+export const NOTIFICATION_FEED_KEY = "quati-notification-feed";
+export const FINISHED_NOTIFICATIONS_KEY = "quati-finished-notifications";
 
 let sessionChoice: boolean | undefined;
 let feedSessionChoice: boolean | undefined;

@@ -26,12 +26,12 @@ export function pinnedCaddyPath(dataDir: string, platform: NodeJS.Platform = pro
   return join(dataDir, "caddy", `${CADDY_VERSION}-${caddyTarget(platform, arch)}`, platform === "win32" ? "caddy.exe" : "caddy");
 }
 
-/** OMB_CADDY_PATH, then the pinned download, then a `caddy` on PATH. */
+/** QUATI_CADDY_PATH, then the pinned download, then a `caddy` on PATH. */
 export function resolveCaddyBinary(options: { dataDir: string; env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform; arch?: string; exists?: (p: string) => boolean } ): string | null {
   const env = options.env ?? process.env;
   const exists = options.exists ?? existsSync;
   const platform = options.platform ?? process.platform;
-  const override = env.OMB_CADDY_PATH?.trim();
+  const override = env.QUATI_CADDY_PATH?.trim();
   if (override) return resolve(override) === override && exists(override) ? override : null;
   const pinned = pinnedCaddyPath(options.dataDir, platform, options.arch);
   if (exists(pinned)) return pinned;
@@ -79,7 +79,7 @@ export async function ensureCaddy(options: {
   }
   const digest = createHash("sha512").update(body).digest("hex");
   if (digest !== asset.sha512) throw new Error("the Caddy download failed its SHA-512 check; nothing was installed");
-  const scratch = mkdtempSync(join(tmpdir(), "openmaus-caddy-"));
+  const scratch = mkdtempSync(join(tmpdir(), "quati-caddy-"));
   try {
     const archive = join(scratch, asset.name);
     writeFileSync(archive, body, { mode: 0o600 });
@@ -98,7 +98,7 @@ export async function ensureCaddy(options: {
 /** Certificates and state live under the data dir, so they survive restarts and upgrades. */
 export function caddyfileFor(input: { domain: string; appPort: number; webhookPort: number }): string {
   return [
-    "# Written by openmausbot serve --domain. Edit the command, not this file.",
+    "# Written by quatibot serve --domain. Edit the command, not this file.",
     "{",
     "\tadmin off",
     "\tlog {",
@@ -198,7 +198,7 @@ export function normalizeDomainOption(raw: string): string | { error: string } {
   const value = raw.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
   const label = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
   if (!value || value.length > 253 || !value.includes(".") || /[\s/:@?#]/.test(value) || !value.split(".").every((part) => label.test(part))) {
-    return { error: "--domain takes a bare hostname such as maus.example.com" };
+    return { error: "--domain takes a bare hostname such as quati.example.com" };
   }
   if (/(?:^|\.)(?:localhost|local|internal|invalid)$/.test(value)) return { error: "--domain needs a public domain name that resolves to this machine" };
   return value;

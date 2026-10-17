@@ -11,7 +11,7 @@ import { NotNowButton } from "./NoticeCard";
 export const CLOUD_PRO_POPUP_SOURCE = "update_popup" satisfies CloudSource;
 
 export interface CloudProPopupView {
-  /** Everything stays in the app: buyers go to the Add a Cloud dialog, payers to Settings → MausBot Cloud. */
+  /** Everything stays in the app: buyers go to the Add a Cloud dialog, payers to Settings → Quati Cloud. */
   primary: { action: "upgrade" | "manage"; label: string; via: "checkout" | "settings" };
   /** Compare plans, for someone who can buy: the dialog lists every plan. A payer has nothing to compare there yet. */
   seePlans: boolean;

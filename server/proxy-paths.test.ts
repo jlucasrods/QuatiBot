@@ -20,7 +20,7 @@ describe("local computer proxy runtime path", () => {
   });
 
   it("resolves the bundled JavaScript sibling without a source tree", async () => {
-    const directory = realpathSync(mkdtempSync(join(tmpdir(), "omb-proxy-paths-")));
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), "quati-proxy-paths-")));
     try {
       await build({
         entryPoints: ["proxy-paths.ts", "container-mcp.ts"].map((entry) => join(SERVER_ROOT, entry)),

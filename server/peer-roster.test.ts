@@ -114,19 +114,19 @@ describe("owner-granted cross-team coordination", () => {
   });
 });
 
-describe("open teams (OMB_OPEN_TEAMS=1)", () => {
+describe("open teams (QUATI_OPEN_TEAMS=1)", () => {
   afterEach(() => { vi.unstubAllEnvs(); });
 
   it("keeps the team boundary unless the flag is exactly 1", () => {
     for (const value of [undefined, "", "0", "true"]) {
-      vi.stubEnv("OMB_OPEN_TEAMS", value);
+      vi.stubEnv("QUATI_OPEN_TEAMS", value);
       expect(canAccessTeam(self, "Personal")).toBe(false);
       expect(reachablePeers(fleet, self).map(bot => bot.id)).toEqual(["writer", "coder"]);
     }
   });
 
   it("lets any bot reach any team while peer lists, hidden bots and visibility still apply", () => {
-    vi.stubEnv("OMB_OPEN_TEAMS", "1");
+    vi.stubEnv("QUATI_OPEN_TEAMS", "1");
     expect(canAccessTeam(self, "Personal")).toBe(true);
     expect(canAccessTeam(fleet[4]!, undefined)).toBe(true);
     expect(canReachPeer(fleet[4]!, self)).toBe(true);
@@ -136,7 +136,7 @@ describe("open teams (OMB_OPEN_TEAMS=1)", () => {
   });
 
   it("grants no Chief authority over another team", () => {
-    vi.stubEnv("OMB_OPEN_TEAMS", "1");
+    vi.stubEnv("QUATI_OPEN_TEAMS", "1");
     expect(coordinatorSupervises({ chiefOfStaff: true, managedSections: ["Work"] }, { section: "Personal" })).toBe(false);
   });
 });

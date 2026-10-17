@@ -72,7 +72,7 @@ const scheduleSchema = z.discriminatedUnion("type", [
 export const botRoutineTemplateSchema = z.object({
   name: z.string().trim().min(1).max(80), prompt: z.string().trim().min(1).max(20_000),
   schedule: scheduleSchema, enabled: z.boolean().optional(),
-  runOn: z.enum(["maus", "cloud"]).optional(),
+  runOn: z.enum(["quati", "cloud"]).optional(),
   durationMinutes: z.number().int().min(5).max(240).optional(),
   timeoutMinutes: z.number().min(1).max(1440).nullable().optional(),
   overlap: z.enum(["skip", "queue"]).optional(),

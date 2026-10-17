@@ -64,7 +64,7 @@ vi.mock("./WorkspaceBackupSettings", () => ({ WorkspaceBackupSettings: marker("b
 vi.mock("./RoomTurnTimeoutSettings", () => ({ RoomTurnTimeoutSettings: () => null }));
 vi.mock("./CompanyBackupSettings", () => ({ CompanyBackupSettings: () => null }));
 
-const desktop = { ogb: { environments: {}, organization: {}, cloudAccount: {} } };
+const desktop = { quati: { environments: {}, organization: {}, cloudAccount: {} } };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -138,7 +138,7 @@ describe("Settings in Simple mode", () => {
     expect(html).toContain('aria-label="Enable the built-in browser"');
   });
 
-  it("stacks OMB Cloud and Organization on Account in the desktop app", () => {
+  it("stacks QUATI Cloud and Organization on Account in the desktop app", () => {
     fixture.section = "cloudAccount";
     const html = render();
     expect(currentPage(html)).toBe("account");
@@ -161,7 +161,7 @@ describe("Settings in Simple mode", () => {
   });
 
   it("keeps a paired remote client's reduced set: Appearance, and Computers with Remote access and Servers", () => {
-    vi.stubGlobal("window", { ogb: { ...desktop.ogb, remoteClient: { active: true } } });
+    vi.stubGlobal("window", { quati: { ...desktop.quati, remoteClient: { active: true } } });
     fixture.section = "desktopWorkspaces";
     const html = render();
     expect(pages(html)).toEqual(["appearance", "computers"]);

@@ -56,7 +56,7 @@ export function EngineSetup({ instance, className, unframed = false, description
     return (<div className={cn(!unframed && "rounded-xl border border-hairline/40 bg-control/30 p-3", className)}>
       <div className="text-sm font-semibold text-ink">OpenCode V2</div>
       <p className="mt-1 text-xs leading-relaxed text-ink-secondary">
-        {description ?? "Install OpenCode V2 and configure providers on the computer running OpenMausBot. Models and credentials are managed by OpenCode, not here."}
+        {description ?? "Install OpenCode V2 and configure providers on the computer running QuatiBot. Models and credentials are managed by OpenCode, not here."}
       </p>
       {instance.snapshot.reason && <p role="alert" className="mt-2 text-xs text-danger">{instance.snapshot.reason}</p>}
       <CommandRow command="opencode auth login" actionLabel={t("engineSetup.openSignIn")} allowTerminal={state.config?.cloudHome !== true}/>

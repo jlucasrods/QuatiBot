@@ -138,7 +138,7 @@ export function processAlive(pid: number): boolean {
   }
 }
 
-/** Browsers on OMB's profiles that no live server registered: left behind by a crash or a force-quit. */
+/** Browsers on QUATI's profiles that no live server registered: left behind by a crash or a force-quit. */
 export function strays({ processes, registered, root, alive = processAlive }: {
   processes: readonly ListedProcess[];
   registered: readonly RegisteredProcess[];

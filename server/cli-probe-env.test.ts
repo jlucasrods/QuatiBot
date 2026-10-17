@@ -11,11 +11,11 @@ import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
-// Every shared-list name plus one more under OMB_CLOUD_, so a credential added later is covered. Not the hosted model pair:
+// Every shared-list name plus one more under QUATI_CLOUD_, so a credential added later is covered. Not the hosted model pair:
 // a desktop holding either refuses to boot unless it is a complete portal-managed workspace.
-const HOSTED_ONLY = ["OMB_HOSTED_MODELS", "OMB_HOSTED_MODEL_TOKEN"];
+const HOSTED_ONLY = ["QUATI_HOSTED_MODELS", "QUATI_HOSTED_MODEL_TOKEN"];
 const secretNames = [...new Set<string>([
-  ...WORKSPACE_CREDENTIAL_ENV, ...PROVIDER_CREDENTIAL_ENV, ...CONTROL_PLANE_ENV, "OMB_CLOUD_FIXTURE_TOKEN",
+  ...WORKSPACE_CREDENTIAL_ENV, ...PROVIDER_CREDENTIAL_ENV, ...CONTROL_PLANE_ENV, "QUATI_CLOUD_FIXTURE_TOKEN",
 ])].filter((name) => !HOSTED_ONLY.includes(name));
 const secrets: Record<string, string> = Object.fromEntries(secretNames.map((name) => {
   const unique = randomBytes(12).toString("hex");
@@ -54,8 +54,8 @@ function expectNoCredentials(file: string) {
 }
 
 beforeAll(async () => {
-  home = mkdtempSync(join(tmpdir(), "omb-cli-probe-env-"));
-  const dataDir = join(home, ".openmausbot");
+  home = mkdtempSync(join(tmpdir(), "quati-cli-probe-env-"));
+  const dataDir = join(home, ".quatibot");
   mkdirSync(dataDir, { recursive: true });
   // Answers like a signed-in Claude Code; `probe` (the CLI test) and
   // `update` (the Claude update) record the environment they ran with.
@@ -82,7 +82,7 @@ else if (args.at(-1) === "--version") console.log("9.9.9 (Claude Code)");
       PATH: process.env.PATH,
       ...(process.env.PATHEXT ? { PATHEXT: process.env.PATHEXT } : {}),
       ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-      HOME: home, USERPROFILE: home, OMB_DATA_DIR: dataDir, OMB_PORT: String(port), OMB_WEBHOOK_PORT: String(port + 1),
+      HOME: home, USERPROFILE: home, QUATI_DATA_DIR: dataDir, QUATI_PORT: String(port), QUATI_WEBHOOK_PORT: String(port + 1),
       ...kept,
       ...secrets,
     },

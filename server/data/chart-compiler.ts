@@ -1,7 +1,7 @@
 // Every statement ends with `LIMIT CHART_SQL_LIMIT`: exactly that many rows means the reduction overflowed and
 // the caller answers output_too_large. Output columns are named for their Vega-Lite channel, never the source column.
 import { DATA_LIMITS } from "../../shared/data-surface.ts";
-import { DataFailure, type ChartCompiler, type CompiledChart, type DataColumn, type OmbChartSpec } from "./types.ts";
+import { DataFailure, type ChartCompiler, type CompiledChart, type DataColumn, type QuatiChartSpec } from "./types.ts";
 
 export const CHART_SQL_LIMIT = DATA_LIMITS.chartMaxMarks + 1;
 export const TOP_N_DEFAULT = 20;
@@ -23,10 +23,10 @@ export function columnClass(type: string): ColumnClass {
 
 export const quoteIdentifier = (name: string): string => `"${name.replaceAll('"', '""')}"`;
 
-const CHART_TYPES = new Set<OmbChartSpec["type"]>(["bar", "line", "area", "scatter", "histogram", "pie", "heatmap"]);
-const AGGS = new Set<NonNullable<OmbChartSpec["agg"]>>(["count", "sum", "avg", "min", "max", "median"]);
-const SORTS = new Set<NonNullable<OmbChartSpec["sort"]>>(["x", "-x", "y", "-y"]);
-const TIME_UNITS: Record<NonNullable<OmbChartSpec["timeUnit"]>, string> = {
+const CHART_TYPES = new Set<QuatiChartSpec["type"]>(["bar", "line", "area", "scatter", "histogram", "pie", "heatmap"]);
+const AGGS = new Set<NonNullable<QuatiChartSpec["agg"]>>(["count", "sum", "avg", "min", "max", "median"]);
+const SORTS = new Set<NonNullable<QuatiChartSpec["sort"]>>(["x", "-x", "y", "-y"]);
+const TIME_UNITS: Record<NonNullable<QuatiChartSpec["timeUnit"]>, string> = {
   hour: "INTERVAL 1 HOUR",
   day: "INTERVAL 1 DAY",
   week: "INTERVAL 1 WEEK",
@@ -92,7 +92,7 @@ interface Dimension {
   reduction: Reduction;
 }
 
-function categorical(x: Resolved, channel: string, spec: OmbChartSpec): Dimension {
+function categorical(x: Resolved, channel: string, spec: QuatiChartSpec): Dimension {
   const sort = spec.sort === "-x" ? "descending" : spec.sort === "y" || spec.sort === "-y" ? spec.sort : undefined;
   return {
     expr: `CAST(${x.id} AS VARCHAR)`,
@@ -137,7 +137,7 @@ function binned(x: Resolved, channel: string, bins: number, bars: boolean): Dime
       };
 }
 
-function timeBucketed(x: Resolved, channel: string, spec: OmbChartSpec, bars: boolean): Dimension {
+function timeBucketed(x: Resolved, channel: string, spec: QuatiChartSpec, bars: boolean): Dimension {
   const isDate = x.column.type.trim().toUpperCase() === "DATE";
   let unit: string;
   let cte: Cte | undefined;
@@ -178,7 +178,7 @@ ${whens}
   };
 }
 
-function dimension(x: Resolved, channel: string, spec: OmbChartSpec, bars: boolean): Dimension {
+function dimension(x: Resolved, channel: string, spec: QuatiChartSpec, bars: boolean): Dimension {
   if (x.cls === "numeric") return binned(x, channel, spec.bins ?? BINS_DEFAULT, bars);
   if (x.cls === "temporal") return timeBucketed(x, channel, spec, bars);
   return categorical(x, channel, spec);
@@ -190,7 +190,7 @@ interface Measure {
   type: VegaType;
 }
 
-function measure(spec: OmbChartSpec, y: Resolved | undefined): Measure {
+function measure(spec: QuatiChartSpec, y: Resolved | undefined): Measure {
   const agg = spec.agg ?? (y ? "sum" : "count");
   if (agg === "count") {
     return y
@@ -234,7 +234,7 @@ function vegaLiteSpec(mark: string, encoding: Encoding, tooltip: Encoding[]): Re
 
 const money = ",.4~g";
 
-function checkSpec(spec: OmbChartSpec): void {
+function checkSpec(spec: QuatiChartSpec): void {
   if (!spec || typeof spec !== "object") fail("chart must be an object");
   if (!CHART_TYPES.has(spec.type)) fail(`chart.type must be one of ${[...CHART_TYPES].join(", ")}`);
   if (spec.agg !== undefined && !AGGS.has(spec.agg)) fail(`chart.agg must be one of ${[...AGGS].join(", ")}`);
@@ -249,7 +249,7 @@ function checkSpec(spec: OmbChartSpec): void {
   if (spec.stack !== undefined && typeof spec.stack !== "boolean") fail("chart.stack must be true or false");
 }
 
-function planCartesian(spec: OmbChartSpec, x: Resolved, y: Resolved | undefined, color: Resolved | undefined): Plan {
+function planCartesian(spec: QuatiChartSpec, x: Resolved, y: Resolved | undefined, color: Resolved | undefined): Plan {
   const bars = spec.type === "bar" || spec.type === "histogram";
   const mark = bars ? "bar" : spec.type;
 
@@ -355,7 +355,7 @@ function planM4(x: Resolved, y: Resolved, color: Resolved | undefined, mark: str
   };
 }
 
-function planPie(spec: OmbChartSpec, x: Resolved, y: Resolved | undefined): Plan {
+function planPie(spec: QuatiChartSpec, x: Resolved, y: Resolved | undefined): Plan {
   const m = measure(spec, y);
   const n = spec.limit ?? TOP_N_DEFAULT;
   const xExpr = `CAST(${x.id} AS VARCHAR)`;
@@ -417,7 +417,7 @@ function planScatter(x: Resolved, y: Resolved | undefined, color: Resolved | und
   };
 }
 
-function planHeatmap(spec: OmbChartSpec, x: Resolved, y: Resolved | undefined, color: Resolved | undefined): Plan {
+function planHeatmap(spec: QuatiChartSpec, x: Resolved, y: Resolved | undefined, color: Resolved | undefined): Plan {
   if (!color) fail("heatmap needs color: the column for the second axis", { hint: "x and color are the two axes; y (or count) colours the cells" });
   const m = measure(spec, y);
   const unsorted = { ...spec, sort: undefined };

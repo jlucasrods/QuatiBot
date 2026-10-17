@@ -50,7 +50,7 @@ function runGit(directory: string, args: string[]): Promise<void> {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
   return new Promise((done, reject) => {
     execFile("git", [
-      "-c", "user.name=OpenMaus", "-c", "user.email=model-discovery@openmaus.invalid",
+      "-c", "user.name=Quati", "-c", "user.email=model-discovery@quati.invalid",
       "-c", "commit.gpgsign=false", "-c", `core.hooksPath=${join(directory, ".git", "no-hooks")}`, ...args,
     ], { cwd: directory, env: { ...env, GIT_TERMINAL_PROMPT: "0" }, timeout: 10_000, windowsHide: true }, (error) => {
       if (error) reject(error);
@@ -64,10 +64,10 @@ function discoveryDirectory(): Promise<string> {
   discoveryFolder ??= (async () => {
     const directory = join(DATA_DIR, "providers", "opencode", "discovery");
     mkdirSync(directory, { recursive: true });
-    const marker = join(directory, ".openmaus-project");
+    const marker = join(directory, ".quati-project");
     if (!existsSync(marker)) {
       await runGit(directory, ["init", "-q"]);
-      await runGit(directory, ["commit", "-q", "--allow-empty", "--no-verify", "-m", "OpenMaus model discovery"]);
+      await runGit(directory, ["commit", "-q", "--allow-empty", "--no-verify", "-m", "Quati model discovery"]);
       writeFileSync(marker, "OpenCode model discovery project.\n");
     }
     return directory;
@@ -138,11 +138,11 @@ export async function probeOpenCodeSession(
     void (async () => {
       const initialized = await request("initialize", {
         protocolVersion: 1,
-        clientInfo: { name: "openmausbot", version: "0.0.0" },
+        clientInfo: { name: "quatibot", version: "0.0.0" },
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
       });
       const version = (initialized as { agentInfo?: { version?: string } })?.agentInfo?.version;
-      if (!version || !/^v?2\./u.test(version)) throw new Error("OpenMausBot requires OpenCode V2.");
+      if (!version || !/^v?2\./u.test(version)) throw new Error("QuatiBot requires OpenCode V2.");
       return request("session/new", { cwd, mcpServers: [] });
     })().then((result) => finish(null, result), (error: Error) => finish(error));
   });
@@ -183,7 +183,7 @@ function withinFolder(path: string, folder: string): boolean {
 }
 
 /** Bot-written project files must not configure the engine for subsequent conversations. */
-export function openMausOwnsWorkingFolder(cwd: string): boolean {
+export function openQuatiOwnsWorkingFolder(cwd: string): boolean {
   return [join(DATA_DIR, "workspaces"), join(DATA_DIR, "task-workspaces")].some((root) => withinFolder(cwd, root) && resolve(cwd) !== resolve(root));
 }
 
@@ -240,7 +240,7 @@ const support = (loadCatalog: OpenCodeCatalogLoader): AcpSupport => ({
   spawnFingerprint: openCodeLoginsFingerprint,
   toolScopeSessionParams: (turn, _initialized, _hasMcp, { cwd }) => ({ additionalDirectories: openCodeOwnedDirectories(turn.botId, cwd) }),
   applyTurnEnv: async (env, { fullAuto, cwd, cli, openCodeMcp }) => {
-    if (openMausOwnsWorkingFolder(cwd)) env.OPENCODE_DISABLE_PROJECT_CONFIG = "1";
+    if (openQuatiOwnsWorkingFolder(cwd)) env.OPENCODE_DISABLE_PROJECT_CONFIG = "1";
     if (!fullAuto && !Object.keys(openCodeMcp ?? {}).length) return;
 
     const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT || "{}") as Record<string, unknown>;

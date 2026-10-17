@@ -9,7 +9,7 @@ vi.mock("react", async (original) => ({
   useState: () => [scene.phase, () => {}],
   useEffect: () => {},
 }));
-vi.mock("@/components/Avatar", () => ({ MausAvatar: () => null }));
+vi.mock("@/components/Avatar", () => ({ QuatiAvatar: () => null }));
 vi.mock("@/lib/onboarding", () => ({ reducedMotion: () => false }));
 import { Hands } from "./Hands";
 

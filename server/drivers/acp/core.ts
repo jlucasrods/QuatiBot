@@ -340,7 +340,7 @@ const ACP_PROMPT_RE_ANCHOR_TURNS = 8;
 // one model request (its SDK waits up to 600 s); a wedged OpenCode turn goes silent forever.
 export const DEFAULT_ACP_PROMPT_IDLE_MS = 15 * 60_000;
 const promptIdleTimeoutMs = (): number => {
-  const raw = process.env.OPENMAUS_ACP_PROMPT_IDLE_TIMEOUT_MS;
+  const raw = process.env.QUATI_ACP_PROMPT_IDLE_TIMEOUT_MS;
   if (raw === undefined) return DEFAULT_ACP_PROMPT_IDLE_MS;
   const ms = Number(raw);
   return Number.isFinite(ms) && ms > 0 ? ms : 0;
@@ -489,7 +489,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
   const SOURCE = support.nativeSource;
   const decodeConfig = decodeAcpConfig(support.defaultCli);
   const DENY_TIMEOUT_NOTE =
-    "OpenMausBot: nobody answered this permission request in time. Skip this action and finish what you can without it.";
+    "QuatiBot: nobody answered this permission request in time. Skip this action and finish what you can without it.";
   const QUESTION_NO_MATCH_NOTE =
     "That answer isn't one of the choices this engine can take, so the question was closed and the turn stopped. Ask again and pick one of the options.";
 
@@ -654,7 +654,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
       });
 
     // stdio is the baseline every ACP agent supports (mcpCapabilities.http/.sse only add transports).
-    // URL servers always go through OpenMausBot's remote proxy: agents' own MCP clients add fields
+    // URL servers always go through QuatiBot's remote proxy: agents' own MCP clients add fields
     // strict servers refuse (grok 1.0.25 sends capabilities.extensions; rmcp 3.2 adds
     // elicitation.form.schemaValidation).
       type AcpMcpServer = { name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> };
@@ -663,8 +663,8 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           env: Object.entries(server.env).map(([name, value]) => ({ name, value: String(value) })) }));
 
       const startQuietWatch = (threadId: string, session: AcpSession, current: AcpTurn) => {
-        const noticeAfterMs = envOr("OMB_ACP_QUIET_NOTICE_MS", 60_000);
-        const tickMs = envOr("OMB_ACP_QUIET_TICK_MS", 15_000);
+        const noticeAfterMs = envOr("QUATI_ACP_QUIET_NOTICE_MS", 60_000);
+        const tickMs = envOr("QUATI_ACP_QUIET_TICK_MS", 15_000);
         const logPath = support.statusLog && session.sessionId
           ? support.statusLog.path(session.env, session.sessionId)
           : null;
@@ -1489,7 +1489,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                   "initialize",
                   {
                     protocolVersion: 1,
-                    clientInfo: { name: "openmausbot", version: "0.0.0" },
+                    clientInfo: { name: "quatibot", version: "0.0.0" },
                     clientCapabilities: {
                       fs: {
                         readTextFile: support.clientFileSystem === true,
@@ -1759,7 +1759,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                 const last = quiet.lastState();
                 return `${DRIVER_KIND} sent nothing for ${formatQuietLimit(promptIdleMs)} with no tool running, so the turn was stopped as stuck` +
                   `${last ? ` (last seen: ${lastSeenPhrase(last)})` : ""}. ` +
-                  "Send the message again to retry. On a self-hosted server, OPENMAUS_ACP_PROMPT_IDLE_TIMEOUT_MS sets this limit (0 turns it off).";
+                  "Send the message again to retry. On a self-hosted server, QUATI_ACP_PROMPT_IDLE_TIMEOUT_MS sets this limit (0 turns it off).";
               },
               );
             if (pendingSplitReceipt) {
@@ -1888,7 +1888,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             if (err) {
               const failure = err as NodeJS.ErrnoException & { killed?: boolean };
               const reason = failure.code === "ENOENT"
-                ? `\`${config.cli}\` isn't installed, or isn't on this app's PATH. Install it for the user running OpenMausBot or use Set CLI, then check again.`
+                ? `\`${config.cli}\` isn't installed, or isn't on this app's PATH. Install it for the user running QuatiBot or use Set CLI, then check again.`
                 : failure.code === "EACCES" || failure.code === "EPERM"
                   ? `\`${config.cli}\` isn't executable. Check its file permissions, then check again.`
                   : failure.killed && failure.code == null
@@ -1918,7 +1918,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         if (support.requireAuthenticationBeforeSpawn && !(await support.isAuthenticated(env, turnConfig, instanceId))) {
           throw new Error(support.loginNote);
         }
-        const cwd = mkdtempSync(join(tmpdir(), "omb-acp-memory-"));
+        const cwd = mkdtempSync(join(tmpdir(), "quati-acp-memory-"));
         try {
           const turn = { threadId: `memory-text-${newId()}`, text: prompt, approvalMode: "ask", cwd } as SendTurnInput;
           await support.applyTurnEnv?.(env, { cli: config.cli, fullAuto: false, cwd, threadId: turn.threadId, mcpServers: [] });

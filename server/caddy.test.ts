@@ -13,7 +13,7 @@ const posix = process.platform !== "win32";
 describe("the managed Caddy", () => {
   let dir: string;
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "omb-caddy-"));
+    dir = mkdtempSync(join(tmpdir(), "quati-caddy-"));
   });
   afterEach(() => removeTempDir(dir));
 
@@ -26,8 +26,8 @@ describe("the managed Caddy", () => {
   });
 
   it("writes the Docker stack's Caddyfile with this server's ports and no admin API", () => {
-    const file = caddyfileFor({ domain: "maus.example.com", appPort: 18799, webhookPort: 18800 });
-    expect(file).toContain("maus.example.com {");
+    const file = caddyfileFor({ domain: "quati.example.com", appPort: 18799, webhookPort: 18800 });
+    expect(file).toContain("quati.example.com {");
     expect(file).toContain("reverse_proxy 127.0.0.1:18799");
     expect(file).toContain("handle /hooks/*");
     expect(file).toContain("reverse_proxy 127.0.0.1:18800");
@@ -35,20 +35,20 @@ describe("the managed Caddy", () => {
     expect(file).toContain("admin off");
   });
 
-  it("resolves OMB_CADDY_PATH, then the pinned download, then PATH", () => {
+  it("resolves QUATI_CADDY_PATH, then the pinned download, then PATH", () => {
     const pinned = pinnedCaddyPath(dir, "linux", "x64");
     const onPath = join(dir, "bin", "caddy");
     const exists = (p: string) => p === pinned || p === onPath || p === join(dir, "custom");
-    expect(resolveCaddyBinary({ dataDir: dir, env: { OMB_CADDY_PATH: join(dir, "custom") }, platform: "linux", arch: "x64", exists })).toBe(join(dir, "custom"));
-    expect(resolveCaddyBinary({ dataDir: dir, env: { OMB_CADDY_PATH: "relative/caddy" }, platform: "linux", arch: "x64", exists })).toBeNull();
+    expect(resolveCaddyBinary({ dataDir: dir, env: { QUATI_CADDY_PATH: join(dir, "custom") }, platform: "linux", arch: "x64", exists })).toBe(join(dir, "custom"));
+    expect(resolveCaddyBinary({ dataDir: dir, env: { QUATI_CADDY_PATH: "relative/caddy" }, platform: "linux", arch: "x64", exists })).toBeNull();
     expect(resolveCaddyBinary({ dataDir: dir, env: { PATH: join(dir, "bin") }, platform: "linux", arch: "x64", exists })).toBe(pinned);
     expect(resolveCaddyBinary({ dataDir: join(dir, "elsewhere"), env: { PATH: join(dir, "bin") }, platform: "linux", arch: "x64", exists })).toBe(onPath);
     expect(resolveCaddyBinary({ dataDir: join(dir, "elsewhere"), env: { PATH: "" }, platform: "linux", arch: "x64", exists })).toBeNull();
   });
 
   it("takes a bare public hostname for --domain", () => {
-    expect(normalizeDomainOption(" HTTPS://Maus.Example.com/ ")).toBe("maus.example.com");
-    expect(normalizeDomainOption("maus.example.com:443")).toEqual({ error: expect.stringContaining("bare hostname") });
+    expect(normalizeDomainOption(" HTTPS://Quati.Example.com/ ")).toBe("quati.example.com");
+    expect(normalizeDomainOption("quati.example.com:443")).toEqual({ error: expect.stringContaining("bare hostname") });
     expect(normalizeDomainOption("localhost")).toEqual({ error: expect.stringContaining("bare hostname") });
     expect(normalizeDomainOption("box.internal")).toEqual({ error: expect.stringContaining("public domain") });
     expect(normalizeDomainOption("nodots")).toEqual({ error: expect.stringContaining("bare hostname") });
@@ -84,7 +84,7 @@ describe("the managed Caddy", () => {
     const fake = join(dir, "fake-caddy");
     writeFileSync(fake, `#!/bin/sh\necho "$@" > "${join(dir, "args.txt")}"\nexec sleep 300\n`, { mode: 0o755 });
     chmodSync(fake, 0o755);
-    const running = await startCaddy({ binary: fake, dataDir: dir, domain: "maus.example.com", appPort: 18799, webhookPort: 18800, settleMs: 300 });
+    const running = await startCaddy({ binary: fake, dataDir: dir, domain: "quati.example.com", appPort: 18799, webhookPort: 18800, settleMs: 300 });
     try {
       // the stand-in writes its arguments from a shell that may start slowly under load
       await expect.poll(() => existsSync(join(dir, "args.txt")), { timeout: 5_000 }).toBe(true);
@@ -98,7 +98,7 @@ describe("the managed Caddy", () => {
 
     const refusing = join(dir, "refusing-caddy");
     writeFileSync(refusing, "#!/bin/sh\necho 'Error: loading initial config: listen tcp :443: bind: permission denied' >&2\nexit 1\n", { mode: 0o755 });
-    await expect(startCaddy({ binary: refusing, dataDir: join(dir, "d2"), domain: "maus.example.com", appPort: 1, webhookPort: 2, settleMs: 2000 })).rejects.toThrow(/ports 80 and 443/);
+    await expect(startCaddy({ binary: refusing, dataDir: join(dir, "d2"), domain: "quati.example.com", appPort: 1, webhookPort: 2, settleMs: 2000 })).rejects.toThrow(/ports 80 and 443/);
     expect(portPermissionRefused("listen tcp :443: bind: permission denied")).toBe(true);
     expect(portPermissionRefused("some other error")).toBe(false);
   });

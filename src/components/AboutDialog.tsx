@@ -32,7 +32,10 @@ export function AboutDialog({ open, onClose }: {
           {platform ? ` · ${platform}` : ""}
         </p>
         <p className="mt-3 text-[13px] leading-relaxed text-ink-secondary">
-          An open-source desktop home for your agents. Apache 2.0 licensed.
+          A Linux web home for your agents, powered by OpenCode V2. Apache 2.0 licensed.
+        </p>
+        <p className="mt-2 text-[12px] leading-relaxed text-ink-secondary">
+          Based on OpenMausBot by Milind Soni and contributors. An independent fork.
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-[13px]">
           <AboutLink href={APP_REPOSITORY} label="GitHub"/>

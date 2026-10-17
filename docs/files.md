@@ -1,9 +1,9 @@
 # Files: share folders with My Cloud, get your bots' work
 
-Files is a top-level page in the desktop app, for people with a MausBot Cloud ("My Cloud"). It does two jobs, and both go one way only:
+Files is a top-level page in the desktop app, for people with a Quati Cloud ("My Cloud"). It does two jobs, and both go one way only:
 
 - **Shared with My Cloud.** Folders the person picks are copied from this computer to My Cloud and kept up to date. Bots on My Cloud can read them, even while the computer is off.
-- **Your bots' work.** What Cloud bots make comes down to `Documents/MausBot/<bot>/<conversation>` on this computer.
+- **Your bots' work.** What Cloud bots make comes down to `Documents/Quati/<bot>/<conversation>` on this computer.
 
 It never merges two sides. The person's files on this computer are never changed by a bot, and nothing on this computer is deleted because of something that happened on My Cloud.
 
@@ -22,7 +22,7 @@ It never merges two sides. The person's files on this computer are never changed
 - **Folders that are never shared:**
   - the home folder or anything above it;
   - a drive root or a mount point;
-  - MausBot's own folders: its data folder and `Documents/MausBot`;
+  - Quati's own folders: its data folder and `Documents/Quati`;
   - folders of keys and settings: `.ssh`, `.aws`, `.gnupg`, `.config`, `Library`, `AppData` and similar;
   - a folder inside, or around, one already shared.
 - **This computer's version always wins.** A file new or changed here is uploaded. If a bot edits the copy anyway, the next pass puts this computer's version back, and the bot's version stays in My Cloud's trash. Files a bot adds to the copy stay on My Cloud and never come down.
@@ -38,7 +38,7 @@ It never merges two sides. The person's files on this computer are never changed
 
 `planOutputs`, `fetchOutputs`.
 
-- **What comes down:** each bot conversation folder (`task-workspaces/<bot>/<thread>`) that changed since the switch was turned on (`newestMs`). It lands in `Documents/MausBot/<bot name>/<conversation title>`, with names made safe for Windows and macOS.
+- **What comes down:** each bot conversation folder (`task-workspaces/<bot>/<thread>`) that changed since the switch was turned on (`newestMs`). It lands in `Documents/Quati/<bot name>/<conversation title>`, with names made safe for Windows and macOS.
 - **Never deleted here.** A file removed on My Cloud stays on this computer. A file the person removed here comes back only when My Cloud has a newer version.
 - **The person's edit is kept.** When the file here changed since it came down, My Cloud's newer version lands beside it, as "report (new from My Cloud, 15 Oct 2026).md". A file that was not edited is replaced, and the old copy goes to the Recycle Bin first.
 - **Never brought down:**

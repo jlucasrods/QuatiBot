@@ -2,11 +2,11 @@ import { existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { launchVerificationServer } from "../scripts/control-omb.ts";
+import { launchVerificationServer } from "../scripts/control-quati.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 
 it("Chief creation uses the workspace default or a validated explicit model without inheriting permissions", async () => {
-  const temp = mkdtempSync(join(tmpdir(), "omb-create-model-"));
+  const temp = mkdtempSync(join(tmpdir(), "quati-create-model-"));
   const gate = join(temp, "finish");
   const fixture = await launchVerificationServer({ FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: gate }, undefined, undefined, undefined, undefined, undefined, ["codex"]);
   const api = async (method: string, path: string, body?: unknown, expected = 200, token?: string) => {
@@ -31,7 +31,7 @@ it("Chief creation uses the workspace default or a validated explicit model with
     await api("POST", `/api/bots/${chief.id}/messages`, { text: "Prepare a specialist." }, 202);
     await expect.poll(() => existsSync(fixture.fixtureDumpPath), { timeout: 15_000 }).toBe(true);
     const dump = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
-    let token = dump.mcpConfig.mcpServers.agents.env.OMB_COMMS_TOKEN;
+    let token = dump.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
     const create = (name: string, modelSelection?: unknown, expected = 201) => api("POST", "/api/internal/create-bot", {
       fromBotId: chief.id, fromThreadId: chief.threadId, name,
       role: "Specialist", instructions: "Complete assigned work.",
@@ -87,7 +87,7 @@ it("Chief creation uses the workspace default or a validated explicit model with
     unlinkSync(fixture.fixtureDumpPath);
     await api("POST", `/api/bots/${chief.id}/messages`, { text: "Prepare the next specialist." }, 202);
     await expect.poll(() => existsSync(fixture.fixtureDumpPath), { timeout: 15_000 }).toBe(true);
-    token = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).mcpConfig.mcpServers.agents.env.OMB_COMMS_TOKEN;
+    token = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
     const updatedCard = await create("Updated default specialist");
     writeFileSync(gate, "finish");
     await idle();

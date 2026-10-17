@@ -4,7 +4,7 @@
 
 This is the legacy partial team-copy format. The sidebar no longer offers it;
 use **Settings → Backups** for a [full workspace backup](workspace-backups.md).
-Existing `.mausbackup.json` files remain importable through
+Existing `.quatibackup.json` files remain importable through
 Teams → Import → choose the file → review → **Import backup**.
 Import always adds independent copies; existing bots, Chiefs, rooms and chats
 are never archived, overwritten or merged. Repeated imports number copies.
@@ -26,7 +26,7 @@ remaining members; orphaned direct messages become ordinary rooms. Routines
 whose bot/room/coordinator was deleted are omitted. These cases produce
 explicit notes in the backup, download confirmation and import preview.
 
-Existing `.mausteam.json` and BotMRR Markdown templates remain importable;
+Existing `.quatiteam.json` and BotMRR Markdown templates remain importable;
 they contain setup only, not conversation history. Every template import adds
 a new section named after the team, with its new bots and any imported rooms
 inside. Existing sections are left alone; importing again numbers the new
@@ -69,17 +69,17 @@ download UI; verify those separately in a renderer connected to a fixture.
 ### Template sidebar UI
 
 ```sh
-OMB_UI_E2E=1 pnpm exec vitest run scripts/testing/team-template-ui.e2e.test.ts --silent=false
+QUATI_UI_E2E=1 pnpm exec vitest run scripts/testing/team-template-ui.e2e.test.ts --silent=false
 ```
 
-This owns a disposable `control-omb ui` app. It sends a fixture conversation,
+This owns a disposable `control-quati ui` app. It sends a fixture conversation,
 creates two existing sections, imports a catalog template, then imports the
 same template through the file input. It checks the preview copy, distinct
 new sections, and preservation of existing bots and their conversation.
 The catalog download is simulated; the renderer, import API and persistence
 are real. The file-input change handler is exercised, not the OS file picker.
 The output includes the fixture log path and a sidebar screenshot saved at
-`.omb-scratch/verify-evidence/template-import-sections.png`.
+`.quati-scratch/verify-evidence/template-import-sections.png`.
 
 ## Explicit skills in setup packages
 

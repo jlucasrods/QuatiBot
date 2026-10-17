@@ -3,10 +3,10 @@
 Approval levels belong to a bot and apply to its next provider turn, including
 when that provider resumes an existing native thread. Each level is one of the
 provider's own permission modes, passed through. A native tool request that
-reaches you is one the provider left for you. OpenMausBot only answers from an
+reaches you is one the provider left for you. QuatiBot only answers from an
 explicit grant: Full Access, a saved exact command or MCP read-shaped tool, or
 the narrow built-in web-search allowance under Approve for me. In Full Access,
-OMB also applies its own configuration tools without another approval.
+QUATI also applies its own configuration tools without another approval.
 
 Every bot and conversation starts at **Full access**, the default T3 Code uses
 too: each engine runs in its own most permissive mode, and a real question or
@@ -22,8 +22,8 @@ from the operator's dedicated policy.
 | **Ask for approval** | Requests approval for commands and file changes, the way the provider's supervised mode does. |
 | **Auto-accept edits** | Approves file edits automatically; other actions can still require approval. Offered where the provider has such a mode (Claude, Grok, Antigravity). |
 | **Approve for me** | Uses the provider's automatic review on Codex, Claude, Cursor, and Grok to approve routine actions and ask about others. Providers without an equivalent fall back to asking. |
-| **Full access** | Enables the provider's permissive mode for commands, edits, and selected-computer actions, including potentially destructive or sensitive work. Residual native permission prompts are answered for you. OMB profile changes, routine actions, team setup, bot deletion, and enabled skill authoring apply without a second approval. Peer-review prompts are skipped within the bot's authorized scope. Sends through connected apps (email, messages, posts, payments) go out without the "Send on your behalf?" card or a daily allowance; apps outside the bot's connected-app scope are still refused. Work handed on with `coordinate_bots` uses the receiving bot's setting, never the sender's — except from a Chief of Staff, whose level flows down (below). Actual questions and missing credentials still need your input. |
-| **Custom (`config.toml`)** | Codex only. OpenMausBot reads and reapplies the effective approval and sandbox settings from your Codex configuration. |
+| **Full access** | Enables the provider's permissive mode for commands, edits, and selected-computer actions, including potentially destructive or sensitive work. Residual native permission prompts are answered for you. QUATI profile changes, routine actions, team setup, bot deletion, and enabled skill authoring apply without a second approval. Peer-review prompts are skipped within the bot's authorized scope. Sends through connected apps (email, messages, posts, payments) go out without the "Send on your behalf?" card or a daily allowance; apps outside the bot's connected-app scope are still refused. Work handed on with `coordinate_bots` uses the receiving bot's setting, never the sender's — except from a Chief of Staff, whose level flows down (below). Actual questions and missing credentials still need your input. |
+| **Custom (`config.toml`)** | Codex only. QuatiBot reads and reapplies the effective approval and sandbox settings from your Codex configuration. |
 
 Full access applies the moment you pick it: no confirmation dialog, no second
 step. It can be turned on from any client that can reach the app's API: the
@@ -72,7 +72,7 @@ set a level on follows the default, and so does each of its threads without a
 level of its own. Bots and threads that saved Ask before Full access became
 the default keep it: choose Full access in the bot's settings, or **Set for
 all bots in this team…**, to move a bot and every one of its threads at once.
-Ask, Auto, and Custom retain their existing OMB configuration review cards.
+Ask, Auto, and Custom retain their existing QUATI configuration review cards.
 Full actions return an applied result and leave a settled receipt, so the bot
 continues in the same turn. Invalid input, unavailable services, or failed
 writes return errors, not a request to approve again. An expired native
@@ -134,7 +134,7 @@ conversations, including newly delegated work. Saved entries are visible and
 revocable in the bot's Access settings.
 
 The harness's own agents tools (coordinating teammates, threads, memory) never
-ask on Claude, Codex or API models: OpenMausBot authorizes each of those
+ask on Claude, Codex or API models: QuatiBot authorizes each of those
 routes itself.
 
 Auto-accept edits and Ask card whatever the provider asks about. Approve for
@@ -228,17 +228,17 @@ multi-question card renders its structured form on current apps instead.
 | Droid | Session mode `normal` (reads only) | not offered | Ask (no reviewer) | Session mode `auto-high`, plus automatic approval of remaining ACP permission requests |
 | Kimi, Hermes, custom ACP agents | The agent's own default | not offered | Ask (no reviewer) | Approve individual ACP permission requests, never task questions |
 | Pi | Pi's own tools run; computer control and custom MCP tools ask | not offered | Ask (no reviewer) | Custom MCP tools run without asking; computer-control confirms are approved |
-| API engines (OpenAI-compatible, Grok API, MiniMax, Mistral, Cerebras, Groq, Meta) | OMB's tool gate asks | not offered | Ask (no reviewer) | OMB's tool gate approves each call |
+| API engines (OpenAI-compatible, Grok API, MiniMax, Mistral, Cerebras, Groq, Meta) | QUATI's tool gate asks | not offered | Ask (no reviewer) | QUATI's tool gate approves each call |
 
 These settings apply on each turn, including resumed conversations. Switching
 to a different provider while on Custom requires leaving Custom first;
 choose Ask. Switching models within Antigravity keeps the selected level.
-Native modes require a CLI version that supports them; OpenMausBot does not
+Native modes require a CLI version that supports them; QuatiBot does not
 silently substitute unrestricted access when a mode is rejected.
 
 ### Read-only integration tools
 
-OpenMausBot's built-in agents MCP server describes its scoped reads with
+QuatiBot's built-in agents MCP server describes its scoped reads with
 explicit read-only, non-destructive, idempotent, closed-world metadata:
 `list_bots`, `list_rooms`, `list_threads`, `assignment_status`,
 `session_search`, `session_read`, `list_routines`, and `skills_list`.
@@ -254,7 +254,7 @@ The level set follows the provider-boundary approach in
 [T3 Code's permission modes](https://github.com/pingdotgg/t3code/blob/e16b8b059c9f5ff6dfed1addecffb831c6aee043/docs/user/permission-modes.md):
 Supervised, Auto-accept edits, Auto, and Full access, each a provider mode
 rather than an app rule, with a remembered approval that belongs to the
-provider's session. Its default is Full access, and so is OpenMausBot's
+provider's session. Its default is Full access, and so is QuatiBot's
 (`DEFAULT_APPROVAL_MODE` in `shared/approval-mode.ts`).
 
 ## Verification for contributors

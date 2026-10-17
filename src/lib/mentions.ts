@@ -1,9 +1,9 @@
 import { t } from "./i18n";
-import { MAUS_COLORS, type MausColor } from "./mascot";
+import { MAUS_COLORS, type QuatiColor } from "./mascot";
 import { isMentionBoundary, isMentionNameContinuation } from "../../shared/mention-boundary";
 import { personTagAt, personTagNames } from "../../shared/person-mention";
 
-export type MentionPeer = { name: string; hidden?: boolean; color?: MausColor };
+export type MentionPeer = { name: string; hidden?: boolean; color?: QuatiColor };
 export type MentionRange = { start: number; end: number; color?: string; you?: true };
 export type MentionPerson = { profileName?: string | null };
 

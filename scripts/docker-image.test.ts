@@ -105,7 +105,7 @@ describe("container images", () => {
     expect(home.filter(step => step.args.includes("--from=build")).map(step => step.args)).toEqual([
       "/src/dist-native/duckdb/linux-x64 ./duckdb", "/src/dist-server ./dist-server", "/src/dist ./dist",
     ].map(path => `--from=build ${path}`));
-    expect(chain("server").filter(step => step.args.includes("--from=build")).every(step => step.args.startsWith("--from=build --chown=maus:maus "))).toBe(true);
+    expect(chain("server").filter(step => step.args.includes("--from=build")).every(step => step.args.startsWith("--from=build --chown=quati:quati "))).toBe(true);
   });
 
   it("installs the pinned Grok in Cloud home only, beneath the engines and the app, from a home the same step removes", () => {
@@ -132,7 +132,7 @@ describe("container images", () => {
     const cache = new RegExp(/cache = re\.compile\(r"(.*)"\)/.exec(scan)![1]);
     const removed = shipped().flatMap(step => [...step.args.matchAll(/\brm -rf ([^;&|]+)/g)].flatMap(match => match[1].trim().split(/\s+/)));
     const throwaway = [...new Set(removed.filter(path => path.startsWith("/tmp/")))].sort();
-    expect(throwaway).toEqual(["/tmp/grok-install", "/tmp/node-compile-cache", "/tmp/npm-cache", "/tmp/omb-build-home"]);
+    expect(throwaway).toEqual(["/tmp/grok-install", "/tmp/node-compile-cache", "/tmp/npm-cache", "/tmp/quati-build-home"]);
     for (const path of throwaway) expect(cache.test(`${path.slice(1)}/leftover`), path).toBe(true);
     expect(scan).toContain('grok = files["usr/local/bin/grok"]');
   });
@@ -140,7 +140,7 @@ describe("container images", () => {
   it("keeps each image's runtime contract", () => {
     const last = (steps: Step[], op: string) => steps.filter(step => step.op === op).at(-1)?.args;
     const server = chain("server");
-    expect(last(server, "USER")).toBe("maus");
+    expect(last(server, "USER")).toBe("quati");
     expect(last(server, "VOLUME")).toBe('["/data"]');
     expect(last(server, "CMD")).toBe('["node", "dist-server/server-launcher.js"]');
     expect(last(server, "HEALTHCHECK")).toContain("http://127.0.0.1:8799/api/health");
@@ -150,7 +150,7 @@ describe("container images", () => {
     expect(last(home, "EXPOSE")).toBe("8080");
     expect(last(home, "CMD")).toBe('["node", "/app/dist-server/cloud-home-start.js"]');
     expect(last(home, "HEALTHCHECK")).toContain("http://127.0.0.1:8080/api/health");
-    expect(last(chain("runtime"), "ENV")).toMatch(/^AGENT_BROWSER_EXECUTABLE_PATH=\/opt\/openmausbot-browser\/chrome .*NODE_ENV=production$/);
+    expect(last(chain("runtime"), "ENV")).toMatch(/^AGENT_BROWSER_EXECUTABLE_PATH=\/opt\/quatibot-browser\/chrome .*NODE_ENV=production$/);
   });
 
   it("never runs a build step with HOME on the volume, so nothing lands in what a fresh volume starts with", () => {
@@ -170,7 +170,7 @@ describe("container images", () => {
     expect(end).toBeGreaterThan(start);
     const prune = args.slice(start, end);
     const run = (target: string, elf = true) => {
-      const root = mkdtempSync(join(tmpdir(), "omb-agent-browser-"));
+      const root = mkdtempSync(join(tmpdir(), "quati-agent-browser-"));
       temporaryDirectories.push(root);
       const bin = join(root, "lib/node_modules/agent-browser/bin");
       mkdirSync(bin, { recursive: true });
@@ -193,7 +193,7 @@ describe("container images", () => {
 
   it("builds Cloud home from the same Dockerfile in CI, with its own layer cache", () => {
     const smoke = workflow.jobs["build-and-smoke"].steps.map((step: { run?: string }) => step.run ?? "").join("\n");
-    expect(smoke).toContain("docker build --target cloud-home --build-arg CLOUD_HOME_ENGINES= -t omb-cloud-home:ci .");
+    expect(smoke).toContain("docker build --target cloud-home --build-arg CLOUD_HOME_ENGINES= -t quati-cloud-home:ci .");
     const steps = workflow.jobs.publish.steps as { id?: string; uses?: string; with?: Record<string, string> }[];
     const server = steps.find(step => step.uses?.startsWith("docker/build-push-action@") && step.id !== "home")!;
     const home = steps.find(step => step.id === "home")!;
@@ -225,7 +225,7 @@ describe("container images", () => {
   it.skipIf(!jq)("resolves the current Chrome and engine releases, and keys on the date when a lookup fails", () => {
     const keys = (workflow.jobs.publish.steps as { id?: string; run?: string; env?: Record<string, string> }[]).find(step => step.id === "keys")!;
     const resolve = (ok: boolean) => {
-      const root = mkdtempSync(join(tmpdir(), "omb-docker-keys-"));
+      const root = mkdtempSync(join(tmpdir(), "quati-docker-keys-"));
       temporaryDirectories.push(root);
       const fake = (name: string, body: string) => writeFileSync(join(root, name), `#!/bin/sh\n${ok ? body : "exit 1"}\n`, { mode: 0o755 });
       fake("curl", `echo '{"channels":{"Stable":{"version":"154.0.8037.92","downloads":{}}}}'`);
@@ -248,10 +248,10 @@ describe("container images", () => {
   });
 
   // An init collects browser processes whose parents exit, and Chrome gets the
-  // shared memory OpenMausBot's desktop containers give it.
+  // shared memory QuatiBot's desktop containers give it.
   it("runs every compose service of the server image with an init and Chrome's shared memory", () => {
     for (const file of ["../compose.yaml", "../deploy/docker-compose.yml", "../deploy/podman/compose.yaml"]) {
-      const service = parse(readFileSync(new URL(file, import.meta.url), "utf8")).services.omb;
+      const service = parse(readFileSync(new URL(file, import.meta.url), "utf8")).services.quati;
       expect(service.init, file).toBe(true);
       expect(service.shm_size, file).toBe("512m");
     }

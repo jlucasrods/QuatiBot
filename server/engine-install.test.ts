@@ -57,7 +57,7 @@ function useFakeNpm() {
   const ctx = { scratch: "", binDir: "", base: "" };
   let originalPath: string | undefined;
   beforeEach(() => {
-    ctx.scratch = mkdtempSync(join(tmpdir(), "omb-engine-install-"));
+    ctx.scratch = mkdtempSync(join(tmpdir(), "quati-engine-install-"));
     ctx.binDir = join(ctx.scratch, "fake-path");
     ctx.base = join(ctx.scratch, "data");
     mkdirSync(ctx.binDir);

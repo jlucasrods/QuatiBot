@@ -18,7 +18,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const PAGE: FakeDocument = { title: "Page", text: "hello", elements: [{ role: "textbox", name: "Name", selector: "#name", editable: true, box: [10, 10, 200, 30] }] };
 
 async function setup() {
-  const dataDir = mkdtempSync(join(tmpdir(), "omb-viewers-"));
+  const dataDir = mkdtempSync(join(tmpdir(), "quati-viewers-"));
   folders.push(dataDir);
   const backend = new FakeBackend(() => new FakeChrome({ documents: () => PAGE }));
   const service = new BrowserService({ dataDir, backend: () => backend, maxRunning: 4, idleMs: () => 600_000, takeoverMs: 200 });

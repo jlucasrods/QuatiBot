@@ -3,7 +3,7 @@ import { jevRequestBody } from "./jev.ts";
 import { ROOM_ROUTING_INSTRUCTIONS, ROOM_ROUTING_STATE_KEYS } from "./room-routing.ts";
 import type { DeciderQuestion, DeciderSeam } from "./types.ts";
 
-export const KEY_CHECK_STATE = { purpose: "OpenMausBot is checking that a decision-model key works." };
+export const KEY_CHECK_STATE = { purpose: "QuatiBot is checking that a decision-model key works." };
 export const KEY_CHECK_QUESTION = "Is this a connection check?";
 
 /** Measured in UTF-8 bytes. */

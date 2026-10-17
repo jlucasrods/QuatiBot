@@ -24,10 +24,10 @@ export const SKINS: readonly Skin[] = [
     { id: "linen", name: "Linen", tagline: "Clean daylight with a restrained navy accent." },
     { id: "dusk", name: "Dusk", tagline: "Muted plum after dark, calm and low-key." },
     { id: "daylight", name: "Daylight", tagline: "Midnight in reverse. Near-white, ink-black bubbles." },
-    { id: "meadow", name: "Meadow", tagline: "Fresh white with a calm green. The MausBot look." },
+    { id: "meadow", name: "Meadow", tagline: "Fresh white with a calm green. The Quati look." },
 ];
 export const DEFAULT_SKIN: SkinId = "midnight";
-const KEY = "omb-skin";
+const KEY = "quati-skin";
 function isSkinId(value: unknown): value is SkinId {
     return SKIN_IDS.includes(value as SkinId);
 }

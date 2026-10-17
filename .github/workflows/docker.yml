@@ -36,58 +36,37 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build image
-        run: docker build -t openmausbot:ci .
+        run: docker build -t quatibot:ci .
       - name: Boot the container and prove the server + UI answer
         run: |
           set -euo pipefail
-          docker run -d --name omb openmausbot:ci
+          docker run -d --name quati quatibot:ci
           for i in $(seq 1 40); do
-            if docker exec omb curl -sf http://127.0.0.1:8799/api/health | grep -q openmausbot; then break; fi
+            if docker exec quati curl -sf http://127.0.0.1:8799/api/health | grep -q quatibot; then break; fi
             sleep 2
-            if [ "$i" = "40" ]; then docker logs omb; echo "server never became healthy"; exit 1; fi
+            if [ "$i" = "40" ]; then docker logs quati; echo "server never became healthy"; exit 1; fi
           done
-          # the renderer is served by the server itself (OMB_STATIC_DIR)
-          docker exec omb curl -sf http://127.0.0.1:8799/ | grep -qi "<html" || { docker logs omb; echo "UI not served"; exit 1; }
-          docker logs omb | tail -5
-      - name: Prove the image finds its enterprise layer
-        # The image ships dist-server/ alone, so the bundled layer sits inside
-        # the server root (server/enterprise.ts looks there after the sibling
-        # folder). A key that is not genuine proves the layer loaded and
-        # checked it; a missing layer would report "no enterprise layer exists"
-        # and a licensed self-hoster would silently run the open-source edition.
-        run: |
-          set -euo pipefail
-          docker run -d --name omb-ent -e OMB_LICENSE_KEY=omb1.not.real openmausbot:ci
-          for i in $(seq 1 40); do
-            if docker exec omb-ent curl -sf http://127.0.0.1:8799/api/health | grep -q openmausbot; then break; fi
-            sleep 2
-            if [ "$i" = "40" ]; then docker logs omb-ent; echo "server never became healthy"; exit 1; fi
-          done
-          edition=$(docker exec omb-ent curl -sf http://127.0.0.1:8799/api/edition)
-          echo "$edition"
-          if grep -q 'no enterprise layer exists' <<<"$edition"; then echo "the image cannot find its enterprise layer"; exit 1; fi
-          grep -q '"edition":"oss"' <<<"$edition"
-          grep -q 'enterprise layer disabled: OMB_LICENSE_KEY signature does not match' <<<"$edition"
-          docker exec omb-ent test -f /app/dist-server/enterprise/LICENSE
-          docker rm -f omb-ent >/dev/null
+          # the renderer is served by the server itself (QUATI_STATIC_DIR)
+          docker exec quati curl -sf http://127.0.0.1:8799/ | grep -qi "<html" || { docker logs quati; echo "UI not served"; exit 1; }
+          docker logs quati | tail -5
       - name: Prove the non-root user can browse with the baked-in Chrome
         run: |
           set -euo pipefail
-          test "$(docker exec omb id -un)" = maus
-          timeout 45 docker exec omb agent-browser --session ci-browser open 'data:text/html,<title>OMB browser smoke</title><h1>Browser ready</h1>'
-          timeout 15 docker exec omb agent-browser --session ci-browser get title | grep -Fx 'OMB browser smoke'
+          test "$(docker exec quati id -un)" = quati
+          timeout 45 docker exec quati agent-browser --session ci-browser open 'data:text/html,<title>QUATI browser smoke</title><h1>Browser ready</h1>'
+          timeout 15 docker exec quati agent-browser --session ci-browser get title | grep -Fx 'QUATI browser smoke'
           # Chrome for Testing's page is 1280x577 until sized; the harness sizes
           # it to 1280x720 so pictures, boxes and clicks agree.
-          timeout 15 docker exec omb agent-browser --session ci-browser set viewport 1280 720
-          test "$(timeout 15 docker exec omb agent-browser --session ci-browser eval "innerWidth+'x'+innerHeight")" = '"1280x720"'
+          timeout 15 docker exec quati agent-browser --session ci-browser set viewport 1280 720
+          test "$(timeout 15 docker exec quati agent-browser --session ci-browser eval "innerWidth+'x'+innerHeight")" = '"1280x720"'
           # The harness reads and pictures a bot's browser over the engine's
           # loopback relay (server/browser-relay.ts); the daemon writes the file.
-          port=$(timeout 15 docker exec omb agent-browser --session ci-browser stream status --json | jq -r .data.port)
-          answer=$(docker exec omb curl -sf -X POST -H 'content-type: application/json' -H "origin: http://127.0.0.1:$port" \
+          port=$(timeout 15 docker exec quati agent-browser --session ci-browser stream status --json | jq -r .data.port)
+          answer=$(docker exec quati curl -sf -X POST -H 'content-type: application/json' -H "origin: http://127.0.0.1:$port" \
             --data '{"action":"screenshot","path":"/tmp/relay.jpg","format":"jpeg","quality":70}' "http://127.0.0.1:$port/api/command")
           grep -q '"success":true' <<<"$answer"
-          docker exec omb test -s /tmp/relay.jpg
-          timeout 15 docker exec omb agent-browser --session ci-browser close
+          docker exec quati test -s /tmp/relay.jpg
+          timeout 15 docker exec quati agent-browser --session ci-browser close
       - name: Prove the server never binds a public interface
         # The loopback-trust model is the auth model, so the image must keep
         # the server unreachable from the container's own network. Probe from a
@@ -96,13 +75,13 @@ jobs:
         run: |
           set -euo pipefail
           probe() { docker run --rm --network bridge curlimages/curl:8.14.1 -s --max-time 3 "http://$1:$2/" >/dev/null; }
-          docker run -d --name leaky --entrypoint node openmausbot:ci -e "require('http').createServer((q,s)=>s.end('leak')).listen(8799,'0.0.0.0')"
+          docker run -d --name leaky --entrypoint node quatibot:ci -e "require('http').createServer((q,s)=>s.end('leak')).listen(8799,'0.0.0.0')"
           sleep 2
           leaky_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' leaky)
           test -n "$leaky_ip"
           probe "$leaky_ip" 8799 || { echo "probe cannot see a 0.0.0.0 listener; the check would be vacuous"; exit 1; }
           docker rm -f leaky >/dev/null
-          ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' omb)
+          ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' quati)
           test -n "$ip"
           if probe "$ip" 8799 || probe "$ip" 8800; then
             echo "server answered on $ip — it must only bind 127.0.0.1"; exit 1
@@ -116,35 +95,35 @@ jobs:
         # unbuffered, and that hooks stay reachable without a session.
         run: |
           set -euo pipefail
-          docker rm -f omb >/dev/null
-          docker tag openmausbot:ci ghcr.io/milind-soni/openmausbot:latest
+          docker rm -f quati >/dev/null
+          docker tag quatibot:ci ghcr.io/jlucasrods/quatibot:latest
           printf 'DOMAIN=localhost\nENGINES=\n' > deploy/.env
           docker compose -f deploy/docker-compose.yml up -d --no-build
           for i in $(seq 1 45); do
-            curl -sk -o /dev/null --max-time 2 https://localhost/.well-known/openmausbot/environment && break
+            curl -sk -o /dev/null --max-time 2 https://localhost/.well-known/quatibot/environment && break
             sleep 2
             if [ "$i" = "45" ]; then docker compose -f deploy/docker-compose.yml logs; echo "caddy never answered"; exit 1; fi
           done
           code() { curl -sk -o /dev/null -w '%{http_code}' --max-time 5 "$@"; }
           body() { curl -sk --max-time 10 "$@"; }
           H=https://localhost
-          grep -q '"environmentId"' <<<"$(body $H/.well-known/openmausbot/environment)"   # descriptor is public
-          grep -q '^{"app":"openmausbot"}$' <<<"$(body $H/api/health)"             # the probe is public, and says only the app name
+          grep -q '"environmentId"' <<<"$(body $H/.well-known/quatibot/environment)"   # descriptor is public
+          grep -q '^{"app":"quatibot"}$' <<<"$(body $H/api/health)"             # the probe is public, and says only the app name
           test "$(code $H/api/bots)" = 403                                        # nothing else before pairing
           grep -q 'pair this device' <<<"$(body $H/api/bots)"
           grep -qi '<html' <<<"$(body $H/pair)"                                    # the UI shell is served so /pair can load
           test "$(code http://localhost/)" = 308                                   # HTTP redirects to HTTPS
-          pairing=$(docker compose -f deploy/docker-compose.yml exec -T omb node dist-server/pair-cli.js --label ci)
+          pairing=$(docker compose -f deploy/docker-compose.yml exec -T quati node dist-server/pair-cli.js --label ci)
           echo "$pairing"
           pcode=$(grep -o 'code=[A-Z2-9-]*' <<<"$pairing" | head -1 | cut -d= -f2)
           test -n "$pcode"
           jar=$(mktemp)
           paired=$(curl -sk --max-time 10 -c "$jar" -D - -X POST $H/api/auth/pair -H 'content-type: application/json' -d "{\"code\":\"$pcode\",\"cookie\":true}")
-          grep -qi 'set-cookie: omb_session_' <<<"$paired"                        # cookie session
+          grep -qi 'set-cookie: quati_session_' <<<"$paired"                        # cookie session
           grep -qi 'Secure' <<<"$paired"                                          # over TLS the cookie is Secure
           grep -qi 'HttpOnly' <<<"$paired"
           test "$(code -b "$jar" $H/api/health)" = 200                              # paired: the API answers
-          grep -q openmausbot <<<"$(body -b "$jar" $H/api/health)"
+          grep -q quatibot <<<"$(body -b "$jar" $H/api/health)"
           test "$(code -b "$jar" -H 'Origin: https://evil.example' -X POST -d '{}' $H/api/bots)" = 403   # cookie is same-origin only
           test "$(code -b "$jar" -H 'Origin: https://localhost' $H/api/auth/session)" = 200
           grep -q '"via":"cookie"' <<<"$(body -b "$jar" $H/api/auth/session)"
@@ -154,40 +133,40 @@ jobs:
           # the proof is that bytes arrived within the window (a buffering proxy sends none).
           sse=$( (curl -sk -b "$jar" -N --max-time 4 $H/api/events || true) | head -c 64 )
           test -n "$sse"                                                           # SSE streams, not buffered
-          grep -q '"baseUrl":"https://localhost"' <<<"$(body -b "$jar" $H/api/webhooks)"   # OMB_WEBHOOK_PUBLIC_URL is advertised
+          grep -q '"baseUrl":"https://localhost"' <<<"$(body -b "$jar" $H/api/webhooks)"   # QUATI_WEBHOOK_PUBLIC_URL is advertised
           test "$(code $H/api/bots)" = 403                                        # and without the cookie it is still closed
           docker compose -f deploy/docker-compose.yml down -v
       - name: Cloud Pro home image (--target cloud-home) boots, stays private and pairs on a signed request
         # The Fly home machine, built from the same runtime as the image above, with the environment
-        # openmaus-cloud's provisioner writes (docs/cloud-pro.md): Caddy on
+        # quati-cloud's provisioner writes (docs/cloud-pro.md): Caddy on
         # :8080 is the only listener, a forwarded request is never the
         # loopback owner, a bad boot contract never serves, the launcher stays
         # root (and runs only root's code) while the server and the edge run as
-        # maus with no secret in their environment, and only an HMAC-signed,
+        # quati with no secret in their environment, and only an HMAC-signed,
         # fresh, unreplayed request opens a
         # single-use pairing window, also after a restart. Cloud Pro includes
         # no AI: the machine boots without any model gateway, serves no
         # included models, and tells the paired app to open its engine sign-in.
         run: |
           set -euo pipefail
-          docker build --target cloud-home --build-arg CLOUD_HOME_ENGINES= -t omb-cloud-home:ci .
+          docker build --target cloud-home --build-arg CLOUD_HOME_ENGINES= -t quati-cloud-home:ci .
           rand43() { openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'; }
           b64url() { base64 | tr '+/' '-_' | tr -d '=\n'; }
           secret=$(rand43)
           test "${#secret}" = 43
-          host=omb-t-0123456789ab.fly.dev
+          host=quati-t-0123456789ab.fly.dev
           relay=$(rand43)
-          contract=(-e OMB_CLOUD_ROLE=home -e OMB_CLOUD_MACHINE_ID=3f9c2a4e-8b1d-4c6e-9a7f-2d5e8c1b0a93 -e OMB_CLOUD_ADMIN_URL=https://cloud.example.test
-            -e "OMB_PUBLIC_URL=https://$host" -e "OMB_CLOUD_BOOTSTRAP_SECRET=$secret" -e "OMB_CLOUD_BOAT_TOKEN=box_omb_$relay")
+          contract=(-e QUATI_CLOUD_ROLE=home -e QUATI_CLOUD_MACHINE_ID=3f9c2a4e-8b1d-4c6e-9a7f-2d5e8c1b0a93 -e QUATI_CLOUD_ADMIN_URL=https://cloud.example.test
+            -e "QUATI_PUBLIC_URL=https://$host" -e "QUATI_CLOUD_BOOTSTRAP_SECRET=$secret" -e "QUATI_CLOUD_BOAT_TOKEN=box_omb_$relay")
           # An incomplete contract exits instead of serving.
-          if timeout 60 docker run --name home-bad -e OMB_CLOUD_ROLE=home omb-cloud-home:ci; then echo "an incomplete contract served"; exit 1; fi
+          if timeout 60 docker run --name home-bad -e QUATI_CLOUD_ROLE=home quati-cloud-home:ci; then echo "an incomplete contract served"; exit 1; fi
           grep -q "Cloud home configuration is invalid" <<<"$(docker logs home-bad 2>&1)"
           docker rm -f home-bad >/dev/null
-          docker run -d --name home -p 127.0.0.1:18080:8080 -v omb-home-ci:/data "${contract[@]}" omb-cloud-home:ci
+          docker run -d --name home -p 127.0.0.1:18080:8080 -v quati-home-ci:/data "${contract[@]}" quati-cloud-home:ci
           E=http://127.0.0.1:18080
           healthy() {
             for i in $(seq 1 45); do
-              curl -sf --max-time 2 "$E/api/health" | grep -q openmausbot && return 0
+              curl -sf --max-time 2 "$E/api/health" | grep -q quatibot && return 0
               sleep 2
             done
             docker logs home; echo "the cloud home never became healthy"; return 1
@@ -195,42 +174,42 @@ jobs:
           healthy
           logs=$(docker logs home 2>&1)
           grep -qF "bots run on the engines the person signs in to here" <<<"$logs"
-          if grep -qF "ignoring OMB_HOSTED" <<<"$logs"; then echo "a model gateway reached the boot contract"; exit 1; fi
+          if grep -qF "ignoring QUATI_HOSTED" <<<"$logs"; then echo "a model gateway reached the boot contract"; exit 1; fi
           if grep -qF "$secret" <<<"$logs"; then echo "the bootstrap secret reached the log"; exit 1; fi
-          # The launcher stays root; the server and the edge run as maus. Chosen
+          # The launcher stays root; the server and the edge run as quati. Chosen
           # by command line (a node process's comm is not always "node"), from
           # outside the container so no probe matches itself.
-          maus=$(docker exec home id -u maus)
+          quati=$(docker exec home id -u quati)
           procs=$(docker top home -eo pid,uid,args)   # docker top needs the pid column
           echo "$procs"
           uids() { awk -v pat="$1" 'NR > 1 && index($0, pat) { print $2 }' <<<"$procs" | sort -u | tr '\n' ' '; }
           test "$(uids dist-server/cloud-home-start.js)" = "0 "
-          test "$(uids dist-server/index.js)" = "$maus "
-          test "$(uids 'caddy run')" = "$maus "
-          # No secret in the server's starting environment, read as any maus process (an
+          test "$(uids dist-server/index.js)" = "$quati "
+          test "$(uids 'caddy run')" = "$quati "
+          # No secret in the server's starting environment, read as any quati process (an
           # engine's shell) can read it: root in the container lacks CAP_SYS_PTRACE for that.
           spid=$(docker exec home sh -c 'for p in /proc/[0-9]*; do case "$(tr "\0" " " < "$p/cmdline" 2>/dev/null)" in *"dist-server/in""dex.js"*) echo "${p#/proc/}";; esac; done')
           test -n "$spid"
-          docker exec -u maus home grep -qaF OMB_CLOUD_ROLE=home "/proc/$spid/environ"         # the probe reads it
+          docker exec -u quati home grep -qaF QUATI_CLOUD_ROLE=home "/proc/$spid/environ"         # the probe reads it
           for value in "$secret" "box_omb_$relay"; do
-            if docker exec -u maus home grep -qaF -- "$value" "/proc/$spid/environ"; then echo "a secret is in the server's environment"; exit 1; fi
+            if docker exec -u quati home grep -qaF -- "$value" "/proc/$spid/environ"; then echo "a secret is in the server's environment"; exit 1; fi
           done
-          # The root launcher runs only code maus cannot change; maus owns only the volume.
-          docker exec -u maus home sh -c 'for f in /app /app/dist-server /app/dist-server/index.js /app/dist-server/cloud-home-start.js /app/cloud/Caddyfile /usr/local/bin/caddy; do if test -w "$f"; then echo "maus can write $f"; exit 1; fi; done; test -w /data'
+          # The root launcher runs only code quati cannot change; quati owns only the volume.
+          docker exec -u quati home sh -c 'for f in /app /app/dist-server /app/dist-server/index.js /app/dist-server/cloud-home-start.js /app/cloud/Caddyfile /usr/local/bin/caddy; do if test -w "$f"; then echo "quati can write $f"; exit 1; fi; done; test -w /data'
           test "$(docker exec home stat -c %U /app/dist-server/index.js)" = root
           code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$@"; }
           H=(-H "Host: $host")
           test "$(code "${H[@]}" $E/api/bots)" = 403                       # through the edge: never the owner
           test "$(code -H 'Host: localhost' $E/api/bots)" = 403            # another name is refused at the edge
-          # The Admin's request (openmaus-cloud cloudPairingSignature).
+          # The Admin's request (quati-cloud cloudPairingSignature).
           pair() { # body key timestamp nonce -> prints the HTTP status, keeps the reply in $reply
             local body=$1 key=$2 ts=$3 nonce=$4 bh sig
             bh=$(printf %s "$body" | openssl dgst -sha256 -binary | b64url)
             sig=$(printf 'v1\n%s\n%s\nPOST\n/api/cloud/pairing\n%s' "$ts" "$nonce" "$bh" | openssl dgst -sha256 -hmac "$key" -binary | b64url)
             curl -s -o /tmp/pair-reply -w '%{http_code}' --max-time 5 "${H[@]}" -X POST -H 'content-type: application/json' \
-              -H "x-omb-cloud-timestamp: $ts" -H "x-omb-cloud-nonce: $nonce" -H "x-omb-cloud-signature: v1=$sig" --data-binary "$body" $E/api/cloud/pairing
+              -H "x-quati-cloud-timestamp: $ts" -H "x-quati-cloud-nonce: $nonce" -H "x-quati-cloud-signature: v1=$sig" --data-binary "$body" $E/api/cloud/pairing
           }
-          body='{"label":"OpenMausBot app (Cloud)","ttlSeconds":300}'
+          body='{"label":"QuatiBot app (Cloud)","ttlSeconds":300}'
           test "$(pair "$body" "$(rand43)" "$(date +%s)" "$(rand43)")" = 401                 # wrong key
           test "$(pair "$body" "$secret" "$(( $(date +%s) - 400 ))" "$(rand43)")" = 401      # stale
           nonce=$(rand43); now=$(date +%s)
@@ -257,21 +236,21 @@ jobs:
           test "$(pair "$body" "$(rand43)" "$(date +%s)" "$(rand43)")" = 401
           test "$(pair "$body" "$secret" "$(date +%s)" "$(rand43)")" = 200
           docker rm -f home >/dev/null
-          docker volume rm omb-home-ci >/dev/null
+          docker volume rm quati-home-ci >/dev/null
       - name: Prove each image ships its files once, no build cache, and a Caddy without capabilities
         # A pull downloads every layer, so a file written twice or a cache left
         # in a layer costs every machine that pulls the image. The Cloud home's
-        # Caddy must not carry the privileged-port capability (it runs as maus
+        # Caddy must not carry the privileged-port capability (it runs as quati
         # on :8080), which Docker's default capabilities would hide at runtime.
         # Its Grok is one root-owned binary, with nothing from the installer's
         # throwaway home left in the image.
         run: |
           set -euo pipefail
-          docker save openmausbot:ci -o "$RUNNER_TEMP/server.tar"
-          docker save omb-cloud-home:ci -o "$RUNNER_TEMP/home.tar"
+          docker save quatibot:ci -o "$RUNNER_TEMP/server.tar"
+          docker save quati-cloud-home:ci -o "$RUNNER_TEMP/home.tar"
           python3 - "$RUNNER_TEMP/server.tar" "$RUNNER_TEMP/home.tar" <<'PY'
           import json, re, sys, tarfile
-          cache = re.compile(r"^(root/\.npm|tmp/(npm-cache|omb-build-home|node-compile-cache|grok-install))/")
+          cache = re.compile(r"^(root/\.npm|tmp/(npm-cache|quati-build-home|node-compile-cache|grok-install))/")
           for path in sys.argv[1:]:
               files = {}
               with tarfile.open(path) as image:
@@ -357,7 +336,7 @@ jobs:
       # The Cloud Pro home machine (the Dockerfile's cloud-home target), on the
       # same runtime layers as the server image just pushed, with Claude Code,
       # Codex and Grok baked in. The Admin pins it by digest
-      # (OMB_CLOUD_HOME_IMAGE=ghcr.io/milind-soni/openmausbot-cloud-home@sha256:...).
+      # (QUATI_CLOUD_HOME_IMAGE=ghcr.io/jlucasrods/quatibot-cloud-home@sha256:...).
       - id: repo
         # Image references must be lowercase; the repository name is not.
         run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
@@ -391,4 +370,4 @@ jobs:
         env:
           DIGEST: ${{ steps.home.outputs.digest }}
           IMAGE: ghcr.io/${{ steps.repo.outputs.name }}-cloud-home
-        run: echo "OMB_CLOUD_HOME_IMAGE=${IMAGE}@${DIGEST}" | tee -a "$GITHUB_STEP_SUMMARY"
+        run: echo "QUATI_CLOUD_HOME_IMAGE=${IMAGE}@${DIGEST}" | tee -a "$GITHUB_STEP_SUMMARY"

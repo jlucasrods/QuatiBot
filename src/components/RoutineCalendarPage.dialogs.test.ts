@@ -32,7 +32,7 @@ const bot = {
 } as Bot;
 const routine: Routine = {
   id: "weekly", name: "Weekly digest", prompt: "Summarise the week", target: "bot", botId: bot.id,
-  runOn: "maus", enabled: false, schedule: { type: "daily", time: "09:00", weekdays: [1, 2, 3, 4, 5] }, durationMinutes: 30,
+  runOn: "quati", enabled: false, schedule: { type: "daily", time: "09:00", weekdays: [1, 2, 3, 4, 5] }, durationMinutes: 30,
   nextRunAt: null, createdAt: 1, updatedAt: 1,
 };
 

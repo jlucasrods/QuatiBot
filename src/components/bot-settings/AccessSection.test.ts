@@ -11,12 +11,12 @@ vi.mock("@/state/store", async (importOriginal) => {
     const original = await importOriginal<typeof import("@/state/store")>();
     return { ...original, useStore: () => ({ state: { ...original.initialState, config: fixture.config ?? original.initialState.config }, dispatch: fixture.dispatch }) };
 });
-// DesktopCapabilities reads window.ogb at module scope, and this suite runs in the node environment.
+// DesktopCapabilities reads window.quati at module scope, and this suite runs in the node environment.
 vi.mock("../DesktopCapabilities", () => ({
     useDesktopCapabilities: () => ({ capabilities: { host: { homeDir: undefined } } }),
 }));
 const { AccessSection } = await import("./AccessSection");
-// WorkingFolder reads window.ogb?.pickFolder at render time, so window is stubbed per test.
+// WorkingFolder reads window.quati?.pickFolder at render time, so window is stubbed per test.
 beforeEach(() => {
     vi.stubGlobal("window", {});
     fixture.dispatch.mockReset();
@@ -53,7 +53,7 @@ function makeDerived(overrides: Partial<ReturnType<typeof useBotSettingsDerived>
         browserAllowed: true,
         browserEnabled: false,
         browserSelectable: false,
-        browserDisabledReason: "The built-in browser needs the OpenMausBot desktop app",
+        browserDisabledReason: "The built-in browser needs the QuatiBot desktop app",
         sectionName: "General",
         currentChief: undefined,
         botRoutines: [],

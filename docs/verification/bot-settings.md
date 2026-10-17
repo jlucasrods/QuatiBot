@@ -65,8 +65,8 @@ role creation, optional setup, connected-app settings and failure recovery:
 pnpm exec vitest run scripts/testing/bot-tools-ui.e2e.test.ts src/state/store.test.ts
 ```
 
-It uses the disposable `control-omb ui` launcher, not the running app. Set
-`OMB_UI_E2E=1` to install the pinned browser if unavailable.
+It uses the disposable `control-quati ui` launcher, not the running app. Set
+`QUATI_UI_E2E=1` to install the pinned browser if unavailable.
 
 This browser fixture verifies renderer interaction and persistence, not
 packaged Electron privileges, actual operating-system access, or the
@@ -150,12 +150,12 @@ tabbed panel instead, and that one is driven through
 [Chat UI, driven headlessly](chat-ui.md):
 
 ```sh
-node --experimental-strip-types scripts/control-omb.ts ui launch
-H=/tmp/openmausbot-verify-data-XXXXXX/ui.json
+node --experimental-strip-types scripts/control-quati.ts ui launch
+H=/tmp/quatibot-verify-data-XXXXXX/ui.json
 # The preview reads as an existing install, so it starts in Advanced mode.
-pnpm control:omb ui eval --ui $H --js "localStorage.setItem('omb-advanced-mode','0'); location.reload(); 'simple'"
-pnpm control:omb ui click --ui $H --name "Open Pepper's profile"
-pnpm control:omb ui snapshot --ui $H --interactive
+pnpm control:quati ui eval --ui $H --js "localStorage.setItem('quati-advanced-mode','0'); location.reload(); 'simple'"
+pnpm control:quati ui click --ui $H --name "Open Pepper's profile"
+pnpm control:quati ui snapshot --ui $H --interactive
 ```
 
 Expected: six tabs (Details, Memory, Library, Skills, Routines, Vault), and on

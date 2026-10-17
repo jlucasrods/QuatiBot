@@ -1,11 +1,11 @@
-// Real OMB server and renderer; only the paid Boat provider is an owned local
+// Real QUATI server and renderer; only the paid Boat provider is an owned local
 // HTTP stand-in. No guest commands execute and no real credentials are read.
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { resolve } from "node:path";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { launchUi } from "./control-omb-ui.ts";
+import { launchUi } from "./control-quati-ui.ts";
 
 export async function launchTeamComputersPreview() {
   const boats: Array<{ id: string; name: string; state: string }> = [];

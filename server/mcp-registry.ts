@@ -5,7 +5,7 @@ import type { McpServerSpec, RemoteMcpSpec, StdioMcpSpec } from "./contracts.ts"
 /** One config.json `mcpServers` entry: the block Claude Code, Cursor and Claude Desktop write. */
 export interface StoredStdioMcpServer extends StdioMcpSpec {
   enabled: boolean;
-  /** Characters of one tool result allowed into context; 0 = never trim, absent = OMB_MCP_RESULT_BUDGET, else 8,000. */
+  /** Characters of one tool result allowed into context; 0 = never trim, absent = QUATI_MCP_RESULT_BUDGET, else 8,000. */
   resultBudget?: number;
 }
 /** An app pre-registered with the server's authorization server; its secret is a credential, never listed. */
@@ -63,10 +63,10 @@ const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$/;
 
 /** Codex exposes MCP env names through one app-server process: a custom server claiming one could take a built-in proxy's bearer. */
 export function isHarnessOwnedMcpEnvName(name: string): boolean {
-  return name === "ELECTRON_RUN_AS_NODE" || name.startsWith("OMB_") || name.startsWith("OGB_");
+  return name === "ELECTRON_RUN_AS_NODE" || name.startsWith("QUATI_") || name.startsWith("QUATI_");
 }
 
-/** Codex shares one environment across MCP children: OMB_/OGB_ carry bearers, and ELECTRON_RUN_AS_NODE may only repeat the "1" the harness proxies need. */
+/** Codex shares one environment across MCP children: QUATI_/QUATI_ carry bearers, and ELECTRON_RUN_AS_NODE may only repeat the "1" the harness proxies need. */
 export function isReservedMcpEnvEntry(name: string, value: string): boolean {
   if (name === "ELECTRON_RUN_AS_NODE") return value !== "1";
   return isHarnessOwnedMcpEnvName(name);
@@ -76,8 +76,8 @@ function environmentEntryError(name: string, value: string): string | null {
   if (!ENV_NAME.test(name)) return `Environment variable “${name}” is not valid.`;
   if (isReservedMcpEnvEntry(name, value)) {
     return name === "ELECTRON_RUN_AS_NODE"
-      ? `Environment variable “${name}” is reserved by OpenMausBot; a custom server may set it to “1” only.`
-      : `Environment variable “${name}” is reserved by OpenMausBot.`;
+      ? `Environment variable “${name}” is reserved by QuatiBot; a custom server may set it to “1” only.`
+      : `Environment variable “${name}” is reserved by QuatiBot.`;
   }
   return null;
 }
@@ -102,7 +102,7 @@ function urlError(value: string): string | null {
 }
 
 const RESERVED_MCP_NAMES = new Set([
-  "ogb",
+  "quati",
   "computer",
   "agents",
   "composio",
@@ -110,8 +110,8 @@ const RESERVED_MCP_NAMES = new Set([
   "browser",
   "phone",
   "dweb",
-  "openmausbot_connectors",
-  "openmausbot_phone",
+  "quatibot_connectors",
+  "quatibot_phone",
 ]);
 
 const stdioEntrySchema = z.object({
@@ -187,7 +187,7 @@ export function mcpServerNameError(name: string): string | null {
   if (!MCP_NAME.test(name)) {
     return "Use 1–32 lowercase letters, numbers, underscores, or hyphens, starting with a letter.";
   }
-  if (RESERVED_MCP_NAMES.has(name)) return "That name is reserved by OpenMausBot.";
+  if (RESERVED_MCP_NAMES.has(name)) return "That name is reserved by QuatiBot.";
   return null;
 }
 

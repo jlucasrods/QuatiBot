@@ -53,7 +53,7 @@ describe("OAuth tab reservation", () => {
   it("keeps Electron external opening without reserving a browser tab", async () => {
     const openExternal = vi.fn(async () => {});
     const open = vi.fn();
-    vi.stubGlobal("window", { ogb: { openExternal }, open });
+    vi.stubGlobal("window", { quati: { openExternal }, open });
     const launch = reserveConnectionPage();
     expect(open).not.toHaveBeenCalled();
     expect(await launch.open("https://auth.example.test/flow")).toBe(true);

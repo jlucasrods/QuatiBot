@@ -1,6 +1,6 @@
 # Cursor Agent CLI
 
-Cursor is an optional OpenMausBot engine. OpenMausBot runs the official
+Cursor is an optional QuatiBot engine. QuatiBot runs the official
 [`cursor-agent` CLI](https://cursor.com/docs/cli) in ACP stdio mode (`cursor-agent acp`), so
 sessions, streaming, coding tools, permission requests, MCP integrations,
 resume, and cancellation use the same runtime as the other ACP engines.
@@ -23,10 +23,10 @@ key.
    in the environment of the Cursor instance.
 
 3. Confirm `cursor-agent --version` works. Cursor's docs call the command `agent`;
-   the installer adds `cursor-agent` beside it, and OpenMausBot runs that name,
+   the installer adds `cursor-agent` beside it, and QuatiBot runs that name,
    because other tools also install an `agent`. The binary installs to
    `~/.local/bin` by default (`%LOCALAPPDATA%\cursor-agent` on Windows);
-   OpenMausBot already looks in both, so a CLI installed while the app is open
+   QuatiBot already looks in both, so a CLI installed while the app is open
    is found without restarting.
 
 The engine stays unavailable until the `cursor-agent` executable is found. A
@@ -45,7 +45,7 @@ than emptying the rail.
 starts on `default[]` (Auto). The pick only lands through ACP
 `session/set_model`, which accepts only the parameterised ids the session
 advertises, such as `grok-4.7[context=256k,reasoning_effort=high,fast=true]`.
-OpenMausBot maps the picker slug onto that list: `auto` to `default[]`, a
+QuatiBot maps the picker slug onto that list: `auto` to `default[]`, a
 plain slug to its Standard variant, `-fast` to `fast=true`, and an effort
 slug such as `grok-4.7-high-fast` to the variant with that effort. The
 session advertises one variant per base, so a slug with another effort
@@ -60,17 +60,17 @@ a notice that names it.
 
 For compatibility with direct driver embedders, an instance `fullAuto: true`
 adds `--force` (the CLI's documented auto-approve switch) only when a turn
-does not provide a bot approval level. OpenMausBot app turns always provide
+does not provide a bot approval level. QuatiBot app turns always provide
 one: both **Ask for approval** and **Approve for me** launch Cursor without
-`--force`, then OpenMausBot handles its permission requests according to the
+`--force`, then QuatiBot handles its permission requests according to the
 bot's current level.
 
 ## Questions
 
-Cursor's AskQuestion tool sends `cursor/ask_question`. OpenMausBot shows all
+Cursor's AskQuestion tool sends `cursor/ask_question`. QuatiBot shows all
 of its questions on one question card, including multi-select questions, and
 answers with the option ids the person picked. Cursor's reply format has no
-free text. If any answer is in the person's own words, OpenMausBot replies
+free text. If any answer is in the person's own words, QuatiBot replies
 `skipped` and puts every answer in the reason, which Cursor gives the model
 as it is. An unanswered card replies `cancelled`. A question that arrives as
 one `session/request_permission` per question (Cursor's fallback) still

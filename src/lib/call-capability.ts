@@ -34,7 +34,7 @@ export function callCapabilityHelp(
   if (!speechServiceAvailable) {
     return {
       label: "The call service is unavailable",
-      reason: "The speech service is unavailable in this app build. Restart or update OpenMausBot.",
+      reason: "The speech service is unavailable in this app build. Restart or update QuatiBot.",
     };
   }
   return null;

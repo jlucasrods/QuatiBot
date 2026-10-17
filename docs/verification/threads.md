@@ -70,7 +70,7 @@ switching and Stop can be exercised without a real provider or account.
     sibling has its own activity entry under that bot. Follow a notification,
     a thread chip or a search hit to a third thread of that bot: the sibling
     keeps its unread entry, and the third thread is read once open. An
-    `openmausbot://bot/<id>` link opens the main thread.
+    `quatibot://bot/<id>` link opens the main thread.
 13. Stop a running job through its activity entry while a sibling is queued;
     verify only the chosen job stops and the queued message starts normally.
     Reload and confirm Show threads remains off. Turn it back on to recover
@@ -114,7 +114,7 @@ orders of the full response and slim event, including late old-thread messages.
 
 For approval verification, new fake-provider launches also write fixture-only
 `<thread-id>.launch.json` receipts inside the printed disposable data directory.
-The live broker in their `mcpConfig.mcpServers.ogb` entry can be exercised using
+The live broker in their `mcpConfig.mcpServers.quati` entry can be exercised using
 the same `permission` recipe in `server/thread-capacity-api.test.ts`. Request a
 synthetic approval, switch away, and navigate back using an activity control
 with Show threads off. Answer **Allow once** and verify that broker receives

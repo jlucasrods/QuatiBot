@@ -1,12 +1,12 @@
 import type { CSSProperties } from "react";
 import { cn } from "@/lib/cn";
-import type { MausMotion, MausState } from "@/lib/mascot";
+import type { QuatiMotion, QuatiState } from "@/lib/mascot";
 
 export interface BeatProps {
   onNext: () => void;
   onSkip: () => void;
-  setMascot: (state: MausState) => void;
-  bump: (motion: Exclude<MausMotion, "none">) => void;
+  setMascot: (state: QuatiState) => void;
+  bump: (motion: Exclude<QuatiMotion, "none">) => void;
 }
 
 export const inputClass =

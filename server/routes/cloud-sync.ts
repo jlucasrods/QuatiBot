@@ -53,7 +53,7 @@ export function createCloudSyncRoutes(options: {
         const range = /^bytes=(\d+)-$/.exec(String(req.headers.range ?? ""));
         const start = range ? Math.min(Number(range[1]), file.size) : 0;
         res.writeHead(range ? 206 : 200, {
-          "content-type": "application/octet-stream", "content-length": String(file.size - start), "x-omb-sha256": file.sha256,
+          "content-type": "application/octet-stream", "content-length": String(file.size - start), "x-quati-sha256": file.sha256,
           "x-content-type-options": "nosniff", "content-disposition": "attachment", "content-security-policy": "sandbox",
           ...(range ? { "content-range": `bytes ${start}-${Math.max(file.size - 1, start)}/${file.size}` } : {}),
         });

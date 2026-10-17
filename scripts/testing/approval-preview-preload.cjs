@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require("electron");
 // Only used by the disposable smoke window, never by the packaged app.
-contextBridge.exposeInMainWorld("ogb", {
+contextBridge.exposeInMainWorld("quati", {
   platform: process.platform,
   getCapabilities: async () => ({
     host: { platform: process.platform, label: "Fixture", session: "unknown", packaged: true },

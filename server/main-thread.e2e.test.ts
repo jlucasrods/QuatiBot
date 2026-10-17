@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { launchVerificationServer, runControlOmb } from "../scripts/control-omb.ts";
+import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
 
 async function launch() {
   const fixture = await launchVerificationServer(process.env, undefined, undefined, undefined, undefined, { scripted: true });
@@ -16,7 +16,7 @@ async function launch() {
     expect(response.status, `${method} ${path}: ${JSON.stringify(value)}`).toBe(status);
     return value;
   };
-  const cli = (...args: string[]) => runControlOmb([...args, "--url", url]) as Promise<any>;
+  const cli = (...args: string[]) => runControlQuati([...args, "--url", url]) as Promise<any>;
   const wire = async (botId: string) => (await api("GET", "/api/bots")).bots.find((bot: any) => bot.id === botId);
   const tasks = async (botId: string) => (await wire(botId)).tasks as any[];
   const stamps = (botId: string) => Object.fromEntries((JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8")) as any[])
@@ -84,7 +84,7 @@ it("stamps askedAt where a person writes, never for a routine, a webhook, start_
     await replied(bot.id, routineThread, "Routine report.");
     expect(run.resultsThreadId).toBe(first);
 
-    const hook = await api("POST", "/api/webhooks", { name: "Build", prompt: "Handle the build event.", botId: bot.id, runOn: "maus" }, 201);
+    const hook = await api("POST", "/api/webhooks", { name: "Build", prompt: "Handle the build event.", botId: bot.id, runOn: "quati" }, 201);
     const delivered = await fetch(hook.credential.url, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     expect(delivered.status).toBe(202);
     const webhookThread = await finished((candidate) => candidate.webhookId === hook.webhook.id);

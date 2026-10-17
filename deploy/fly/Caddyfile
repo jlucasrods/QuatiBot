@@ -1,6 +1,6 @@
-# Edge for one OMB Cloud Pro home machine (docs/cloud-pro.md). Fly's proxy
+# Edge for one QUATI Cloud Pro home machine (docs/cloud-pro.md). Fly's proxy
 # terminates TLS for <app>.fly.dev and reaches this machine on :8080. The
-# OpenMausBot server listens only on 127.0.0.1, and every request forwarded
+# QuatiBot server listens only on 127.0.0.1, and every request forwarded
 # to it carries X-Forwarded-*, so it is never the loopback owner
 # (server/request-auth.ts): a remote client needs a paired session.
 {
@@ -29,7 +29,7 @@
 	}
 
 	# Everything else answers only for this machine's own public name.
-	@home host {$OMB_CLOUD_PUBLIC_HOST}
+	@home host {$QUATI_CLOUD_PUBLIC_HOST}
 	handle @home {
 		# Webhook ingress has its own per-hook secrets.
 		handle /hooks/* {

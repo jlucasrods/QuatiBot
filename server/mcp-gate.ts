@@ -18,10 +18,10 @@ function gateEnvironment(): NodeJS.ProcessEnv {
   if (process.argv.length === 2) return process.env;
   try {
     const key = process.argv[3];
-    if (process.argv.length !== 4 || process.argv[2] !== "--config-env" || !key || !/^OMB_GATE_CONFIG_[a-f0-9]{64}$/.test(key)) throw new Error();
+    if (process.argv.length !== 4 || process.argv[2] !== "--config-env" || !key || !/^QUATI_GATE_CONFIG_[a-f0-9]{64}$/.test(key)) throw new Error();
     const value = JSON.parse(process.env[key] ?? "");
     if (!value || typeof value !== "object" || Array.isArray(value)
-      || !["OMB_GATE_NAME", "OMB_GATE_UPSTREAM", "OMB_GATE_TOOL_SCOPE"].every(name => typeof value[name] === "string")
+      || !["QUATI_GATE_NAME", "QUATI_GATE_UPSTREAM", "QUATI_GATE_TOOL_SCOPE"].every(name => typeof value[name] === "string")
       || !Object.entries(value).every(([name, setting]) => GATE_ENV_KEYS.includes(name) && typeof setting === "string")) throw new Error();
     return value;
   } catch {
@@ -29,15 +29,15 @@ function gateEnvironment(): NodeJS.ProcessEnv {
   }
 }
 /** The gate's own settings never reach the upstream server's environment. */
-const GATE_ENV_KEYS = ["OMB_GATE_NAME", "OMB_GATE_SPILL_DIR", "OMB_GATE_BUDGET", "OMB_GATE_UPSTREAM", "OMB_GATE_SPILL_HINT", "OMB_GATE_TOOL_SCOPE", "OMB_GATE_DIRECTORY"];
+const GATE_ENV_KEYS = ["QUATI_GATE_NAME", "QUATI_GATE_SPILL_DIR", "QUATI_GATE_BUDGET", "QUATI_GATE_UPSTREAM", "QUATI_GATE_SPILL_HINT", "QUATI_GATE_TOOL_SCOPE", "QUATI_GATE_DIRECTORY"];
 const gateEnv = gateEnvironment();
-const NAME = gateEnv.OMB_GATE_NAME || "mcp";
-const SPILL_DIR = gateEnv.OMB_GATE_SPILL_DIR || "";
-const rawBudget = Number(gateEnv.OMB_GATE_BUDGET);
+const NAME = gateEnv.QUATI_GATE_NAME || "mcp";
+const SPILL_DIR = gateEnv.QUATI_GATE_SPILL_DIR || "";
+const rawBudget = Number(gateEnv.QUATI_GATE_BUDGET);
 const BUDGET = Number.isFinite(rawBudget) && rawBudget >= 0 ? rawBudget : DEFAULT_RESULT_BUDGET;
 const SPILL_MAX_AGE_MS = 24 * 60 * 60_000;
-const SPILL_HINT = gateEnv.OMB_GATE_SPILL_HINT === "1";
-const DIRECTORY = gateEnv.OMB_GATE_DIRECTORY === "1";
+const SPILL_HINT = gateEnv.QUATI_GATE_SPILL_HINT === "1";
+const DIRECTORY = gateEnv.QUATI_GATE_DIRECTORY === "1";
 
 function fail(message: string): never {
   process.stderr.write(`mcp-gate(${NAME}): ${message}\n`);
@@ -45,7 +45,7 @@ function fail(message: string): never {
 }
 
 function toolScope(): ToolScope | undefined {
-  const raw = gateEnv.OMB_GATE_TOOL_SCOPE;
+  const raw = gateEnv.QUATI_GATE_TOOL_SCOPE;
   if (raw === undefined) return;
   let value: unknown;
   try { value = JSON.parse(raw); } catch { fail("invalid tool selection JSON"); }
@@ -77,13 +77,13 @@ interface Upstream {
 function upstreamSpec(): Upstream {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(gateEnv.OMB_GATE_UPSTREAM ?? "");
+    parsed = JSON.parse(gateEnv.QUATI_GATE_UPSTREAM ?? "");
   } catch {
-    fail("OMB_GATE_UPSTREAM is not valid JSON");
+    fail("QUATI_GATE_UPSTREAM is not valid JSON");
   }
   const spec = parsed as Upstream | null;
   if (!spec || typeof spec !== "object" || typeof spec.command !== "string" || !spec.command) {
-    fail("OMB_GATE_UPSTREAM needs a command");
+    fail("QUATI_GATE_UPSTREAM needs a command");
   }
   return spec;
 }
@@ -187,7 +187,7 @@ const spec = upstreamSpec();
 if (SPILL_DIR) sweepSpill(SPILL_DIR);
 
 const childEnv: NodeJS.ProcessEnv = { ...process.env, ...spec.env };
-for (const key of Object.keys(childEnv)) if (key.startsWith("OMB_GATE_")) delete childEnv[key];
+for (const key of Object.keys(childEnv)) if (key.startsWith("QUATI_GATE_")) delete childEnv[key];
 
 // CreateProcess cannot exec an npm .cmd shim or a node-shebang script, and a shell would re-interpret JSON argv.
 const resolved = resolveCliSpawn(spec.command, spec.args ?? []);

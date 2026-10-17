@@ -4,7 +4,7 @@ Settings → General → Automatic recovery is off by default. Choose one backup
 engine/model and save. When an ACP engine fails during startup, before sending
 the prompt or receiving any tool, permission, file or assistant activity, the
 driver can report a recoverable failure **only after its process has stopped**.
-OMB tries the backup once in the same thread with the canonical conversation.
+QUATI tries the backup once in the same thread with the canonical conversation.
 The thread keeps the backup selection; bot defaults and sibling threads do not
 change. A visible activity line explains the switch.
 

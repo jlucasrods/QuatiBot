@@ -50,12 +50,12 @@ export type CloudBackend = "box" | "vps";
 /** A place a bot can act. `cloud` covers both cloud backends. */
 export type Surface = "cloud" | "vm" | "local" | "browser";
 
-export type MausColor =
+export type QuatiColor =
   | "green" | "blue" | "red" | "orange" | "purple" | "cyan" | "pink"
   | "yellow" | "teal" | "coral";
 
 /** The face a bot rests on, as one of the engine's state names. */
-export type MausExpression = string;
+export type QuatiExpression = string;
 
 /** What the bot is doing right now, as the harness sees it. `parked.computer`
  * is task-level only: a turn that settled at the computer wait ceiling and
@@ -261,8 +261,8 @@ export interface WireBot {
   /** The SOUL.md mirror differed from soul at the last turn dispatch. */
   soulDrift?: boolean;
   notifications: boolean;
-  color: MausColor;
-  mascotExpression?: MausExpression | null;
+  color: QuatiColor;
+  mascotExpression?: QuatiExpression | null;
   mascotBody?: MascotBodyId | null;
   /** App-owned attachment served as this bot's custom profile image;
    * always present on the wire, null when the bot has none. */
@@ -383,7 +383,7 @@ export interface ResolvedSender {
  * owner on this machine, or a session-less local caller on a shared server
  * (`worker`: the Slack worker, or any other process on that machine). */
 export type CardAnswerer = (
-  /** `person`: the answering session's opaque person key, recorded on an OMB
+  /** `person`: the answering session's opaque person key, recorded on an QUATI
    * Cloud home only. */
   | { kind: "session"; name: string; person?: string }
   | { kind: "loopback" }

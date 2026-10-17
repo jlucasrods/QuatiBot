@@ -113,7 +113,7 @@ describe("Settings rail groups", () => {
   });
 
   it("shows every desktop page under its labelled group", () => {
-    vi.stubGlobal("window", { ogb: { environments: {}, organization: {}, cloudAccount: {} } });
+    vi.stubGlobal("window", { quati: { environments: {}, organization: {}, cloudAccount: {} } });
     const html = render();
     for (const label of ["You", "AI", "Computers", "Account"]) expect(html).toContain(`>${label}</div>`);
     expect(html).toContain("glass-surface");
@@ -135,12 +135,12 @@ describe("Settings rail groups", () => {
   });
 
   it("shows a paired remote client only Appearance, Remote access and Servers", () => {
-    vi.stubGlobal("window", { ogb: { remoteClient: { active: true }, environments: {}, organization: {}, cloudAccount: {} } });
+    vi.stubGlobal("window", { quati: { remoteClient: { active: true }, environments: {}, organization: {}, cloudAccount: {} } });
     expect(rail(render())).toEqual({ you: ["appearance", "companion"], computers: ["desktopWorkspaces"] });
   });
 
   it("routes legacy deep links to their current settings pages", () => {
-    vi.stubGlobal("window", { ogb: { environments: {} } });
+    vi.stubGlobal("window", { quati: { environments: {} } });
     fixture.section = "remote" as AppSettingsSection;
     expect(render()).toContain('data-settings-section="companion" aria-current="page"');
     fixture.section = "connections";

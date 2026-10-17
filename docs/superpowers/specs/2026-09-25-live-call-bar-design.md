@@ -139,7 +139,7 @@ One active call per harness. Responsibilities, moved from today's renderer
    to send `session.close`, so no session is left open.
 8. **Bound to whoever started it.** A call remembers the sign-in that started
    it and, for a phone, the paired device the companion vouched for
-   (`x-openmausbot-companion-device` on `POST /api/live/session`). A phone's
+   (`x-quatibot-companion-device` on `POST /api/live/session`). A phone's
    requests reach the harness as the computer's own (loopback), so only the
    companion knows when a phone is unpaired: it then sends
    `POST /api/live/device-revoked` over its authenticated relay path, and the
@@ -156,7 +156,7 @@ One active call per harness. Responsibilities, moved from today's renderer
 | `POST /api/live/call/end` | `{ callId }` | `200 { call }` after `session.closed` or 5 s |
 | `GET /api/live/call` | — | `200 { call: LiveCallState \| null }` |
 | `PATCH /api/live/settings` | `{ voice?, readTypedReplies?, idleMinutes? }` | `200 { live: LiveSettings }` — non-secret settings only; the key is never writable from a phone |
-| `POST /api/live/device-revoked` | — (headers `x-openmausbot-companion: 1` and `x-openmausbot-companion-device`; under the desktop app also the companion's private relay token) | `200 { call: LiveCallState \| null }` (the call it ended) · `403` without the companion marker · `400` without a well-formed device id. The companion's own notice that it unpaired a phone: not on the phone allowlist (`companion/src/routes.ts` `COMPANION_NOTICES`); the harness accepts it only with the relay token, or from loopback for a standalone harness |
+| `POST /api/live/device-revoked` | — (headers `x-quatibot-companion: 1` and `x-quatibot-companion-device`; under the desktop app also the companion's private relay token) | `200 { call: LiveCallState \| null }` (the call it ended) · `403` without the companion marker · `400` without a well-formed device id. The companion's own notice that it unpaired a phone: not on the phone allowlist (`companion/src/routes.ts` `COMPANION_NOTICES`); the harness accepts it only with the relay token, or from loopback for a standalone harness |
 
 `LiveCallState = { callId, botId, threadId, client, voice, startedAt, status: "connecting" | "live" | "ending" | "ended", endReason?, error? }`,
 with `endReason` one of the codes under **End reasons**. A phone's
@@ -174,23 +174,23 @@ default 5).
 
 ### Live calls need Pro
 
-Starting a Live call needs an active OMB Cloud plan of any tier (Personal, Pro
+Starting a Live call needs an active QUATI Cloud plan of any tier (Personal, Pro
 or Max): `entitlement.plan === "pro"` and `status === "active"`. One pure
 function decides, `liveCallsAllowed` in `electron/pro-plan.mjs`, with a table
 test of every plan state. A payment received and still being linked counts.
 Signed out, free, or a plan that is not active does not. While the plan cannot
-be checked (not read yet, signing in, OMB Cloud unreachable, or this computer's
+be checked (not read yet, signing in, QUATI Cloud unreachable, or this computer's
 sign-in ended), the plan last verified decides: the account's `lastPlan`, else
 the last answer this side had. A Cloud home is the plan's own machine and
 always counts.
 
 Only the desktop app's Cloud sign-in knows the plan. Main applies the rule and
-hands its server the answer alone, never the account: `OMB_PRO_PLAN` ("1" or
-"0") when it spawns the server, then `{ type: "openmausbot:pro-plan", pro }`
+hands its server the answer alone, never the account: `QUATI_PRO_PLAN` ("1" or
+"0") when it spawns the server, then `{ type: "quatibot:pro-plan", pro }`
 over the utility process's private parent port on every sign-in change and
 whenever a server it started is ready (`server/pro-plan.ts` holds it). A
 server the desktop app did not start (dev, tests, headless or Docker) says Pro
-with `OMB_PRO_PLAN=1`.
+with `QUATI_PRO_PLAN=1`.
 
 `POST /api/live/session` without Pro answers
 `402 { "error": "Live calls need a Pro plan.", "needsPro": true }`, checked in
@@ -200,7 +200,7 @@ to the phones unchanged). The plan is asked when a call starts and never
 during one: a running call is not cut off by a plan change. The desktop shows
 the Pro card under the call button where the key form would be: an offer only
 where `buyOfferAllowed` allows it (signed out, signing in first; or free), and
-otherwise the plan and the way to OMB Cloud settings, never an offer. No Try
+otherwise the plan and the way to QUATI Cloud settings, never an offer. No Try
 again.
 
 ### Message label
@@ -212,7 +212,7 @@ marks a user line an external interface sent through the guarded send route
 
 ### The call id and the call row
 
-Added 2026-10-06 (the harness half of SupaMaus/mausbot-mobile
+Added 2026-10-06 (the harness half of Quati/quati-mobile
 `docs/superpowers/specs/2026-10-06-grok-style-live-calls-design.md`).
 
 - **Call id.** Every user line a call delivers carries `callId`, the call's
@@ -439,7 +439,7 @@ hold and the line they show:
   stay per platform. Presentation includes where the call lives on screen:
   the desktop keeps the call bar above the composer, and the phones may show
   an app-wide dock that opens into a full-screen call with a live transcript
-  (mausbot-mobile spec 2026-10-06-grok-style-live-calls-design). That
+  (quati-mobile spec 2026-10-06-grok-style-live-calls-design). That
   transcript is the phone's own data-channel captions, kept in memory for
   the current call only: the voice's words are still never stored or sent
   anywhere.
@@ -457,7 +457,7 @@ call counts as dropped, which is what offers **Try again**:
 | `expired` | "Call ended: it reached OpenAI's time limit." | no |
 | `content` | "OpenAI ended the call under its content rules." | no |
 | `deleted` | "Call ended: the chat was deleted." | no |
-| `shutdown` | "Call ended: OpenMausBot restarted." | no |
+| `shutdown` | "Call ended: QuatiBot restarted." | no |
 | `signed-out` | "Call ended: you were signed out." | no |
 | `remote-hangup` | "Call dropped." | yes |
 | `connection-lost` | "Call dropped." | yes |
@@ -517,13 +517,13 @@ spoken line is answered aloud). The docs page says so.
 
 | Situation | Behaviour |
 |---|---|
-| No Pro plan | 402 `needsPro`, before the key. Desktop: the Pro card under the call button. Phones: their own Pro prompt (SupaMaus/mausbot-mobile); no Try again |
+| No Pro plan | 402 `needsPro`, before the key. Desktop: the Pro card under the call button. Phones: their own Pro prompt (Quati/quati-mobile); no Try again |
 | No key on the computer | Desktop: key popover. Phones: "Set up Live calls on your computer first.", no Try again |
 | Another call running | 409 with the active call; the client says who is on the line, no Try again. Every client hides its Live call button while another device holds the line, so this is only a race |
 | Phone cannot reach the computer | Call button explains; no call starts |
 | OpenAI refuses (key, quota, voice) | Clear message in the bar (existing `liveErrorMessage`) |
 | Media or sideband drops | Bar shows the harness's words when it sent them, else "Call dropped." + **Try again**; bot work continues into the chat |
-| Harness restarts mid-call | Call ends; clients show "Call ended: OpenMausBot restarted." when the harness says `shutdown`, else "Call ended."; no Try again |
+| Harness restarts mid-call | Call ends; clients show "Call ended: QuatiBot restarted." when the harness says `shutdown`, else "Call ended."; no Try again |
 | Phone unpaired, or sign-in revoked, mid-call | Call ends at once, reason `signed-out` with the harness's words; no Try again. A phone the computer no longer takes hangs up by itself at once (`session.close` on its own channel) and shows "Call ended: you were signed out." (the iPhone on its unpaired screen) |
 | Bot turn fails / no text | Voice says the result is in the chat |
 | Bot waits for an app to connect or a credential | Voice points to the chat once; never asks for a credential aloud |
@@ -545,13 +545,13 @@ spoken line is answered aloud). The docs page says so.
 - **Fake GPT-Live** (`server/testing/fake-openai-live.ts`): HTTP
   `POST /v1/live/sessions` + WebSocket `/v1/live/sessions/:id/attach` that plays
   scripted events and records commands; the harness reads its base URL from
-  `OMB_OPENAI_LIVE_URL` (tests and fixtures only).
+  `QUATI_OPENAI_LIVE_URL` (tests and fixtures only).
 - Unit tests: controller (delegation → turn with `via: "call"`, relays,
   approvals yes/no/unclear, skill refusal, typed messages, idle hang-up,
   sideband loss, one call at a time), routes, companion allowlist, settings
   validation, desktop components, iOS `CompanionCore` (`swift test`), Android
   `:core`/`:app` unit tests.
-- Isolated fixture (`scripts/control-omb.ts launch`) + fake GPT-Live for the
+- Isolated fixture (`scripts/control-quati.ts launch`) + fake GPT-Live for the
   end-to-end server path; the desktop UI in the browser pane; the iOS app in the
   simulator and the Android app in an emulator against a fixture.
 - Real audio needs a microphone and a real key: each client is tested with

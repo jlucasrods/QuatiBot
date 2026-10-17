@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 
-import { launchVerificationServer, runControlOmb, verificationServerEnvironment } from "../scripts/control-omb.ts";
+import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 
 const jsonl = (path: string) => existsSync(path)
@@ -32,7 +32,7 @@ async function fixture(test: (f: any) => Promise<void>, { thisComputer = false }
       "const argv = process.argv.slice(2);",
       "const after = (flag) => { const i = argv.indexOf(flag); return i === -1 ? null : argv[i + 1] ?? null; };",
       'let servers = {}; try { servers = JSON.parse(readFileSync(after("--mcp-config"), "utf8")).mcpServers ?? {}; } catch {}',
-      `if (after("--resume") || after("--session-id")) appendFileSync(${JSON.stringify(launchesPath)}, JSON.stringify({ resume: after("--resume"), servers: Object.keys(servers), token: servers.agents?.env?.OMB_COMMS_TOKEN ?? null, control: servers.computer?.env?.OMB_CONTROL_TOKEN ?? null }) + "\\n");`,
+      `if (after("--resume") || after("--session-id")) appendFileSync(${JSON.stringify(launchesPath)}, JSON.stringify({ resume: after("--resume"), servers: Object.keys(servers), token: servers.agents?.env?.QUATI_COMMS_TOKEN ?? null, control: servers.computer?.env?.QUATI_CONTROL_TOKEN ?? null }) + "\\n");`,
       `await import(${JSON.stringify(pathToFileURL(fileURLToPath(new URL("./testing/fake-claude-cli.ts", import.meta.url))).href)});`,
     ].join("\n"), { mode: 0o700 });
     const browser = join(dataDir, "agent-browser.mjs");
@@ -64,8 +64,8 @@ async function fixture(test: (f: any) => Promise<void>, { thisComputer = false }
       cwd: fileURLToPath(new URL("..", import.meta.url)),
       env: {
         ...verificationServerEnvironment({ FAKE_CLAUDE_MODE: "hang", FAKE_CLAUDE_RELEASE: release }, dataDir, Number(new URL(url).port)),
-        ...(withBrowser ? { OMB_AGENT_BROWSER_PATH: browser } : {}),
-        ...(thisComputer ? { OMB_USER_DATA: userData } : {}),
+        ...(withBrowser ? { QUATI_AGENT_BROWSER_PATH: browser } : {}),
+        ...(thisComputer ? { QUATI_USER_DATA: userData } : {}),
       },
       stdio: ["ignore", log, log],
     });
@@ -74,7 +74,7 @@ async function fixture(test: (f: any) => Promise<void>, { thisComputer = false }
       try { return (await fetch(url + "/api/health", { signal: AbortSignal.timeout(1_000) })).ok; } catch { return false; }
     }, { timeout: 20_000 }).toBe(true);
 
-    const cli = (...args: string[]) => runControlOmb([...args, "--url", url]) as Promise<any>;
+    const cli = (...args: string[]) => runControlQuati([...args, "--url", url]) as Promise<any>;
     const api = async (method: string, path: string, body?: unknown, token?: string) => {
       const response = await fetch(url + path, {
         method,

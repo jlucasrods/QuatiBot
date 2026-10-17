@@ -12,9 +12,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const flag = "--omb-company-backup-fixture";
+const flag = "--quati-company-backup-fixture";
 const PASSWORD = "isolated-cloud-backup-password";
-const MARKER = "omb-pending-workspace-restore";
+const MARKER = "quati-pending-workspace-restore";
 const pause = ms => new Promise(done => setTimeout(done, ms));
 
 if (process.versions.electron && process.argv.includes(flag)) {
@@ -53,7 +53,7 @@ if (process.versions.electron && process.argv.includes(flag)) {
         const entry = entries.get(object[1]); assert.ok(entry);
         if (req.method === "PUT") {
           const data = await body(req); assert.equal(data.length, entry.sizeBytes);
-          assert.equal(data.subarray(0, 16).toString(), "OMB-WORKSPACE-1\n");
+          assert.equal(data.subarray(0, 16).toString(), "QUATI-WORKSPACE-1\n");
           assert.equal(createHash("sha256").update(data).digest("hex"), entry.sha256);
           const etag = `"${createHash("md5").update(data).digest("hex")}"`;
           uploadedParts.set(entry.id, { data, etag });
@@ -177,7 +177,7 @@ if (process.versions.electron && process.argv.includes(flag)) {
   handle("company-backups:state", async () => ({ ...state, pendingRestore: (await localJson("/api/workspace-backup/status")).pendingRestore }));
   handle("company-backups:list", () => portalRequest("/api/desktop/backups"));
   handle("company-backups:create", input => {
-    assert.equal(input.clientState["omb-drafts"], "fixture private draft");
+    assert.equal(input.clientState["quati-drafts"], "fixture private draft");
     assert.equal(Object.hasOwn(input.clientState, "fixture-auth-token"), false);
     createCalls++; return transfer("backup", input);
   });
@@ -221,7 +221,7 @@ if (process.versions.electron && process.argv.includes(flag)) {
     const open = async local => {
       const window = new BrowserWindow({ show: false, width: 850, height: 850, webPreferences: {
         preload: join(root, "electron/preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false,
-        additionalArguments: [`--omb-local-origin=${local ? localOrigin : "https://remote-fixture.invalid"}`, "--omb-company-desktop=1"],
+        additionalArguments: [`--quati-local-origin=${local ? localOrigin : "https://remote-fixture.invalid"}`, "--quati-company-desktop=1"],
       } });
       return window;
     };
@@ -248,7 +248,7 @@ if (process.versions.electron && process.argv.includes(flag)) {
     await until(() => evaluate("document.body.textContent.includes('No completed cloud backups yet.')"), "eligible company gate");
     assert.equal(createCalls, 0); checks.push("signed-out and no-capability states make no cloud calls; connected user explicitly opts in");
     assert.equal(await evaluate("typeof require"), "undefined");
-    assert.equal(await evaluate("JSON.stringify(window.ogb.companyBackups).includes('fixture-device-capability')"), false);
+    assert.equal(await evaluate("JSON.stringify(window.quati.companyBackups).includes('fixture-device-capability')"), false);
     await click("Back up this installation");
     await until(() => evaluate("Boolean(document.querySelector('dialog[open]'))"), "cancelable native dialog");
     win.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
@@ -274,7 +274,7 @@ if (process.versions.electron && process.argv.includes(flag)) {
       assert.equal(objects.get(id).includes(Buffer.from("fixture private draft")), false);
       return id;
     };
-    await evaluate("localStorage.setItem('omb-drafts','fixture private draft'); localStorage.setItem('fixture-auth-token','must-stay-local');");
+    await evaluate("localStorage.setItem('quati-drafts','fixture private draft'); localStorage.setItem('fixture-auth-token','must-stay-local');");
     const first = await createBackup(true), second = await createBackup(false);
     assert.equal(createCalls, 2);
     assert.equal(await evaluate(`Object.values({...localStorage}).some(value => value.includes(${JSON.stringify(PASSWORD)}))`), false, "backup password never persisted in browser storage");
@@ -335,7 +335,7 @@ if (process.versions.electron && process.argv.includes(flag)) {
     await click("Restart and restore");
     await until(() => evaluate(`localStorage.getItem(${JSON.stringify(MARKER)}) === null && document.body.textContent.includes('Company cloud backups')`), "existing recovery restores drafts and clears marker");
     const afterIds = await botIds(); assert.ok(afterIds.includes(sourceBotId)); assert.equal(afterIds.includes(extra.bot.id), false);
-    assert.equal(await evaluate("localStorage.getItem('omb-drafts')"), "fixture private draft");
+    assert.equal(await evaluate("localStorage.getItem('quati-drafts')"), "fixture private draft");
     assert.equal(await evaluate("localStorage.getItem('fixture-auth-token')"), "must-stay-local");
     const afterStatus = await localJson("/api/workspace-backup/status");
     assert.equal(afterStatus.lastRestoreId, restoreId); assert.ok(afterStatus.safetyCopyPath);
@@ -366,7 +366,7 @@ if (process.versions.electron && process.argv.includes(flag)) {
     assert.equal(JSON.stringify(scheduler.state()).includes(PASSWORD), false);
     assert.equal(await evaluate(`Object.values({...localStorage}).some(value => value.includes(${JSON.stringify(PASSWORD)}))`), false);
     for (const draft of ["new draft from scheduled day one", "changed draft from scheduled day two"]) {
-      await evaluate(`localStorage.setItem('omb-drafts', ${JSON.stringify(draft)})`);
+      await evaluate(`localStorage.setItem('quati-drafts', ${JSON.stringify(draft)})`);
       const previousRuns = scheduledRuns;
       scheduleClock = scheduler.state().nextBackupAt + (previousRuns ? 7 * 24 * 60 * 60_000 : 0);
       const tick = scheduleTimer; assert.equal(typeof tick, "function"); tick();
@@ -375,11 +375,11 @@ if (process.versions.electron && process.argv.includes(flag)) {
       await until(() => evaluate(`document.body.textContent.includes(${JSON.stringify(latest.id)})`), "scheduled archive appears without refresh");
       const native = createCompanyBackups({ localRequest, portalRequest, tempRoot: join(output, "transfer-cache"), allowLoopbackForTests: true });
       const preview = await native.prepareRestore({ id: latest.id });
-      assert.equal(preview.summary.format, "openmaus.workspace-backup");
+      assert.equal(preview.summary.format, "quati.workspace-backup");
       // Check the real staged manifest rather than trusting captured IPC input.
       assert.match(preview.id, /^[a-f0-9-]{36}$/);
       const staged = JSON.parse(readFileSync(join(fixtureDataDir, ".backups", preview.id, "staged", "manifest.json"), "utf8"));
-      assert.equal(staged.clientState?.["omb-drafts"], draft);
+      assert.equal(staged.clientState?.["quati-drafts"], draft);
       assert.equal(Object.hasOwn(staged.clientState ?? {}, "fixture-auth-token"), false);
       assert.equal(scheduler.state().nextBackupAt, scheduleClock + 24 * 60 * 60_000, "missed days are not queued");
     }
@@ -389,8 +389,8 @@ if (process.versions.electron && process.argv.includes(flag)) {
     assert.equal(scheduleTimer, null);
     checks.push("passwordless daily backups require explicit scope consent; start after 24h; production scheduler takes two encrypted snapshots with fresh private preload drafts; a week missed produces one catch-up; disable forgets the schedule");
     const remote = await open(false); await remote.loadURL(url);
-    assert.equal(await remote.webContents.executeJavaScript("typeof window.ogb.companyBackups"), "undefined");
-    assert.equal(await remote.webContents.executeJavaScript("typeof window.ogb.relaunch"), "undefined"); remote.destroy();
+    assert.equal(await remote.webContents.executeJavaScript("typeof window.quati.companyBackups"), "undefined");
+    assert.equal(await remote.webContents.executeJavaScript("typeof window.quati.relaunch"), "undefined"); remote.destroy();
     checks.push("production preload omits company backup and local relaunch bridges from remote-origin windows");
     assert.ok(progressPhases.has("uploading") && progressPhases.has("downloading") && progressPhases.has("preparing"));
     const receipt = { passed: true, checks, createCalls, restoreCalls, restartCalls, deleteCalls, cloudRequests, objectRequests, scheduledRuns,
@@ -409,11 +409,11 @@ if (process.versions.electron && process.argv.includes(flag)) {
   const { createServer } = await import("vite");
   const { default: react } = await import("@vitejs/plugin-react");
   const { default: tailwindcss } = await import("@tailwindcss/vite");
-  const { launchVerificationServer, runControlOmb } = await import("./control-omb.ts");
+  const { launchVerificationServer, runControlQuati } = await import("./control-quati.ts");
   const { waitForExit } = await import("../server/testing/cleanup.ts");
   const fixture = await launchVerificationServer({});
   let runtime = fixture.child, child, ui, restartTask;
-  const output = mkdtempSync(join(tmpdir(), "omb-company-backup-ui-"));
+  const output = mkdtempSync(join(tmpdir(), "quati-company-backup-ui-"));
   for (const name of ["home", "user-data"]) mkdirSync(join(output, name));
   const restart = async () => {
     await waitForExit(runtime, { signal: "SIGTERM" });
@@ -423,8 +423,8 @@ if (process.versions.electron && process.argv.includes(flag)) {
     mkdirSync(home, { recursive: true }); mkdirSync(temporary, { recursive: true });
     const env = { PATH: dirname(process.execPath), HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, ".config"),
       XDG_CACHE_HOME: join(home, ".cache"), XDG_DATA_HOME: join(home, ".local/share"), APPDATA: join(home, "AppData/Roaming"), LOCALAPPDATA: join(home, "AppData/Local"),
-      TEMP: temporary, TMP: temporary, TMPDIR: temporary, HERMES_HOME: join(home, ".hermes"), OMB_DATA_DIR: fixture.info.dataDir,
-      OMB_PORT: new URL(fixture.info.url).port, OMB_WEBHOOK_PORT: String(Number(new URL(fixture.info.url).port) + 1),
+      TEMP: temporary, TMP: temporary, TMPDIR: temporary, HERMES_HOME: join(home, ".hermes"), QUATI_DATA_DIR: fixture.info.dataDir,
+      QUATI_PORT: new URL(fixture.info.url).port, QUATI_WEBHOOK_PORT: String(Number(new URL(fixture.info.url).port) + 1),
       FAKE_CLAUDE_MODE: "happy", FAKE_CLAUDE_DUMP: fixture.fixtureDumpPath };
     for (const key of ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"]) if (process.env[key]) env[key] = process.env[key];
     const log = openSync(fixture.info.logPath, "a", 0o600);
@@ -440,7 +440,7 @@ if (process.versions.electron && process.argv.includes(flag)) {
     // The general harness HOME is portable data; backup fixtures put it under
     // excluded providers/ so no CLI-login directory can enter an archive.
     await restart();
-    const seeded = await runControlOmb(["new-bot", "--name", "Original cloud snapshot bot", "--url", fixture.info.url]);
+    const seeded = await runControlQuati(["new-bot", "--name", "Original cloud snapshot bot", "--url", fixture.info.url]);
     ui = await createServer({ configFile: false, root, resolve: { alias: { "@": join(root, "src") } }, define: { __APP_VERSION__: JSON.stringify("0.1.78") },
       server: { host: "127.0.0.1", port: 0, proxy: { "/api": { target: fixture.info.url } } }, plugins: [react(), tailwindcss(), {
         name: "company-backup-fixture", resolveId(id) { if (id === "virtual:company-backup-fixture") return `\0${id}`; },

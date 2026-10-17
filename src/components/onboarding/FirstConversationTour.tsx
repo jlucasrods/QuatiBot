@@ -4,12 +4,12 @@ import { emailGateDone } from "@/lib/onboarding-status";
 import { currentStep } from "@/lib/guided-tour";
 import { anchorFor, cardAnswered, nextSpotlight, placementFor, tourComplete, type ChatObservation, type SpotlightId } from "@/lib/first-conversation";
 import { t } from "@/lib/i18n";
-import type { MausState } from "@/lib/mascot";
+import type { QuatiState } from "@/lib/mascot";
 import { api, useStore } from "@/state/store";
 import { Spotlight } from "./Spotlight";
 const COPY: Record<SpotlightId, {
     key: "onboarding.spot.composer" | "onboarding.spot.model" | "onboarding.spot.approval" | "onboarding.spot.connector";
-    mascot: MausState;
+    mascot: QuatiState;
 }> = {
     "spot.composer": { key: "onboarding.spot.composer", mascot: "happy" },
     "spot.model": { key: "onboarding.spot.model", mascot: "curious" },

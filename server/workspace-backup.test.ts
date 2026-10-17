@@ -34,7 +34,7 @@ delete (RUNTIME_LIVE_ROW as { finishedAt?: unknown }).finishedAt;
 delete (RUNTIME_LIVE_ROW as { question?: unknown }).question;
 const scratch: string[] = [];
 function directory(): string {
-  const path = mkdtempSync(join(tmpdir(), "omb-workspace-backup-"));
+  const path = mkdtempSync(join(tmpdir(), "quati-workspace-backup-"));
   scratch.push(path);
   return path;
 }
@@ -87,10 +87,10 @@ function fixture(root: string): DatabaseSync {
 function encryptedPayload(root: string, plaintext: Buffer): string {
   const salt = randomBytes(16);
   const iv = randomBytes(12);
-  const header = Buffer.concat([Buffer.from("OMB-WORKSPACE-1\n"), salt, iv]);
+  const header = Buffer.concat([Buffer.from("QUATI-WORKSPACE-1\n"), salt, iv]);
   const cipher = createCipheriv("aes-256-gcm", scryptSync(PASSWORD, salt, 32, { N: 131_072, r: 8, p: 1, maxmem: 256 * 1024 ** 2 }), iv);
   cipher.setAAD(header);
-  const path = join(root, "malicious.ombbackup");
+  const path = join(root, "malicious.quatibackup");
   writeFileSync(path, Buffer.concat([header, cipher.update(plaintext), cipher.final(), cipher.getAuthTag()]));
   return path;
 }
@@ -128,7 +128,7 @@ describe("encrypted full workspace backups", () => {
       const originalRuntimeDb = readFileSync(join(source, "runtime.db"));
       const exported = await createWorkspaceBackup(source, {
         password: PASSWORD, appVersion: "test",
-        clientState: { "omb-drafts": '{"thread":"unsent"}', "omb-draft-attachments": JSON.stringify({ thread: [{ kind: "file", path: join(source, "attachments", "image.png") }] }) },
+        clientState: { "quati-drafts": '{"thread":"unsent"}', "quati-draft-attachments": JSON.stringify({ thread: [{ kind: "file", path: join(source, "attachments", "image.png") }] }) },
       });
       expect(exported.summary).toMatchObject({ bots: 1, groups: 1, threads: 1, messages: 1 });
       expect(exported.summary).not.toHaveProperty("includesCredentials");
@@ -146,7 +146,7 @@ describe("encrypted full workspace backups", () => {
       const targetComputers = { version: 1, environmentId: "target-environment", computers: [{ id: "target-computer", name: "Destination desktop", section: null }] };
       json(join(target, "team-computers.json"), targetComputers);
       writeFileSync(join(target, "environment-id"), "target-environment");
-      writeFileSync(join(target, "openmausbot-server.lease"), "live-lease");
+      writeFileSync(join(target, "quatibot-server.lease"), "live-lease");
       writeFileSync(join(target, "messages.db-wal"), "old database WAL must not enter the new DB");
       writeFileSync(join(target, "messages.db-shm"), "old database shared memory");
       const staged = await stageWorkspaceBackup(target, exported.path, { password: PASSWORD });
@@ -175,7 +175,7 @@ describe("encrypted full workspace backups", () => {
       expect(readJson(join(target, "cloud-owner.json"))).toEqual({ identity: "target-owner-record" });
       expect(readJson(join(target, "team-computers.json"))).toEqual(targetComputers);
       expect(readFileSync(join(target, "environment-id"), "utf8")).toBe("target-environment");
-      expect(readFileSync(join(target, "openmausbot-server.lease"), "utf8")).toBe("live-lease");
+      expect(readFileSync(join(target, "quatibot-server.lease"), "utf8")).toBe("live-lease");
       expect(existsSync(join(target, "messages.db-wal"))).toBe(false);
       expect(readFileSync(join(result.safetyCopyPath!, "data", "messages.db-wal"), "utf8")).toBe("old database WAL must not enter the new DB");
       expect(existsSync(join(target, "tools"))).toBe(false);
@@ -219,7 +219,7 @@ describe("encrypted full workspace backups", () => {
       const receipt = readLastWorkspaceRestore(target)!;
       expect(receipt.id).toBe(staged.id);
       expect(receipt).not.toHaveProperty("credentials");
-      expect(JSON.parse(receipt.clientState!["omb-draft-attachments"]).thread[0].path).toBe(join(target, "attachments", "image.png"));
+      expect(JSON.parse(receipt.clientState!["quati-draft-attachments"]).thread[0].path).toBe(join(target, "attachments", "image.png"));
       expect(applyPendingWorkspaceRestore(target)).toEqual({ restored: false });
       if (process.platform !== "win32") {
         expect(statSync(exported.path).mode & 0o777).toBe(0o600);
@@ -246,11 +246,11 @@ describe("encrypted full workspace backups", () => {
   // A Windows PC moves to a Linux Cloud; restored on Windows, its paths are this computer's own and are kept.
   it.skipIf(process.platform === "win32")("brings a Windows computer's data folder over wherever it is written, and clears and lists the folders and files left on that PC", async () => {
     const source = directory();
-    const windows = "C:\\Users\\Ada\\.openmausbot", site = "C:\\Users\\Ada\\Projects\\site";
+    const windows = "C:\\Users\\Ada\\.quatibot", site = "C:\\Users\\Ada\\Projects\\site";
     const soul = `Read ${windows}\\files\\brief.md before you start.`;
     json(join(source, "bots.json"), [
       { id: "bot", threadId: "thread", cwd: site, soul, tasks: [
-        { threadId: "thread", cwd: "c:\\users\\ada\\.openmausbot\\task-workspaces\\bot\\thread", resumeCursors: { claude: "kept" } },
+        { threadId: "thread", cwd: "c:\\users\\ada\\.quatibot\\task-workspaces\\bot\\thread", resumeCursors: { claude: "kept" } },
         { threadId: "other", cwd: site, resumeCursors: { claude: "only-on-that-pc" } },
       ] },
       { id: "helper", threadId: "helper-thread", soul: "No paths here.", tasks: [{ threadId: "helper-thread", cwd: null }] },
@@ -260,7 +260,7 @@ describe("encrypted full workspace backups", () => {
     json(join(source, "routines.json"), { version: 1, routines: [{ id: "routine", botId: "bot", enabled: true, prompt }], runs: [] });
     mkdirSync(join(source, "workspaces", "bot", "memory"), { recursive: true });
     writeFileSync(join(source, "workspaces", "bot", "MEMORY.md"),
-      "- The brief: c:\\users\\ada\\.openmausbot\\files\\brief.md\n- Drafts go to C:/Users/Ada/.openmausbot/files/drafts/\n- C:\\Users\\Ada\\.openmausbot-old\\notes.md is an old copy\n");
+      "- The brief: c:\\users\\ada\\.quatibot\\files\\brief.md\n- Drafts go to C:/Users/Ada/.quatibot/files/drafts/\n- C:\\Users\\Ada\\.quatibot-old\\notes.md is an old copy\n");
     writeFileSync(join(source, "workspaces", "bot", "memory", "people.md"), "Ada prefers short replies.\n");
     mkdirSync(join(source, "bots", "bot"), { recursive: true });
     writeFileSync(join(source, "bots", "bot", "SOUL.md"), soul);
@@ -284,10 +284,10 @@ describe("encrypted full workspace backups", () => {
     expect(readJson(join(target, "routines.json")).routines[0].prompt)
       .toBe(`Each morning read ${target}/files/brief.md, compare it with C:\\Users\\Ada\\Desktop\\x.docx, and save ${target}/files/out/report.md.`);
     expect(readFileSync(join(target, "workspaces", "bot", "MEMORY.md"), "utf8"))
-      .toBe(`- The brief: ${target}/files/brief.md\n- Drafts go to ${target}/files/drafts/\n- C:\\Users\\Ada\\.openmausbot-old\\notes.md is an old copy\n`);
+      .toBe(`- The brief: ${target}/files/brief.md\n- Drafts go to ${target}/files/drafts/\n- C:\\Users\\Ada\\.quatibot-old\\notes.md is an old copy\n`);
     expect(readFileSync(join(target, "workspaces", "bot", "memory", "people.md"), "utf8")).toBe("Ada prefers short replies.\n");
     expect(readFileSync(join(target, "bots", "bot", "SOUL.md"), "utf8")).toBe(bot.soul);
-    const leftBehind = { bots: 1, paths: [site, "C:\\Users\\Ada\\Shared", "C:\\Users\\Ada\\.openmausbot-old\\notes.md", "C:\\Users\\Ada\\Desktop\\x.docx"] };
+    const leftBehind = { bots: 1, paths: [site, "C:\\Users\\Ada\\Shared", "C:\\Users\\Ada\\.quatibot-old\\notes.md", "C:\\Users\\Ada\\Desktop\\x.docx"] };
     expect(result.leftBehind).toEqual(leftBehind);
     expect(readLastWorkspaceRestore(target)!.leftBehind).toEqual(leftBehind);
     expect(readLastWorkspaceRestore(target)!.pathsRewritten).toBe(true);
@@ -314,7 +314,7 @@ describe("encrypted full workspace backups", () => {
     expect(readdirSync(join(target, ".backups"))).toEqual([]);
     const corrupted = readFileSync(exported.path);
     corrupted[corrupted.length - 1] ^= 1;
-    const path = join(source, "corrupted.ombbackup");
+    const path = join(source, "corrupted.quatibackup");
     writeFileSync(path, corrupted);
     await expect(stageWorkspaceBackup(target, path, { password: PASSWORD })).rejects.toThrow(/damaged/);
     expect(readFileSync(join(target, "untouched"), "utf8")).toBe("original");
@@ -330,7 +330,7 @@ describe("encrypted full workspace backups", () => {
       "providers/account/auth.json", "providers/antigravity/account/acp_token.json",
       "caddy/data/private.key", "chrome-profile/Cookies", ".agent-browser/auth.json",
       "vm-home/.browser-profiles/chrome/Cookies", "vm-homes/abc/.browser-profiles/chromium/Cookies",
-      "tmp/omb-mcp-123/mcp.json", ".tmp/secret",
+      "tmp/quati-mcp-123/mcp.json", ".tmp/secret",
       "logins.json.enc", "logins-key", "logins.json.enc.123.05a7b3e0-1234.tmp",
       "highlevel.json.enc", "highlevel-key",
     ];

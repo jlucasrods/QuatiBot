@@ -39,7 +39,7 @@ const ROWLESS_STOPS = new Set(["shutdown_timeout", "auth_required", "update_requ
 /** Causes the server writes itself, by fixed code. */
 const FIXED_CAUSES: ReadonlyArray<[RegExp, string]> = [
   [/^no activity for \d+ minutes — the turn was stopped$/, "stalled"],
-  [/^turn interrupted — OpenMausBot restarted$/, "restart"],
+  [/^turn interrupted — QuatiBot restarted$/, "restart"],
   [/could not start — /, "could_not_start"],
   [/^the incident could not reach /, "incident_undelivered"],
   [/^could not deliver approval to the provider/, "approval_undelivered"],

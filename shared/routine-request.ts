@@ -6,7 +6,7 @@
 
 import type { RoutineCronSchedule } from "./routine-schedule.ts";
 
-export type RoutineRequestRunOn = "maus" | "cloud";
+export type RoutineRequestRunOn = "quati" | "cloud";
 
 export interface RoutineRequestIntervalWindow {
   start: string;
@@ -56,7 +56,7 @@ export interface RoutineRequestDefinition {
   continuity?: boolean;
   /** Skip by default, or keep at most one scheduled run waiting. */
   overlap?: "skip" | "queue";
-  /** Also run once each time OpenMausBot starts. Repeating routines only. */
+  /** Also run once each time QuatiBot starts. Repeating routines only. */
   runOnStartup?: boolean;
 }
 

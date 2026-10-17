@@ -10,7 +10,7 @@ import { connect, type Socket } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { launchVerificationServer, verificationServerEnvironment } from "../scripts/control-omb.ts";
+import { launchVerificationServer, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { openSse, type SseRecorder } from "./testing/sse.ts";
 
@@ -38,7 +38,7 @@ it("denies a never-list command a grant would have allowed, at a saved command a
     rmSync(dump, { force: true });
     await api("POST", `/api/bots/${bot.id}/messages`, { threadId: bot.threadId, text: "Hold this verification task while its approvals are exercised." }, 202);
     await expect.poll(() => existsSync(dump), { timeout: 15_000 }).toBe(true);
-    return JSON.parse(readFileSync(dump, "utf8")).mcpConfig.mcpServers.ogb.args.at(-1) as string;
+    return JSON.parse(readFileSync(dump, "utf8")).mcpConfig.mcpServers.quati.args.at(-1) as string;
   };
   /** One fake Bash permission request, as the engine's broker client sends it. */
   const ask = async (socketPath: string, command: string) => {
@@ -128,7 +128,7 @@ it("denies a never-list command a grant would have allowed, at a saved command a
     expect(await notices(bot.threadId)).toHaveLength(1);
     await stop(bot);
 
-    // Restart with the file's switch removed and only OMB_SAFETY_FLOOR=1 set,
+    // Restart with the file's switch removed and only QUATI_SAFETY_FLOOR=1 set,
     // then give the bot Full access the way a person does.
     await waitForExit(fixture.child, { signal: "SIGTERM" });
     const configPath = join(dataDir, "config.json");
@@ -138,7 +138,7 @@ it("denies a never-list command a grant would have allowed, at a saved command a
     const log = openSync(logPath, "a", 0o600);
     restarted = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
       cwd: fileURLToPath(new URL("..", import.meta.url)),
-      env: { ...verificationServerEnvironment({ FAKE_CLAUDE_MODE: "hang" }, dataDir, Number(new URL(url).port)), OMB_SAFETY_FLOOR: "1" },
+      env: { ...verificationServerEnvironment({ FAKE_CLAUDE_MODE: "hang" }, dataDir, Number(new URL(url).port)), QUATI_SAFETY_FLOOR: "1" },
       stdio: ["ignore", log, log],
     });
     closeSync(log);

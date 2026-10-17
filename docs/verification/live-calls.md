@@ -30,7 +30,7 @@ is "The call id and the call row" in
 ## Live calls from a phone need Pro
 
 A call from the desktop app (client `desktop`, or `web` on this computer) is
-free. A call from a phone needs an active OMB Cloud plan of any tier (Personal,
+free. A call from a phone needs an active QUATI Cloud plan of any tier (Personal,
 Pro or Max): a call that comes through the companion (it carries the paired
 device, which the phone cannot choose or drop) or names client `ios`/`android`
 (`liveCallFromPhone` in `server/live-call-controller.ts`). Without one,
@@ -41,26 +41,26 @@ OpenAI; the companion passes it to the phones unchanged. The desktop then
 shows the Pro card under the call button instead of the key form, with an offer
 only for someone signed out (signing in first) or free. A payment still being
 linked counts as Pro. While the plan cannot be checked (not read yet, signing
-in, OMB Cloud unreachable, or this computer's sign-in ended) the plan last
+in, QUATI Cloud unreachable, or this computer's sign-in ended) the plan last
 verified decides. A Cloud home always counts. The plan is asked only when a
 phone's call starts, so a plan change never ends a running call. The rule is
 `liveCallsAllowed` in `electron/pro-plan.mjs`; the design is "Live calls need
 Pro" in the spec above.
 
-The desktop app hands its server the answer: `OMB_PRO_PLAN` at spawn, then a
-private `openmausbot:pro-plan` message on each Cloud sign-in change. A server it
+The desktop app hands its server the answer: `QUATI_PRO_PLAN` at spawn, then a
+private `quatibot:pro-plan` message on each Cloud sign-in change. A server it
 did not start (dev, tests, headless or Docker, and this fixture) says Pro with
-`OMB_PRO_PLAN=1`, which the fixture launcher lets cross only as `1`.
+`QUATI_PRO_PLAN=1`, which the fixture launcher lets cross only as `1`.
 
 ```sh
 node --test electron/pro-plan.node-test.mjs
-pnpm exec vitest run server/pro-plan.test.ts server/live-call-controller.test.ts server/routes/live.test.ts companion/test/proxy-response.test.ts scripts/control-omb.test.ts
+pnpm exec vitest run server/pro-plan.test.ts server/live-call-controller.test.ts server/routes/live.test.ts companion/test/proxy-response.test.ts scripts/control-quati.test.ts
 pnpm exec vitest run src/lib/live-call-media.test.ts src/components/CallView.live-mode.test.ts src/components/ProIntroduction.test.ts
 ```
 
-`server/live-call.e2e.test.ts` boots its main server with `OMB_PRO_PLAN=1`, a
+`server/live-call.e2e.test.ts` boots its main server with `QUATI_PRO_PLAN=1`, a
 Cloud home without it (Pro, so only the key is asked for), and a third server
-the way the desktop app starts one (`OMB_PRO_PLAN=0`, then the private message
+the way the desktop app starts one (`QUATI_PRO_PLAN=0`, then the private message
 over a stand-in parent port): refused with 402 and no session, a call once the
 message says Pro, still live after the message says not Pro, and the next start
 refused.
@@ -107,17 +107,17 @@ standalone fake cannot be scripted from the shell, so nothing is asked on it:
 node --experimental-strip-types server/testing/fake-openai-live.ts
 # terminal 2: the renderer fixture, pointed at it (the key only ever reaches
 # the fake), and Pro, which Live calls need
-OMB_OPENAI_LIVE_URL=http://127.0.0.1:FAKE_PORT OMB_OPENAI_LIVE_KEY=sk-fake OMB_PRO_PLAN=1 \
-  node --experimental-strip-types scripts/control-omb.ts ui launch
+QUATI_OPENAI_LIVE_URL=http://127.0.0.1:FAKE_PORT QUATI_OPENAI_LIVE_KEY=sk-fake QUATI_PRO_PLAN=1 \
+  node --experimental-strip-types scripts/control-quati.ts ui launch
 # terminal 3, with the url, botId and ui handle it prints
-pnpm control:omb messages --bot BOT_ID --url http://127.0.0.1:PORT
+pnpm control:quati messages --bot BOT_ID --url http://127.0.0.1:PORT
 curl -s -X POST http://127.0.0.1:PORT/api/live/session -H 'content-type: application/json' \
   -d '{"botId":"BOT_ID","sdp":"v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\n","client":"desktop"}'
 curl -s http://127.0.0.1:PORT/api/live/call
 curl -s -X POST http://127.0.0.1:PORT/api/live/call/end -H 'content-type: application/json' \
   -d '{"callId":"CALL_ID"}'
-pnpm control:omb ui wait-settle --ui /tmp/openmausbot-verify-data-XXXXXX/ui.json --timeout 60
-pnpm control:omb ui snapshot --ui /tmp/openmausbot-verify-data-XXXXXX/ui.json
+pnpm control:quati ui wait-settle --ui /tmp/quatibot-verify-data-XXXXXX/ui.json --timeout 60
+pnpm control:quati ui snapshot --ui /tmp/quatibot-verify-data-XXXXXX/ui.json
 curl -s "http://127.0.0.1:PORT/api/threads/THREAD_ID/messages?limit=20"
 ```
 
@@ -132,7 +132,7 @@ no `title`, because nothing was asked; and the snapshot's transcript has
 
 ## Gotchas
 
-- `pnpm control:omb messages` projects a fixed set of fields: it shows the
+- `pnpm control:quati messages` projects a fixed set of fields: it shows the
   row's `kind` and its text, but not `via`, `callId` or `call`. Read the last
   command above for those.
 - Only generated thread titles name a call (`features.llmThreadTitles`; see
@@ -146,9 +146,9 @@ no `title`, because nothing was asked; and the snapshot's transcript has
   upgrade and the retry is accepted.
 - Only one call runs at a time: while one is open, another start answers `409`.
   End a call a failed run left open, or restart the fixture.
-- `OMB_OPENAI_LIVE_URL` crosses into a fixture only when it is a loopback
-  `http://127.0.0.1:PORT`, and `OMB_OPENAI_LIVE_KEY` only with it.
-- Without `OMB_PRO_PLAN=1` the fixture answers every start with `402`
+- `QUATI_OPENAI_LIVE_URL` crosses into a fixture only when it is a loopback
+  `http://127.0.0.1:PORT`, and `QUATI_OPENAI_LIVE_KEY` only with it.
+- Without `QUATI_PRO_PLAN=1` the fixture answers every start with `402`
   `needsPro`, and the desktop shows the Pro card under the call button. That
   is the way to see the card by hand; the runs recorded below predate the gate.
 
@@ -164,7 +164,7 @@ no `title`, because nothing was asked; and the snapshot's transcript has
   Electron shell. The e2e is POSIX-only (its fakes are shebang scripts), so
   Windows is not exercised.
 - Phone builds read the same wire fields and, when they do not know the kind,
-  the row's text; their own record is verified in SupaMaus/mausbot-mobile.
+  the row's text; their own record is verified in Quati/quati-mobile.
 - Approval lines in a record ("Allowed", "Denied", "Expired", "by voice"), a
   hang-up while a turn is still working, a step that never reported how it went
   (running only while the chat works) and a call that began before the loaded

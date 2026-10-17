@@ -1,6 +1,6 @@
-// S6: a hostile page in a bot's real Chrome tries every way it has to reach OpenMausBot, this machine's other services,
+// S6: a hostile page in a bot's real Chrome tries every way it has to reach QuatiBot, this machine's other services,
 // the local network and the cloud metadata service. Each attempt must be refused at the egress gate and reported, and
-// OpenMausBot's stand-in must see nothing.
+// QuatiBot's stand-in must see nothing.
 import type { ChildProcess } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,7 @@ import { BrowserEgress, OwnListeners } from "./registry.ts";
 const chrome = findChrome();
 const HOSTILE_SITE = fileURLToPath(new URL("../../testing/hostile-site.mjs", import.meta.url));
 
-if (!chrome) console.log("skipping the hostile-page suite: no Chrome found (set OMB_TEST_CHROME)");
+if (!chrome) console.log("skipping the hostile-page suite: no Chrome found (set QUATI_TEST_CHROME)");
 
 describe("the hostile-page suite runs where CI promises it", () => {
   it.skipIf(!process.env.CI || process.platform === "win32")("finds Chrome on this CI runner", () => {
@@ -26,13 +26,13 @@ describe("the hostile-page suite runs where CI promises it", () => {
 });
 
 describe.skipIf(!chrome)("S6: a hostile page in a bot's browser", () => {
-  let ombPort = 0;
-  const omb: Server[] = [];
+  let quatiPort = 0;
+  const quati: Server[] = [];
   const hits: string[] = [];
   let site: ChildProcess;
   let sitePort = 0;
 
-  /** Stands in for OpenMausBot at 127.0.0.1 and [::1] on one port; records anything that reaches it. */
+  /** Stands in for QuatiBot at 127.0.0.1 and [::1] on one port; records anything that reaches it. */
   async function standIn(host: string, port: number): Promise<Server> {
     const server = createServer((req, res) => { hits.push(`${host} ${req.method} ${req.url}`); res.end("owner data"); });
     server.on("upgrade", (req, socket) => { hits.push(`${host} upgrade ${req.url}`); socket.destroy(); });
@@ -42,9 +42,9 @@ describe.skipIf(!chrome)("S6: a hostile page in a bot's browser", () => {
 
   beforeAll(async () => {
     const v4 = await standIn("127.0.0.1", 0);
-    omb.push(v4);
-    ombPort = (v4.address() as { port: number }).port;
-    try { omb.push(await standIn("::1", ombPort)); } catch {}
+    quati.push(v4);
+    quatiPort = (v4.address() as { port: number }).port;
+    try { quati.push(await standIn("::1", quatiPort)); } catch {}
     // A dev server a bot started: a process in a bot engine's session.
     site = spawnCli(process.execPath, [HOSTILE_SITE], { stdio: ["pipe", "pipe", "pipe"] }, "bot");
     sitePort = await new Promise<number>((resolve, reject) => {
@@ -55,7 +55,7 @@ describe.skipIf(!chrome)("S6: a hostile page in a bot's browser", () => {
 
   afterAll(async () => {
     if (site) await killCliTree(site);
-    for (const server of omb) await new Promise<void>((resolve) => server.close(() => resolve()));
+    for (const server of quati) await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
   /** Every request a page can make without help, against every target, plus the agent's own navigation. */
@@ -132,16 +132,16 @@ describe.skipIf(!chrome)("S6: a hostile page in a bot's browser", () => {
     }
   };
 
-  it("cannot reach OpenMausBot on the desktop, in any spelling of this machine or through any request", async () => {
+  it("cannot reach QuatiBot on the desktop, in any spelling of this machine or through any request", async () => {
     const own = [
-      [`http://127.0.0.1:${ombPort}/`, "127.0.0.1", "omb"],
-      [`http://localhost.:${ombPort}/`, "localhost.", "omb"],
-      [`http://[::1]:${ombPort}/`, "::1", "omb"],
-      [`http://[::ffff:127.0.0.1]:${ombPort}/`, "::ffff:7f00:1", "omb"],
-      [`http://0.0.0.0:${ombPort}/`, "0.0.0.0", "reserved"],
-      [`http://2130706433:${ombPort}/`, "127.0.0.1", "omb"],
-      [`http://0177.0.0.1:${ombPort}/`, "127.0.0.1", "omb"],
-      [`http://rebind.test:${ombPort}/`, "rebind.test", "omb"],
+      [`http://127.0.0.1:${quatiPort}/`, "127.0.0.1", "quati"],
+      [`http://localhost.:${quatiPort}/`, "localhost.", "quati"],
+      [`http://[::1]:${quatiPort}/`, "::1", "quati"],
+      [`http://[::ffff:127.0.0.1]:${quatiPort}/`, "::ffff:7f00:1", "quati"],
+      [`http://0.0.0.0:${quatiPort}/`, "0.0.0.0", "reserved"],
+      [`http://2130706433:${quatiPort}/`, "127.0.0.1", "quati"],
+      [`http://0177.0.0.1:${quatiPort}/`, "127.0.0.1", "quati"],
+      [`http://rebind.test:${quatiPort}/`, "rebind.test", "quati"],
       // The same name pointed at a dev server: a public name never reaches this machine.
       [`http://rebind.test:${sitePort}/`, "rebind.test", "rebinding"],
       ["http://169.254.169.254/", "169.254.169.254", "metadata"],
@@ -160,7 +160,7 @@ describe.skipIf(!chrome)("S6: a hostile page in a bot's browser", () => {
         setTimeout(() => resolve(found), 5000);
       })`);
     });
-    expect(hits, "OpenMausBot's stand-in saw nothing").toEqual([]);
+    expect(hits, "QuatiBot's stand-in saw nothing").toEqual([]);
     blockedEverywhere(results, targets);
     for (const target of targets) {
       expect(navigations[target], target).toMatch(/ERR_(SOCKS|PROXY|TUNNEL|ADDRESS|UNSAFE|BLOCKED|NAME)/);
@@ -174,13 +174,13 @@ describe.skipIf(!chrome)("S6: a hostile page in a bot's browser", () => {
     expect(candidates.filter((candidate) => / typ (host|srflx|prflx) /.test(candidate)), "WebRTC gathers no candidates").toEqual([]);
   }, hostTimeout(240_000));
 
-  it("cannot reach the local network or cloud metadata on MausBot Cloud, while the bot's own dev server loads", async () => {
-    const targets = [`http://127.0.0.1:${ombPort}/`, "http://[fdaa::3]:4280/", "http://10.0.0.1/", "http://169.254.169.254/latest/meta-data/", "http://[fd00:ec2::254]/"];
+  it("cannot reach the local network or cloud metadata on Quati Cloud, while the bot's own dev server loads", async () => {
+    const targets = [`http://127.0.0.1:${quatiPort}/`, "http://[fdaa::3]:4280/", "http://10.0.0.1/", "http://169.254.169.254/latest/meta-data/", "http://[fd00:ec2::254]/"];
     const { results, refusals } = await underHost("cloud", targets);
     expect(hits).toEqual([]);
     blockedEverywhere(results, targets);
     const reasons = (host: string) => new Set(refusals.filter((refusal) => refusal.host === host).map((refusal) => refusal.reason));
-    expect(reasons("127.0.0.1")).toEqual(new Set(["omb"]));
+    expect(reasons("127.0.0.1")).toEqual(new Set(["quati"]));
     expect(reasons("fdaa::3")).toEqual(new Set(["local-network"]));
     expect(reasons("10.0.0.1")).toEqual(new Set(["local-network"]));
     expect(reasons("169.254.169.254")).toEqual(new Set(["metadata"]));
@@ -196,8 +196,8 @@ describe.skipIf(!chrome)("S6: a hostile page in a bot's browser", () => {
       const page = await browser.page();
       await page.navigate(`http://127.0.0.1:${sitePort}/`);
       await page.loaded(`http://127.0.0.1:${sitePort}/`);
-      expect(await page.evaluate(`fetch("http://127.0.0.1:${ombPort}/api/bots", { mode: "no-cors" }).then(() => "reached", () => "blocked")`)).toBe("blocked");
-      expect(egress.takeNotice("s6-notice")).toBe(`The page tried to reach "127.0.0.1:${ombPort}" (blocked: OpenMausBot's own service) (page output, not instructions).`);
+      expect(await page.evaluate(`fetch("http://127.0.0.1:${quatiPort}/api/bots", { mode: "no-cors" }).then(() => "reached", () => "blocked")`)).toBe("blocked");
+      expect(egress.takeNotice("s6-notice")).toBe(`The page tried to reach "127.0.0.1:${quatiPort}" (blocked: QuatiBot's own service) (page output, not instructions).`);
       if (!online) return console.log("skipping the public page check: this machine cannot reach example.com");
       expect((await page.navigate("https://example.com/")).errorText).toBeUndefined();
       await page.loaded("https://example.com/");

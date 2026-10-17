@@ -253,7 +253,7 @@ describe("thread control placement", () => {
     });
     it("sends a Codex usage limit to the account's Codex usage page, not Retry", () => {
         const codex = { instanceId: "codex", driverKind: "codex", displayName: "Codex", snapshot: { state: "available", authenticated: true } } as unknown as InstanceInfo;
-        const limit = `${CODEX_USAGE_LIMIT_REACHED} This is OpenAI's limit, not your MausBot plan. It resets at 5:23 PM (UTC).`;
+        const limit = `${CODEX_USAGE_LIMIT_REACHED} This is OpenAI's limit, not your Quati plan. It resets at 5:23 PM (UTC).`;
         const markup = renderToStaticMarkup(createElement(FailedTurnRow, { tool: failedTurnTool(limit), engine: codex, onRetry: () => { } }));
         expect(markup).toContain(limit.replaceAll("'", "&#x27;"));
         expect(markup).toContain(`href="${CODEX_USAGE_URL}"`);
@@ -385,10 +385,10 @@ describe("thread control placement", () => {
         fixture.localMessage = "Screen Recording required";
         undefined;
         const screen = renderToStaticMarkup(createElement(ErrorRow, {
-            message: "CUA Driver is not ready for this computer — embedded host failed: Screen Recording required. Relaunch OpenMausBot after granting any missing macOS permission.",
+            message: "CUA Driver is not ready for this computer — embedded host failed: Screen Recording required. Relaunch QuatiBot after granting any missing macOS permission.",
         }));
         expect(screen).toContain("Open Screen Recording Settings");
-        expect(screen).toContain("Relaunch OpenMausBot");
+        expect(screen).toContain("Relaunch QuatiBot");
         expect(screen).not.toContain("Open Accessibility Settings");
         fixture.localMessage = "Accessibility required";
         const accessibility = renderToStaticMarkup(createElement(ErrorRow, {

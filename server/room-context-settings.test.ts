@@ -12,15 +12,15 @@ describe("room context settings", () => {
     expect(roomSessionsEnabled({ roomSessions: true }, {})).toBe(true);
   });
 
-  it("lets OMB_ROOM_SESSIONS win over the file when it is 1 or 0, and only then", () => {
-    expect(roomSessionsEnabled(undefined, { OMB_ROOM_SESSIONS: "1" })).toBe(true);
-    expect(roomSessionsEnabled({ roomSessions: false }, { OMB_ROOM_SESSIONS: "1" })).toBe(true);
-    expect(roomSessionsEnabled({ roomSessions: true }, { OMB_ROOM_SESSIONS: "0" })).toBe(false);
-    expect(roomSessionsEnabled({ roomSessions: true }, { OMB_ROOM_SESSIONS: " 0 " })).toBe(false);
+  it("lets QUATI_ROOM_SESSIONS win over the file when it is 1 or 0, and only then", () => {
+    expect(roomSessionsEnabled(undefined, { QUATI_ROOM_SESSIONS: "1" })).toBe(true);
+    expect(roomSessionsEnabled({ roomSessions: false }, { QUATI_ROOM_SESSIONS: "1" })).toBe(true);
+    expect(roomSessionsEnabled({ roomSessions: true }, { QUATI_ROOM_SESSIONS: "0" })).toBe(false);
+    expect(roomSessionsEnabled({ roomSessions: true }, { QUATI_ROOM_SESSIONS: " 0 " })).toBe(false);
     for (const other of ["", "true", "yes", "2", "on"]) {
-      expect(roomSessionsEnabled({ roomSessions: true }, { OMB_ROOM_SESSIONS: other })).toBe(true);
-      expect(roomSessionsEnabled({ roomSessions: false }, { OMB_ROOM_SESSIONS: other })).toBe(false);
-      expect(roomSessionsEnabled(undefined, { OMB_ROOM_SESSIONS: other })).toBe(false);
+      expect(roomSessionsEnabled({ roomSessions: true }, { QUATI_ROOM_SESSIONS: other })).toBe(true);
+      expect(roomSessionsEnabled({ roomSessions: false }, { QUATI_ROOM_SESSIONS: other })).toBe(false);
+      expect(roomSessionsEnabled(undefined, { QUATI_ROOM_SESSIONS: other })).toBe(false);
     }
   });
 

@@ -4,10 +4,10 @@ import { useStore, type Bot } from "@/state/store";
 import { useBotEditor } from "./bot-settings/BotEditorContext";
 import { imageAttachmentFromFile } from "@/lib/composer-attachments";
 import { cn } from "@/lib/cn";
-import { PICKABLE_STATES, MAUS_COLORS, MAUS_COLOR_NAMES, type MausMotion, type MausState, } from "@/lib/mascot";
+import { PICKABLE_STATES, MAUS_COLORS, MAUS_COLOR_NAMES, type QuatiMotion, type QuatiState, } from "@/lib/mascot";
 import { AVATAR_FOCUS_CENTER, AVATAR_ZOOM_MAX, AVATAR_ZOOM_MIN, BOT_AVATAR_CROPS, botAvatarUrlFromStoredPath, clampAvatarFocus, clampAvatarZoom, type BotAvatarCrop, } from "../../shared/bot-avatar";
 import { MASCOT_BODIES, MASCOT_BODY_IDS } from "../../shared/mascot-bodies";
-import { BotAvatar, MausAvatar } from "./Avatar";
+import { BotAvatar, QuatiAvatar } from "./Avatar";
 import { AvatarImageGenerator } from "./AvatarImageGenerator";
 type AvatarPatch = Partial<Pick<Bot, "avatarCrop" | "avatarUrl" | "avatarZoom" | "avatarFocusX" | "avatarFocusY" | "color" | "mascotExpression" | "mascotBody">>;
 const FRAME_SIZE = 168;
@@ -77,9 +77,9 @@ const CROP_LABEL = {
 } satisfies Record<BotAvatarCrop, string>;
 export function BotProfileAvatarCard({ bot, activeState, mascotMotion, onPatch, }: {
     bot: Bot;
-    activeState: MausState;
+    activeState: QuatiState;
     mascotMotion: {
-        kind: Exclude<MausMotion, "none">;
+        kind: Exclude<QuatiMotion, "none">;
         nonce: number;
     } | null;
     onPatch: (patch: AvatarPatch) => void;
@@ -205,7 +205,7 @@ export function BotProfileAvatarCard({ bot, activeState, mascotMotion, onPatch, 
             </div>
             <div className="grid grid-cols-5 gap-2">
               {PICKABLE_STATES.map((expression) => (<button key={expression} type="button" disabled={busy} aria-pressed={activeState === expression} onClick={() => onPatch({ mascotExpression: expression })} className={cn("flex h-[58px] items-center justify-center rounded-xl bg-inset transition-colors hover:bg-control disabled:opacity-50", activeState === expression && "ring-2 ring-accent-border")} title={expression} aria-label={`Use ${expression} expression`}>
-                  <MausAvatar color={bot.color} bodyId={bot.mascotBody ?? undefined} state={expression} size={42} animated={false}/>
+                  <QuatiAvatar color={bot.color} bodyId={bot.mascotBody ?? undefined} state={expression} size={42} animated={false}/>
                 </button>))}
             </div>
 
@@ -223,7 +223,7 @@ export function BotProfileAvatarCard({ bot, activeState, mascotMotion, onPatch, 
               {MASCOT_BODY_IDS.map((id) => (<button key={id} type="button" disabled={busy} aria-pressed={(bot.mascotBody ?? "cursor") === id} aria-label={`Use the ${MASCOT_BODIES[id].name} body`} onClick={() => onPatch({ mascotBody: id })} className={cn("flex items-center justify-center rounded-lg py-1.5 disabled:opacity-50", (bot.mascotBody ?? "cursor") === id
                     ? "bg-control text-ink"
                     : "text-ink-secondary hover:bg-control/60")}>
-                  <MausAvatar color={bot.color} bodyId={id} size={34} animated={false} trackPointer={false}/>
+                  <QuatiAvatar color={bot.color} bodyId={id} size={34} animated={false} trackPointer={false}/>
                 </button>))}
             </div>
           </>)}

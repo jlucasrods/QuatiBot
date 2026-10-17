@@ -15,12 +15,12 @@ describe("decider config", () => {
   beforeEach(() => {
     rmSync(DATA_DIR, { recursive: true, force: true });
     mkdirSync(DATA_DIR, { recursive: true });
-    delete process.env.OMB_JEV_API_KEY;
-    delete process.env.OMB_OPENROUTER_DECIDER_KEY;
+    delete process.env.QUATI_JEV_API_KEY;
+    delete process.env.QUATI_OPENROUTER_DECIDER_KEY;
   });
   afterEach(() => {
-    delete process.env.OMB_JEV_API_KEY;
-    delete process.env.OMB_OPENROUTER_DECIDER_KEY;
+    delete process.env.QUATI_JEV_API_KEY;
+    delete process.env.QUATI_OPENROUTER_DECIDER_KEY;
   });
 
   it("saving decision-model settings never reloads the engine fleet", () => {
@@ -30,7 +30,7 @@ describe("decider config", () => {
 
   it("engines never inherit the key, nor Cloud Pro's included token", () => {
     const childEnv: Record<string, string | undefined> = {
-      OMB_JEV_API_KEY: KEY, OMB_OPENROUTER_DECIDER_KEY: OR_KEY, OMB_CLOUD_DECIDER_TOKEN: "omb_decide_included", PATH: "/usr/bin",
+      QUATI_JEV_API_KEY: KEY, QUATI_OPENROUTER_DECIDER_KEY: OR_KEY, QUATI_CLOUD_DECIDER_TOKEN: "quati_decide_included", PATH: "/usr/bin",
     };
     stripWorkspaceCredentialEnv(childEnv);
     expect(childEnv).toEqual({ PATH: "/usr/bin" });
@@ -38,21 +38,21 @@ describe("decider config", () => {
 
   it("on Cloud Pro, a key in the environment is the person's own and wins over the included decisions", async () => {
     const relay = "https://cloud.example.test/api/cloud/services/decider";
-    vi.stubEnv("OMB_CLOUD_DECIDER_URL", relay);
-    vi.stubEnv("OMB_CLOUD_DECIDER_TOKEN", "omb_decide_included");
+    vi.stubEnv("QUATI_CLOUD_DECIDER_URL", relay);
+    vi.stubEnv("QUATI_CLOUD_DECIDER_TOKEN", "quati_decide_included");
     try {
       const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ answers: { answer: { type: "noul", noul: 0.9 } } })));
       const decider = createDecider({ config: loadConfig, fetch: fetchImpl });
       expect(describeDecider(loadConfig())).toMatchObject({ configured: true, included: true, enabled: true });
       await decider.testKey();
       // the desktop hands the saved key over as env: now it is the one in use
-      process.env.OMB_JEV_API_KEY = KEY;
+      process.env.QUATI_JEV_API_KEY = KEY;
       saveConfig({ decider: { enabled: true } });
       expect(describeDecider(loadConfig())).toEqual({ provider: "jev", configured: true, enabled: true, jobs: { roomRouting: true } });
       await decider.testKey();
       const calls = fetchImpl.mock.calls.map(([url, init]) => [String(url), (init!.headers as Record<string, string>).authorization]);
-      expect(calls).toEqual([[`${relay}/v1/systemone`, "Bearer omb_decide_included"], ["https://api.typesafe.ai/v1/systemone", `Bearer ${KEY}`]]);
-      expect(readFileSync(join(DATA_DIR, "config.json"), "utf8")).not.toContain("omb_decide_included");
+      expect(calls).toEqual([[`${relay}/v1/systemone`, "Bearer quati_decide_included"], ["https://api.typesafe.ai/v1/systemone", `Bearer ${KEY}`]]);
+      expect(readFileSync(join(DATA_DIR, "config.json"), "utf8")).not.toContain("quati_decide_included");
     } finally {
       vi.unstubAllEnvs();
     }
@@ -60,12 +60,12 @@ describe("decider config", () => {
 
   it("the env key wins over the file, and a save keeps the env in step", () => {
     writeFileSync(join(DATA_DIR, "config.json"), JSON.stringify({ decider: { enabled: true, key: "" } }));
-    process.env.OMB_JEV_API_KEY = KEY;
+    process.env.QUATI_JEV_API_KEY = KEY;
     expect(loadConfig().decider?.key).toBe(KEY);
     syncCredentialEnv({ decider: { key: "tsk_new" } });
-    expect(process.env.OMB_JEV_API_KEY).toBe("tsk_new");
+    expect(process.env.QUATI_JEV_API_KEY).toBe("tsk_new");
     syncCredentialEnv({ decider: { key: "" } });
-    expect(process.env.OMB_JEV_API_KEY).toBeUndefined();
+    expect(process.env.QUATI_JEV_API_KEY).toBeUndefined();
   });
 
   it("saving a key persists the switch and the room job on, merged into the section", () => {
@@ -80,14 +80,14 @@ describe("decider config", () => {
 
   it("the OpenRouter key is its own: env wins over the file, a save keeps env in step, the engine's key is untouched", () => {
     writeFileSync(join(DATA_DIR, "config.json"), JSON.stringify({ decider: { provider: "openrouter", openrouterKey: "" }, openrouter: { key: "engine-key" } }));
-    process.env.OMB_OPENROUTER_DECIDER_KEY = OR_KEY;
+    process.env.QUATI_OPENROUTER_DECIDER_KEY = OR_KEY;
     expect(loadConfig().decider?.openrouterKey).toBe(OR_KEY);
     expect(loadConfig().openrouter?.key).toBe("engine-key");
     syncCredentialEnv({ decider: { openrouterKey: "sk-or-new" } });
-    expect(process.env.OMB_OPENROUTER_DECIDER_KEY).toBe("sk-or-new");
-    expect(process.env.OMB_JEV_API_KEY).toBeUndefined();
+    expect(process.env.QUATI_OPENROUTER_DECIDER_KEY).toBe("sk-or-new");
+    expect(process.env.QUATI_JEV_API_KEY).toBeUndefined();
     syncCredentialEnv({ decider: { openrouterKey: "" } });
-    expect(process.env.OMB_OPENROUTER_DECIDER_KEY).toBeUndefined();
+    expect(process.env.QUATI_OPENROUTER_DECIDER_KEY).toBeUndefined();
   });
 
   it("saving the OpenRouter key persists provider, model, switch and room job, merged into the section", () => {

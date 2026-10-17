@@ -830,7 +830,7 @@ describe("explicit browser control and signing in", () => {
     const { cleanup, nodes } = connect();
     const field = nodes.find((node) => node.type === "input" && (node.props as { name?: string }).name === "pageText")!;
     expect((field.props as { type?: string }).type).toBe("password");
-    expect(nodes.some((node) => Children.toArray(node.props.children).includes("It goes only to the page. OpenMausBot does not keep, log or show it."))).toBe(true);
+    expect(nodes.some((node) => Children.toArray(node.props.children).includes("It goes only to the page. QuatiBot does not keep, log or show it."))).toBe(true);
     const form = nodes.find((node) => node.type === "form" && elements(node).some((child) => (child.props as { name?: string }).name === "pageText"))!;
     const value = { value: secret };
     form.props.onSubmit!({ preventDefault: vi.fn(), currentTarget: { elements: { namedItem: () => value } } });

@@ -10,10 +10,10 @@ node --experimental-strip-types scripts/verify-local-vm-resume.ts
 The browser recipe uses `launchVerificationServer`, the fake engine and a
 private browser profile. It mounts the real ComputerPanel with synthetic
 desktop transport; it never contacts the host Docker daemon. Set
-`OMB_AGENT_BROWSER_PATH` and `AGENT_BROWSER_EXECUTABLE_PATH` to reuse installed
+`QUATI_AGENT_BROWSER_PATH` and `AGENT_BROWSER_EXECUTABLE_PATH` to reuse installed
 tools. Its receipt prints the isolated server URL and persistent log path;
-screenshots remain beside that log unless `OMB_UI_EVIDENCE_DIR` selects another
-directory. Set `OMB_UI_RECORD=1` with ffmpeg on PATH to also save `resume.mp4`.
+screenshots remain beside that log unless `QUATI_UI_EVIDENCE_DIR` selects another
+directory. Set `QUATI_UI_RECORD=1` with ffmpeg on PATH to also save `resume.mp4`.
 The readiness assertion waits for two actual status reads while the desktop is
 held unready; it uses no fixed delay.
 

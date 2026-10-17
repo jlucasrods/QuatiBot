@@ -66,7 +66,7 @@ function harness(
   autoApply?: DirectApplyCheck,
 ) {
   const clock = { now: start };
-  const dir = mkdtempSync(join(tmpdir(), "omb-routine-request-"));
+  const dir = mkdtempSync(join(tmpdir(), "quati-routine-request-"));
   tempDirs.push(dir);
   const routines = new RoutineManager({
     file: join(dir, "routines.json"),
@@ -419,7 +419,7 @@ describe("RoutineRequestService", () => {
     expect(plain.detail).not.toContain("On startup:");
 
     const proposed = await service.propose({ botId: "bot-a", threadId: "thread-a", proposal: createProposal({ runOnStartup: true }) });
-    expect(proposed.detail).toContain("On startup: Also runs once each time OpenMausBot starts");
+    expect(proposed.detail).toContain("On startup: Also runs once each time QuatiBot starts");
     expect(store.messagesFor("thread-a")[0]!.card!.routineRequest?.operation).toMatchObject({ action: "create", routine: { runOnStartup: true } });
     expect(service.resolve({ botId: "bot-a", threadId: "thread-a", requestId: proposed.requestId, behavior: "allow" }).state).toBe("applied");
     const routine = routines.listRoutines().find((candidate) => candidate.name === "Morning brief")!;
@@ -967,7 +967,7 @@ describe("RoutineRequestService", () => {
     await service.propose({
       botId: "bot-a",
       threadId: "thread-a",
-      proposal: { action: "update", routineId: routine.id, changes: { runOn: "maus" } },
+      proposal: { action: "update", routineId: routine.id, changes: { runOn: "quati" } },
     });
     await service.propose({
       botId: "bot-a",
@@ -1082,7 +1082,7 @@ describe("RoutineRequestService", () => {
       botId: "bot-a",
       name: "Morning brief",
       prompt: "Summarize the overnight support queue.",
-      runOn: "maus",
+      runOn: "quati",
       enabled: true,
       schedule: { type: "daily", time: "09:00", weekdays: [1, 3] },
       durationMinutes: 5,
@@ -1661,7 +1661,7 @@ describe("RoutineRequestService", () => {
 describe("cross-bot routine targeting", () => {
   function targetedHarness(validateTarget?: (proposerBotId: string, target: { botId: string; name: string }) => string | null) {
     const clock = { now: Date.parse("2026-08-28T10:00:00Z") };
-    const dir = mkdtempSync(join(tmpdir(), "omb-routine-target-"));
+    const dir = mkdtempSync(join(tmpdir(), "quati-routine-target-"));
     tempDirs.push(dir);
     const routines = new RoutineManager({
       file: join(dir, "routines.json"),

@@ -27,10 +27,10 @@ it("in the desktop app, a code the link carried connects at once; a browser stil
 });
 
 it("opening My Cloud from the app needs no click and no code to type", async () => {
-  vi.stubGlobal("window", { ogb: { workspaces: {} } });
+  vi.stubGlobal("window", { quati: { workspaces: {} } });
   f.pair.mockResolvedValue({ ok: true });
   const html = render(code);
-  expect(html).toContain("Connecting to this OpenMausBot…");
+  expect(html).toContain("Connecting to this QuatiBot…");
   expect(html).not.toContain("Pairing code"); expect(html).not.toContain("<form");
   f.effects[0](); await flush();
   expect(f.pair).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ code }));
@@ -38,7 +38,7 @@ it("opening My Cloud from the app needs no click and no code to type", async () 
 });
 
 it("a code that no longer works falls back to the form, with the reason", async () => {
-  vi.stubGlobal("window", { ogb: { workspaces: {} } });
+  vi.stubGlobal("window", { quati: { workspaces: {} } });
   f.pair.mockResolvedValue({ ok: false, error: "That pairing code has expired." });
   render(code); f.effects[0](); await flush();
   expect(replaced).toEqual([]);
@@ -53,7 +53,7 @@ it("a browser keeps the code in the form for the person to confirm", () => {
 
 it("My Cloud says where its connection starts, never 'the code shown on the server'", () => {
   const cloud = pairIntro({ mode: "code", sent: false, email: "", cloudHome: true });
-  expect(cloud).toContain(`choose ${en["cloudHome.connect"]} in the OpenMausBot app`);
+  expect(cloud).toContain(`choose ${en["cloudHome.connect"]} in the QuatiBot app`);
   expect(cloud).toContain(`Settings → ${en["settings.section.cloudAccount"]}`);
   expect(cloud).toContain("on your Plan page");
   expect(cloud).not.toContain("shown on the server");

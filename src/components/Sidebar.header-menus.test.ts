@@ -85,7 +85,7 @@ const text = (tree: ReactElement<Props>[]) => tree.map((node) => Children.toArra
 beforeEach(() => {
   fixture.values = [];
   window = new EventTarget();
-  vi.stubGlobal("window", Object.assign(window, { innerWidth: 1280, innerHeight: 800, ogb: undefined, setTimeout, clearTimeout }));
+  vi.stubGlobal("window", Object.assign(window, { innerWidth: 1280, innerHeight: 800, quati: undefined, setTimeout, clearTimeout }));
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {}, removeItem: () => {} });
 });
 afterEach(() => { vi.unstubAllGlobals(); });

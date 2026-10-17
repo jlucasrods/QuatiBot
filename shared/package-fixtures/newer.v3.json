@@ -1,5 +1,5 @@
 {
-  "format": "openmaus.package",
+  "format": "quati.package",
   "version": 3,
   "package": {
     "id": "from-the-future",

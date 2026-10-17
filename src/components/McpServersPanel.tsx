@@ -31,7 +31,7 @@ export function McpServersPanel() {
       await api(`/api/mcp/servers/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify({ enabled }) });
       setExtensions((current) => current && ({ ...current, servers: current.servers.map((server) => server.name === name ? { ...server, enabled } : server) }));
     } catch {
-      setError("Não foi possível alterar a ativação do MCP no MausBot.");
+      setError("Não foi possível alterar a ativação do MCP no Quati.");
     } finally {
       setSaving(null);
     }
@@ -65,13 +65,13 @@ export function McpServersPanel() {
           : <ul className="divide-y divide-hairline rounded-lg border border-hairline bg-inset px-4">
             {items?.map((item) => <li key={"id" in item ? item.id : item.name} className="flex items-center justify-between gap-3 py-4">
               <span className="flex min-w-0 items-center gap-3 text-[13px] font-medium text-ink"><Icon size={16} className="shrink-0 text-ink-tertiary" />{item.name}</span>
-              {tab === "servers" && "type" in item && <Switch aria-label={`Usar ${item.name} nos bots do MausBot`}
+              {tab === "servers" && "type" in item && <Switch aria-label={`Usar ${item.name} nos bots do Quati`}
                 checked={item.enabled ?? item.status !== "disabled"} disabled={saving !== null}
                 onClick={() => void toggle(item.name, !(item.enabled ?? item.status !== "disabled"))} />}
             </li>)}
           </ul>}
       </div>
-      {tab === "servers" && <p className="text-[12px] text-ink-tertiary">Ativar ou desativar afeta apenas os bots do MausBot, a partir da próxima mensagem. Não altera o OpenCode global nem outros clientes. Ativado não significa conectado.</p>}
+      {tab === "servers" && <p className="text-[12px] text-ink-tertiary">Ativar ou desativar afeta apenas os bots do Quati, a partir da próxima mensagem. Não altera o OpenCode global nem outros clientes. Ativado não significa conectado.</p>}
       {tab === "skills" && <p className="text-[12px] text-ink-tertiary">Apenas habilidades com origem global identificável. Catálogos remotos sem essa informação não aparecem nesta lista.</p>}
     </section>
   );

@@ -48,16 +48,16 @@ async function freePorts(count) {
   }
 }
 
-const staging = mkdtempSync(join(tmpdir(), "omb-smoke-"));
-const home = mkdtempSync(join(tmpdir(), "omb-smoke-home-"));
+const staging = mkdtempSync(join(tmpdir(), "quati-smoke-"));
+const home = mkdtempSync(join(tmpdir(), "quati-smoke-home-"));
 const [port, webhookPort] = await freePorts(2);
 
-// OMB_SMOKE_DIST lets the release workflow aim this at a packaged app's
+// QUATI_SMOKE_DIST lets the release workflow aim this at a packaged app's
 // Resources/server tree instead of the repo build.
 try {
   // A desktop install can live beneath a user's CommonJS package scope.
   writeFileSync(join(staging, "package.json"), '{"type":"commonjs"}\n');
-  cpSync(process.env.OMB_SMOKE_DIST ?? join(root, "dist-server"), join(staging, "server"), { recursive: true });
+  cpSync(process.env.QUATI_SMOKE_DIST ?? join(root, "dist-server"), join(staging, "server"), { recursive: true });
   cpSync(join(root, "dist"), join(staging, "ui"), { recursive: true });
   if (browserBundle) cpSync(resolve(browserBundle), join(staging, "browser-engine"), { recursive: true });
 } catch (error) {
@@ -75,14 +75,14 @@ const fixtureEnv = {
   XDG_CONFIG_HOME: join(home, ".config"),
   XDG_CACHE_HOME: join(home, ".cache"),
   XDG_DATA_HOME: join(home, ".local", "share"),
-  OMB_DATA_DIR: join(home, ".openmausbot"),
-  OMB_STATIC_DIR: join(staging, "ui"),
-  OMB_PORT: String(port),
-  OMB_WEBHOOK_PORT: String(webhookPort),
+  QUATI_DATA_DIR: join(home, ".quatibot"),
+  QUATI_STATIC_DIR: join(staging, "ui"),
+  QUATI_PORT: String(port),
+  QUATI_WEBHOOK_PORT: String(webhookPort),
   // Not a genuine key: enough to make the server look for its enterprise layer.
-  OMB_LICENSE_KEY: "omb1.not.real",
+  QUATI_LICENSE_KEY: "omb1.not.real",
   ...(browserBundle ? {
-    OMB_RESOURCES_PATH: staging,
+    QUATI_RESOURCES_PATH: staging,
     // A global engine on the developer's PATH must not make this test pass.
     PATH: process.platform === "win32" ? join(process.env.SystemRoot ?? "C:\\Windows", "System32") : "/usr/bin:/bin",
   } : {}),
@@ -241,8 +241,8 @@ if (listening) {
 let headlessReport = null;
 if (listening) {
   const runCli = (args) => new Promise((resolve) => {
-    const cli = spawn(process.execPath, [join(staging, "server", "openmausbot.js"), ...args], {
-      cwd: staging, env: { ...fixtureEnv, OPENMAUSBOT_URL: `http://127.0.0.1:${port}` }, stdio: ["ignore", "pipe", "pipe"],
+    const cli = spawn(process.execPath, [join(staging, "server", "quatibot.js"), ...args], {
+      cwd: staging, env: { ...fixtureEnv, QUATIBOT_URL: `http://127.0.0.1:${port}` }, stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
@@ -271,12 +271,13 @@ if (listening) {
     });
     assert.equal(response.status, 200, "Packaged backup worker did not export successfully");
     const archive = await response.json();
-    assert.equal(archive.summary.format, "openmaus.workspace-backup");
+    assert.equal(archive.summary.format, "quati.workspace-backup");
     const download = await fetch(`http://127.0.0.1:${port}/api/workspace-backup/download/${archive.id}`);
     assert.equal(download.status, 200);
     const bytes = Buffer.from(await download.arrayBuffer());
     assert.equal(bytes.length, archive.bytes);
-    assert.equal(bytes.subarray(0, 16).toString(), "OMB-WORKSPACE-1\n");
+    const magic = "QUATI-WORKSPACE-1\n";
+    assert.equal(bytes.subarray(0, Buffer.byteLength(magic)).toString(), magic);
     backupReport = { ok: true, bytes: bytes.length };
   } catch (error) { backupReport = { error: String(error) }; }
 }
@@ -285,11 +286,11 @@ if (listening) {
 // index.js as its own child, and SIGTERM must end both with a clean exit.
 let launcherReport = null;
 if (listening && process.platform !== "win32") {
-  const launcherHome = mkdtempSync(join(tmpdir(), "omb-smoke-launcher-"));
+  const launcherHome = mkdtempSync(join(tmpdir(), "quati-smoke-launcher-"));
   const [launcherPort, launcherWebhookPort] = await freePorts(2);
   const launcher = spawn(process.execPath, [join(staging, "server", "server-launcher.js")], {
     cwd: staging,
-    env: { ...fixtureEnv, HOME: launcherHome, USERPROFILE: launcherHome, OMB_DATA_DIR: join(launcherHome, ".openmausbot"), OMB_PORT: String(launcherPort), OMB_WEBHOOK_PORT: String(launcherWebhookPort) },
+    env: { ...fixtureEnv, HOME: launcherHome, USERPROFILE: launcherHome, QUATI_DATA_DIR: join(launcherHome, ".quatibot"), QUATI_PORT: String(launcherPort), QUATI_WEBHOOK_PORT: String(launcherWebhookPort) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let launcherOutput = "";
@@ -368,7 +369,7 @@ if (
   mcpReport.error ||
   mcpReport.exit?.timeout ||
   mcpReport.exit?.code !== 0 ||
-  mcpReport.responses?.find((response) => response.id === 1)?.result?.serverInfo?.name !== "openmausbot-mcp" ||
+  mcpReport.responses?.find((response) => response.id === 1)?.result?.serverInfo?.name !== "quatibot-mcp" ||
   mcpReport.responses?.find((response) => response.id === 2)?.result?.structuredContent?.status !== "connected" ||
   JSON.stringify(mcpReport.responses?.find((response) => response.id === 3)?.result) !== "{}"
 ) {
@@ -379,7 +380,7 @@ if (
 
 if (!headlessReport || headlessReport.error || headlessReport.doctor.body?.server?.capabilities?.jobs !== true ||
   headlessReport.bots.code !== 0 || !Array.isArray(headlessReport.bots.body?.bots)) {
-  console.error("the packaged openmausbot command's headless verbs failed:");
+  console.error("the packaged quatibot command's headless verbs failed:");
   console.error(JSON.stringify(headlessReport, null, 2));
   process.exit(1);
 }
@@ -392,7 +393,7 @@ if (!backupReport?.ok) {
 console.log(`packaged server started with no node_modules in reach (port ${port}) ✓`);
 console.log(`all ${count} spawned proxy paths resolve inside the packaged server dir ✓`);
 console.log("packaged MCP stdio server reached the API and flushed its final frames ✓");
-console.log("packaged openmausbot doctor and bots answered from the bundle ✓");
+console.log("packaged quatibot doctor and bots answered from the bundle ✓");
 console.log("packaged backup worker exported an encrypted archive ✓");
 if (launcherReport) console.log("packaged container launcher ran the server as its child and stopped it cleanly ✓");
 if (layerShipped) console.log("packaged server found its enterprise layer inside the server dir ✓");

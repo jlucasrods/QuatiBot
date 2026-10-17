@@ -1,7 +1,7 @@
 import { createManagedDesktopStore, retryDelay, unreadableRecord } from "./managed-desktop.mjs";
 import { CLOUD_MACHINE_CONNECTABLE, parseCloudCredit, parseCloudOffer, parseCloudPurchase, parseCloudSummary, parseCloudTrial, parsePairingGrant, parsePublicOffer, withoutTrial } from "./cloud-home.mjs";
 
-export const CLOUD_ORIGIN = "https://cloud.openmausbot.com";
+export const CLOUD_ORIGIN = "https://cloud.quatibot.invalid";
 const TOKEN = /^omc_[A-Za-z0-9_-]{43}$/;
 const CODE = /^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/;
 const PRIVATE_CODE = /^[A-Za-z0-9_-]{43}$/;
@@ -28,7 +28,7 @@ export function checkoutDestination(value, { fixture = false } = {}) {
 export function cloudOrigin(value = CLOUD_ORIGIN, fixture = false) {
   const url = new URL(value);
   if (value !== url.origin || (value !== CLOUD_ORIGIN && !(fixture && url.protocol === "http:" && ["127.0.0.1", "[::1]"].includes(url.hostname)))) {
-    throw new Error("Invalid MausBot Cloud address.");
+    throw new Error("Invalid Quati Cloud address.");
   }
   return value;
 }
@@ -81,7 +81,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
   };
   const reset = () => { generation++; stopTimer(); controller.abort(); controller = new AbortController(); pending = null; verifiedUntil = 0; failures = 0; return generation; };
   const current = stamp => !closed && generation === stamp;
-  const versionHeader = text(appVersion, 40) && /^[0-9A-Za-z][0-9A-Za-z.+-]{0,39}$/.test(appVersion) ? { "x-openmausbot-version": appVersion } : {};
+  const versionHeader = text(appVersion, 40) && /^[0-9A-Za-z][0-9A-Za-z.+-]{0,39}$/.test(appVersion) ? { "x-quatibot-version": appVersion } : {};
   async function request(route, { method = "GET", body, token, signal = controller.signal, path = `/api/cloud/desktop/${route}` } = {}) {
     const response = await fetcher(`${origin}${path}`, {
       method, redirect: "error", credentials: "omit", cache: "no-store",
@@ -121,7 +121,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
       !(input.expiresAt === null || timestamp(input.expiresAt)) || !Number.isSafeInteger(input.version) || input.version < 0) throw new Error("Invalid Cloud entitlement.");
     const plan = input.plan === "free" ? "free" : "pro";
     if (input.status === "active" && (plan !== "pro" || input.expiresAt === null || input.expiresAt <= now())) throw new Error("Invalid active Cloud entitlement.");
-    if (newer && !newerPlans.has(input.plan)) { newerPlans.add(input.plan); warn(`[cloud] OMB Cloud sent plan "${input.plan}", newer than this app; treating it as paid.`); }
+    if (newer && !newerPlans.has(input.plan)) { newerPlans.add(input.plan); warn(`[cloud] QUATI Cloud sent plan "${input.plan}", newer than this app; treating it as paid.`); }
     const tier = typeof input.tier === "string" && TIER.test(input.tier) ? input.tier : newer ? input.plan : undefined;
     return { plan, ...(tier ? { tier } : {}), status: input.status,
       expiresAt: input.expiresAt, version: input.version };
@@ -256,7 +256,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
     if (typeof plan !== "string" || !TIER.test(plan) || !CHECKOUT_SOURCES.includes(source)) throw new Error("Invalid Cloud checkout.");
     const current = state();
     if (current.status === "signed-out" && !grant) return { outcome: "signing-in", state: await begin({ plan, source }) };
-    if (current.status !== "connected" || !grant) throw new Error("Sign in to MausBot Cloud before choosing a plan.");
+    if (current.status !== "connected" || !grant) throw new Error("Sign in to Quati Cloud before choosing a plan.");
     const signedIn = grant;
     let destination;
     try {
@@ -312,7 +312,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
     checkout: openCheckout,
     checkoutPending: watching,
     async signInAgain() {
-      if (state().status !== "reauth-required") throw new Error("This computer is still signed in to MausBot Cloud.");
+      if (state().status !== "reauth-required") throw new Error("This computer is still signed in to Quati Cloud.");
       publish({ status: "connecting" });
       const forgotten = await forget({ quiet: true });
       if (forgotten.status === "unavailable") return forgotten;
@@ -340,7 +340,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
     async interest(kind) {
       if (kind !== "another_cloud") throw new Error("Invalid Cloud interest.");
       const signedIn = grant;
-      if (!signedIn || state().status !== "connected") throw new Error("Sign in to MausBot Cloud first.");
+      if (!signedIn || state().status !== "connected") throw new Error("Sign in to Quati Cloud first.");
       const result = await request("interest", { method: "POST", body: { kind }, token: signedIn.token });
       if (result?.ok !== true) throw new Error("Invalid Cloud response.");
     },

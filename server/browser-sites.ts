@@ -280,7 +280,7 @@ const defaultEngine = (target: BrowserSitesTarget, args: string[]) =>
   inRunningBrowser(target.binaryPath, browserRuntimeEnv({ ...target.env, AGENT_BROWSER_SESSION: target.session }), args);
 
 async function runningState(target: BrowserSitesTarget, deps: BrowserSitesDeps): Promise<SavedState | null> {
-  const scratch = mkdtempSync(join(tmpdir(), "omb-browser-state-"));
+  const scratch = mkdtempSync(join(tmpdir(), "quati-browser-state-"));
   try {
     const path = join(scratch, "state.json");
     const answer = await (deps.engine ?? defaultEngine)(target, ["state", "save", path]);

@@ -34,7 +34,7 @@ Each of these was found while reading the code for this plan:
 
 ## Global Constraints
 
-- Work only in the worktree `~/Desktop/openmaus/OpenGrokBot-mailbox`, on branch `feat/delegation-mailbox`. Never touch `~/Desktop/openmaus/OpenGrokBot`.
+- Work only in the worktree `~/Desktop/quati/OpenGrokBot-mailbox`, on branch `feat/delegation-mailbox`. Never touch `~/Desktop/quati/OpenGrokBot`.
 - Commit locally after each task. **Never push. Never open a PR.** Omkar owns publishing.
 - End every commit message with: `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`
 - Server-only change. No edits under `src/`, `ios/`, `android/`.
@@ -267,13 +267,13 @@ with:
 In the `list_bots` tool definition, change the description's opening sentence from:
 
 ```
-"List the other bots (agents) in your OpenMausBot section, with their model and whether they're busy.
+"List the other bots (agents) in your QuatiBot section, with their model and whether they're busy.
 ```
 
 to:
 
 ```
-"List the other bots (agents) in your OpenMausBot section, with their model and what each is doing right now (available, working, waiting on the user, not responding, or unavailable).
+"List the other bots (agents) in your QuatiBot section, with their model and what each is doing right now (available, working, waiting on the user, not responding, or unavailable).
 ```
 
 Leave the rest of that description string unchanged.
@@ -1027,7 +1027,7 @@ Expected: spec + plan + 5 feature commits. Only these files changed:
 
 - [ ] **Step 4: Stop for Omkar's manual check**
 
-Do not push. Report the branch state, and hand over this checklist for an OMB2 side-by-side build (the `test-locally` skill):
+Do not push. Report the branch state, and hand over this checklist for an QUATI2 side-by-side build (the `test-locally` skill):
 
 1. Bot A delegates to Bot B while B is mid-task → one "waiting — they're busy" chip in A's chat. It's delivered when B finishes.
 2. Open an approval card on B, then have A delegate → A's chip says B is waiting on you, and A's `list_bots` shows "waiting on the user".

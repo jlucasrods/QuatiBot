@@ -10,7 +10,7 @@ const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) removeTempDir(dir); });
 
 function folders() {
-  const base = realpathSync(mkdtempSync(join(tmpdir(), "omb-upload-")));
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "quati-upload-")));
   dirs.push(base);
   const attachments = join(base, "attachments"), workspace = join(base, "workspace"), outside = join(base, "outside");
   for (const dir of [attachments, workspace, outside]) mkdirSync(dir);

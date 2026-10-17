@@ -1,5 +1,5 @@
 #!/usr/bin/env -S node --experimental-strip-types
-// The openmausbot headless verbs for verifying an isolated fixture. A verb that
+// The quatibot headless verbs for verifying an isolated fixture. A verb that
 // changes something never runs on a server it merely found.
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, mkdirSync, mkdtempSync, openSync, writeFileSync } from "node:fs";
@@ -11,7 +11,7 @@ import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
 import { EXIT, HeadlessError } from "../server/headless/args.ts";
 import { runHeadlessCommand } from "../server/headless/main.ts";
 import type { handleToolCall, request } from "./mcp-server.ts";
-import { launchUi, runControlOmbUi } from "./testing/control-omb-ui.ts";
+import { launchUi, runControlQuatiUi } from "./testing/control-quati-ui.ts";
 import { removeTempDir, waitForExit } from "../server/testing/cleanup.ts";
 import { freePortBlock } from "../server/testing/ports.ts";
 
@@ -21,20 +21,20 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const FIXTURE_STARTER_BOT_NAME = "Fixture Starter";
 const FAKE_CLI = join(ROOT, "server", "testing", "fake-acp-cli.ts");
 
-export class ControlOmbError extends HeadlessError {
+export class ControlQuatiError extends HeadlessError {
   constructor(message: string, hint?: string) {
     super(message, EXIT.failed, hint);
   }
 }
 
-export interface ControlOmbDependencies {
+export interface ControlQuatiDependencies {
   callTool?: typeof handleToolCall;
   request?: typeof request;
   env?: NodeJS.ProcessEnv;
 }
 
 export const HELP_UI = `renderer (needs a ui launch handle; every verb takes --ui HANDLE, never discovery):
-  node --experimental-strip-types scripts/control-omb.ts ui launch [--entry threads] [--tool-calls JSON] [--mode happy]
+  node --experimental-strip-types scripts/control-quati.ts ui launch [--entry threads] [--tool-calls JSON] [--mode happy]
   ui snapshot --ui HANDLE [--interactive]
   ui click --ui HANDLE (--ref @eN | --name NAME)
   ui type --ui HANDLE (--ref @eN | --name NAME) --text TEXT
@@ -46,7 +46,7 @@ export const HELP_UI = `renderer (needs a ui launch handle; every verb takes --u
   ui wait-settle --ui HANDLE [--timeout 30]
   ui help`;
 
-export const HELP = `control-omb — the openmausbot headless verbs (docs/headless-cli.md), for verifying a fixture
+export const HELP = `control-quati — the quatibot headless verbs (docs/headless-cli.md), for verifying a fixture
 
 read-only (every verb also takes --url URL):
   doctor
@@ -60,7 +60,7 @@ read-only (every verb also takes --url URL):
   export --thread ID --out DIR
   events --job THREAD_ID --until-settled
 
-mutating (an explicit --url or OPENMAUSBOT_URL/OMB_PORT is required):
+mutating (an explicit --url or QUATIBOT_URL/QUATI_PORT is required):
   new-bot --name NAME [--section TEAM]
   new-channel --name NAME --members ID,ID
   send --bot ID --text TEXT [--task ID] [--dry-run]
@@ -75,7 +75,7 @@ mutating (an explicit --url or OPENMAUSBOT_URL/OMB_PORT is required):
 ${HELP_UI}
 
 isolated fixture:
-  node --experimental-strip-types scripts/control-omb.ts launch
+  node --experimental-strip-types scripts/control-quati.ts launch
 
 Output is JSON. wait defaults to 30 seconds here. launch and ui launch own a temporary fake-engine server until interrupted.`;
 
@@ -96,21 +96,21 @@ export function parse(
       allowPositionals: false,
     }).values as Record<string, unknown> & { url?: string };
   } catch (error) {
-    throw new ControlOmbError(
+    throw new ControlQuatiError(
       error instanceof Error ? error.message : String(error),
-      `run control-omb help for the ${command} syntax`,
+      `run control-quati help for the ${command} syntax`,
     );
   }
 }
 
-export async function runControlOmb(
+export async function runControlQuati(
   argv: string[],
-  dependencies: ControlOmbDependencies = {},
+  dependencies: ControlQuatiDependencies = {},
 ): Promise<unknown> {
   const [command = "help", ...args] = argv;
   if (command === "help" || command === "--help" || command === "-h") return HELP;
-  if (command === "launch") throw new ControlOmbError("launch is available only from the executable CLI");
-  if (command === "ui") return runControlOmbUi(args);
+  if (command === "launch") throw new ControlQuatiError("launch is available only from the executable CLI");
+  if (command === "ui") return runControlQuatiUi(args);
   return runHeadlessCommand(argv, {
     env: dependencies.env ?? process.env,
     ...(dependencies.callTool ? { callTool: dependencies.callTool } : {}),
@@ -149,9 +149,9 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
     TMP: fixtureTemp,
     TMPDIR: fixtureTemp,
     HERMES_HOME: join(dataDir, ".hermes"),
-    OMB_DATA_DIR: dataDir,
-    OMB_PORT: String(port),
-    OMB_WEBHOOK_PORT: String(port + 1),
+    QUATI_DATA_DIR: dataDir,
+    QUATI_PORT: String(port),
+    QUATI_WEBHOOK_PORT: String(port + 1),
     FAKE_ACP_MODE: parentEnv.FAKE_ACP_MODE || "happy",
     FAKE_ACP_MODELS: "fixture/default,fixture/alternate",
     FAKE_ACP_VARIANTS: JSON.stringify({
@@ -167,7 +167,7 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
     PATH: dirname(process.execPath),
     // Without it the server also scans /opt/homebrew/bin, /usr/local/bin and the
     // login shell's PATH, finding a developer's own engine CLIs that CI lacks.
-    OMB_TEST_SEALED_PATH: "1",
+    QUATI_TEST_SEALED_PATH: "1",
   });
   // The fake engines' knobs are the one thing a caller may script into the child.
   for (const [key, value] of Object.entries(parentEnv)) {
@@ -175,31 +175,31 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
     if (key.startsWith("FAKE_ACP_") && key !== "FAKE_ACP_DUMP" && value) childEnv[key] = value;
   }
   // Enables POST /api/testing/org-library; the route does not exist without it.
-  if (parentEnv.OMB_TEST_ORG_LIBRARY_KEY) childEnv.OMB_TEST_ORG_LIBRARY_KEY = parentEnv.OMB_TEST_ORG_LIBRARY_KEY;
+  if (parentEnv.QUATI_TEST_ORG_LIBRARY_KEY) childEnv.QUATI_TEST_ORG_LIBRARY_KEY = parentEnv.QUATI_TEST_ORG_LIBRARY_KEY;
   // One log line per browser call and preview frame.
-  if (parentEnv.OMB_BROWSER_TIMING === "1") childEnv.OMB_BROWSER_TIMING = "1";
+  if (parentEnv.QUATI_BROWSER_TIMING === "1") childEnv.QUATI_BROWSER_TIMING = "1";
   // A loopback fake only: the key never reaches a real provider.
-  const liveUrl = parentEnv.OMB_OPENAI_LIVE_URL?.trim() ?? "";
+  const liveUrl = parentEnv.QUATI_OPENAI_LIVE_URL?.trim() ?? "";
   if (/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(liveUrl)) {
-    childEnv.OMB_OPENAI_LIVE_URL = liveUrl;
-    if (parentEnv.OMB_OPENAI_LIVE_KEY) childEnv.OMB_OPENAI_LIVE_KEY = parentEnv.OMB_OPENAI_LIVE_KEY;
+    childEnv.QUATI_OPENAI_LIVE_URL = liveUrl;
+    if (parentEnv.QUATI_OPENAI_LIVE_KEY) childEnv.QUATI_OPENAI_LIVE_KEY = parentEnv.QUATI_OPENAI_LIVE_KEY;
   }
   // Live calls need Pro; without it the fixture refuses a call with 402 needsPro.
-  if (parentEnv.OMB_PRO_PLAN?.trim() === "1") childEnv.OMB_PRO_PLAN = "1";
+  if (parentEnv.QUATI_PRO_PLAN?.trim() === "1") childEnv.QUATI_PRO_PLAN = "1";
   // Arms the one-shot audio-append failure inside the fixture server.
-  if (parentEnv.OMB_TEST_FAIL_AUDIO_APPEND_ONCE) {
-    childEnv.OMB_TEST_FAIL_AUDIO_APPEND_ONCE = parentEnv.OMB_TEST_FAIL_AUDIO_APPEND_ONCE;
+  if (parentEnv.QUATI_TEST_FAIL_AUDIO_APPEND_ONCE) {
+    childEnv.QUATI_TEST_FAIL_AUDIO_APPEND_ONCE = parentEnv.QUATI_TEST_FAIL_AUDIO_APPEND_ONCE;
   }
   // The Claude broker's approval deadline fires on a marker file, not after 15 minutes.
-  if (parentEnv.OMB_TEST_APPROVAL_CLOCK === "1") childEnv.OMB_TEST_APPROVAL_CLOCK = "1";
+  if (parentEnv.QUATI_TEST_APPROVAL_CLOCK === "1") childEnv.QUATI_TEST_APPROVAL_CLOCK = "1";
   // The stall watchdog fires on a marker file, not after 20 minutes of silence.
-  if (parentEnv.OMB_TEST_STALL_CLOCK === "1") childEnv.OMB_TEST_STALL_CLOCK = "1";
-  // The UI checks drive this fixture from a real browser, as `pnpm dev` does; OMB_DEV_TRUST_LOCAL_BROWSER=0 tests the sign-in.
-  if (parentEnv.OMB_DEV_TRUST_LOCAL_BROWSER !== "0") childEnv.OMB_DEV_TRUST_LOCAL_BROWSER = "1";
+  if (parentEnv.QUATI_TEST_STALL_CLOCK === "1") childEnv.QUATI_TEST_STALL_CLOCK = "1";
+  // The UI checks drive this fixture from a real browser, as `pnpm dev` does; QUATI_DEV_TRUST_LOCAL_BROWSER=0 tests the sign-in.
+  if (parentEnv.QUATI_DEV_TRUST_LOCAL_BROWSER !== "0") childEnv.QUATI_DEV_TRUST_LOCAL_BROWSER = "1";
   // Desktop mode: the owner capability the app would hand the server.
-  if (parentEnv.OMB_TEST_DESKTOP_OWNER_TOKEN) {
-    childEnv.OMB_TEST_DESKTOP_OWNER_TOKEN = parentEnv.OMB_TEST_DESKTOP_OWNER_TOKEN;
-    childEnv.OMB_DESKTOP_PARENT = "1";
+  if (parentEnv.QUATI_TEST_DESKTOP_OWNER_TOKEN) {
+    childEnv.QUATI_TEST_DESKTOP_OWNER_TOKEN = parentEnv.QUATI_TEST_DESKTOP_OWNER_TOKEN;
+    childEnv.QUATI_DESKTOP_PARENT = "1";
   }
   return childEnv;
 }
@@ -209,10 +209,10 @@ export function verificationServerArgs(childEnv: NodeJS.ProcessEnv): string[] {
   const hook = (file: string) => ["--import", pathToFileURL(join(ROOT, "server", "testing", file)).href];
   return [
     "--experimental-strip-types",
-    ...(childEnv.OMB_TEST_FAIL_AUDIO_APPEND_ONCE === "1" ? hook("fail-audio-append-once.mjs") : []),
-    ...(childEnv.OMB_TEST_DESKTOP_OWNER_TOKEN ? hook("desktop-parent.mjs") : []),
-    ...(childEnv.OMB_TEST_APPROVAL_CLOCK === "1" ? hook("approval-clock-hooks.mjs") : []),
-    ...(childEnv.OMB_TEST_STALL_CLOCK === "1" ? hook("stall-clock-hooks.mjs") : []),
+    ...(childEnv.QUATI_TEST_FAIL_AUDIO_APPEND_ONCE === "1" ? hook("fail-audio-append-once.mjs") : []),
+    ...(childEnv.QUATI_TEST_DESKTOP_OWNER_TOKEN ? hook("desktop-parent.mjs") : []),
+    ...(childEnv.QUATI_TEST_APPROVAL_CLOCK === "1" ? hook("approval-clock-hooks.mjs") : []),
+    ...(childEnv.QUATI_TEST_STALL_CLOCK === "1" ? hook("stall-clock-hooks.mjs") : []),
     join(ROOT, "server", "index.ts"),
   ];
 }
@@ -236,32 +236,32 @@ export async function launchVerificationServer(
 ): Promise<VerificationServer> {
   if (boatFixtureApi) {
     if (!/^http:\/\/127\.0\.0\.1:[1-9]\d{0,4}$/.test(boatFixtureApi)) {
-      throw new ControlOmbError("Boat verification requires an explicit loopback HTTP provider");
+      throw new ControlQuatiError("Boat verification requires an explicit loopback HTTP provider");
     }
     try { new URL(boatFixtureApi); }
-    catch { throw new ControlOmbError("Boat verification requires a valid loopback port"); }
+    catch { throw new ControlQuatiError("Boat verification requires a valid loopback port"); }
   }
   if (localVm) {
     const endpoint = new URL(localVm.host);
     if (endpoint.protocol !== "ssh:" || endpoint.hostname !== "127.0.0.1" || endpoint.password) {
-      throw new ControlOmbError("Local VM verification requires an explicit loopback Podman machine");
+      throw new ControlQuatiError("Local VM verification requires an explicit loopback Podman machine");
     }
   }
-  // OMB_TEST_PORTS=19975-19999 keeps a recipe's fixture in a range of its own.
-  const range = /^(\d+)-(\d+)$/.exec((parentEnv.OMB_TEST_PORTS ?? process.env.OMB_TEST_PORTS)?.trim() ?? "");
+  // QUATI_TEST_PORTS=19975-19999 keeps a recipe's fixture in a range of its own.
+  const range = /^(\d+)-(\d+)$/.exec((parentEnv.QUATI_TEST_PORTS ?? process.env.QUATI_TEST_PORTS)?.trim() ?? "");
   const port = range ? await freePortBlock([0, 1], Number(range[1]), Number(range[2]) - Number(range[1])) : await freePortBlock([0, 1]);
-  if (signal?.aborted) throw new ControlOmbError("verification launch cancelled");
+  if (signal?.aborted) throw new ControlQuatiError("verification launch cancelled");
   const url = `http://127.0.0.1:${port}`;
   // Native browser daemons use UNIX sockets, and a macOS temp home can exceed
   // their path limit.
-  const dataDir = mkdtempSync(join(browser && process.platform !== "win32" ? "/tmp" : tmpdir(), "openmausbot-verify-data-"));
+  const dataDir = mkdtempSync(join(browser && process.platform !== "win32" ? "/tmp" : tmpdir(), "quatibot-verify-data-"));
   const fixtureTemp = join(dataDir, "tmp");
   const fixtureDumpPath = join(dataDir, "fake-acp-dump.json");
   mkdirSync(fixtureTemp, { recursive: true });
   const discovery = join(dataDir, "providers", "opencode", "discovery");
   mkdirSync(discovery, { recursive: true });
-  writeFileSync(join(discovery, ".openmaus-project"), "Verification fixture\n");
-  const evidenceDir = join(tmpdir(), "openmausbot-verification-evidence");
+  writeFileSync(join(discovery, ".quati-project"), "Verification fixture\n");
+  const evidenceDir = join(tmpdir(), "quatibot-verification-evidence");
   mkdirSync(evidenceDir, { recursive: true });
   const logPath = join(evidenceDir, `server-${Date.now()}-${process.pid}.log`);
   writeFileSync(join(dataDir, "config.json"), JSON.stringify({
@@ -280,18 +280,18 @@ export async function launchVerificationServer(
   // Opt-in live Local VM fixture: keep the temporary home and fake engine,
   // granting only the explicitly selected machine connection and static UI.
   if (localVm) Object.assign(childEnv, {
-    OMB_EXTRA_PATH: [localVm.binDir, ...(process.platform === "win32" ? [join(childEnv.SYSTEMROOT || "C:\\Windows", "System32")] : [])].join(delimiter),
+    QUATI_EXTRA_PATH: [localVm.binDir, ...(process.platform === "win32" ? [join(childEnv.SYSTEMROOT || "C:\\Windows", "System32")] : [])].join(delimiter),
     CONTAINER_HOST: localVm.host,
     CONTAINER_SSHKEY: localVm.sshKey,
-    OMB_STATIC_DIR: localVm.staticDir,
+    QUATI_STATIC_DIR: localVm.staticDir,
   });
-  if (enterprise) Object.assign(childEnv, { OMB_ENTERPRISE_DIR: enterprise.dir, OMB_LICENSE_KEY: enterprise.licenseKey });
+  if (enterprise) Object.assign(childEnv, { QUATI_ENTERPRISE_DIR: enterprise.dir, QUATI_LICENSE_KEY: enterprise.licenseKey });
   if (browser) Object.assign(childEnv, {
-    OMB_AGENT_BROWSER_PATH: browser.binaryPath,
+    QUATI_AGENT_BROWSER_PATH: browser.binaryPath,
     AGENT_BROWSER_EXECUTABLE_PATH: browser.executablePath,
   });
-  if (boatFixtureApi) childEnv.OMB_BOAT_API = boatFixtureApi;
-  if (staticDir) childEnv.OMB_STATIC_DIR = staticDir;
+  if (boatFixtureApi) childEnv.QUATI_BOAT_API = boatFixtureApi;
+  if (staticDir) childEnv.QUATI_STATIC_DIR = staticDir;
   const child = spawn(process.execPath, verificationServerArgs(childEnv), {
     cwd: ROOT,
     env: childEnv,
@@ -302,7 +302,7 @@ export async function launchVerificationServer(
   const deadline = Date.now() + 20_000;
   try {
     for (;;) {
-      if (signal?.aborted) throw new ControlOmbError("verification launch cancelled");
+      if (signal?.aborted) throw new ControlQuatiError("verification launch cancelled");
       if (child.exitCode !== null || child.signalCode !== null) {
         throw new Error(`verification server exited before it was ready; see ${logPath}`);
       }
@@ -312,7 +312,7 @@ export async function launchVerificationServer(
           signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
         });
         const body = response.ok ? await response.json() as { app?: string } : null;
-        if (body?.app === "openmausbot") break;
+        if (body?.app === "quatibot") break;
       } catch {
       }
       if (Date.now() >= deadline) throw new Error(`verification server did not become ready; see ${logPath}`);
@@ -374,10 +374,10 @@ export function controlResultSucceeded(command: string, result: unknown): boolea
 
 /** pnpm swallows Ctrl-C; a launcher that owns processes must get the signal itself. */
 function requireForegroundTerminal(command: string): void {
-  if (process.env.npm_lifecycle_event === "control:omb") {
-    throw new ControlOmbError(
+  if (process.env.npm_lifecycle_event === "control:quati") {
+    throw new ControlQuatiError(
       `${command} must own the terminal directly so Ctrl-C can clean up its children`,
-      `run \`node --experimental-strip-types scripts/control-omb.ts ${command}\``,
+      `run \`node --experimental-strip-types scripts/control-quati.ts ${command}\``,
     );
   }
 }
@@ -426,7 +426,7 @@ async function main() {
     });
     return;
   }
-  const result = await runControlOmb(process.argv.slice(2));
+  const result = await runControlQuati(process.argv.slice(2));
   process.stdout.write(typeof result === "string" ? `${result}\n` : `${JSON.stringify(result, null, 2)}\n`);
   if (!controlResultSucceeded(command, result)) process.exitCode = 1;
 }

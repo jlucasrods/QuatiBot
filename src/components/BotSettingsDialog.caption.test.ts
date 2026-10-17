@@ -14,7 +14,7 @@ vi.mock("@/state/store", async (importOriginal) => {
 import { BotSettingsDialog } from "./BotSettingsDialog";
 import { DesktopCapabilitiesProvider } from "./DesktopCapabilities";
 const bot = { id: "bot-1", name: "Maily" } as never as Bot;
-// The provider reads window.ogb.platform on render, so each case sees its stub.
+// The provider reads window.quati.platform on render, so each case sees its stub.
 const headerTag = () => {
     const html = renderToStaticMarkup(createElement(DesktopCapabilitiesProvider, null, createElement(BotSettingsDialog, { bot })));
     return html.match(/<div[^>]*>(?=<span id="bot-settings-title")/)?.[0] ?? "";
@@ -23,17 +23,17 @@ const header = () => headerTag().match(/class="([^"]*)"/)?.[1] ?? "";
 afterEach(() => vi.unstubAllGlobals());
 describe("bot settings caption inset", () => {
     it("drops the close button below the Windows caption buttons", () => {
-        vi.stubGlobal("window", { ogb: { platform: "win32" } });
+        vi.stubGlobal("window", { quati: { platform: "win32" } });
         expect(header()).toContain("pt-[28px]");
     });
     it("keeps the header flush elsewhere", () => {
-        vi.stubGlobal("window", { ogb: { platform: "darwin" } });
+        vi.stubGlobal("window", { quati: { platform: "darwin" } });
         const classes = header();
         expect(classes).toContain("py-3");
         expect(classes).not.toContain("pt-[28px]");
     });
     it.each([["darwin", true], ["win32", true], ["linux", false]] as const)("makes the header a window drag region on %s: %s", (platform, drags) => {
-        vi.stubGlobal("window", { ogb: { platform } });
+        vi.stubGlobal("window", { quati: { platform } });
         const tag = headerTag();
         expect(tag.includes("data-window-drag")).toBe(drags);
         expect(tag.includes("-webkit-app-region:drag")).toBe(drags);

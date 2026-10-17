@@ -75,7 +75,7 @@ function open(path = `${base}/websockify`, overrides: Record<string, string> = {
 }
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), "omb-viewer-"));
+  dir = mkdtempSync(join(tmpdir(), "quati-viewer-"));
   now = Date.now();
   sessions = new SessionRegistry({ file: join(dir, "sessions.json"), now: () => now });
   admin = sessions.issue({ label: "Mac", scopes: ["admin", "client"] });

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
-import { launchVerificationServer, runControlOmb } from "../scripts/control-omb.ts";
+import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
 import { request } from "../scripts/mcp-server.ts";
 import { rebuiltSessionNotice } from "./resume-recovery.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
@@ -18,18 +18,18 @@ const told = (turn: any): string => {
   return `${turn.system}\n${typeof content === "string" ? content : JSON.stringify(content ?? "")}`;
 };
 
-/** With OMB_TEST_DESKTOP_OWNER_TOKEN it runs as the desktop app runs it, every change carrying the app's owner capability. */
+/** With QUATI_TEST_DESKTOP_OWNER_TOKEN it runs as the desktop app runs it, every change carrying the app's owner capability. */
 async function fixture(test: (f: any) => Promise<void>, fakeEnv: NodeJS.ProcessEnv = {}) {
-  const desktopOwner = fakeEnv.OMB_TEST_DESKTOP_OWNER_TOKEN;
+  const desktopOwner = fakeEnv.QUATI_TEST_DESKTOP_OWNER_TOKEN;
   const realFetch = globalThis.fetch;
   if (desktopOwner) globalThis.fetch = (input, init = {}) => realFetch(input, { ...init,
-    headers: { ...Object.fromEntries(new Headers(init.headers)), "x-openmausbot-desktop-owner": desktopOwner } });
+    headers: { ...Object.fromEntries(new Headers(init.headers)), "x-quatibot-desktop-owner": desktopOwner } });
   try { await fixtureSession(test, fakeEnv); } finally { globalThis.fetch = realFetch; }
 }
 
 async function fixtureSession(test: (f: any) => Promise<void>, fakeEnv: NodeJS.ProcessEnv) {
   const session = await launchVerificationServer({ ...process.env, ...fakeEnv }, undefined, undefined, undefined, undefined, { scripted: true });
-  const cli = (...args: string[]) => runControlOmb(args, { env: { OPENMAUSBOT_URL: session.info.url } }) as Promise<any>;
+  const cli = (...args: string[]) => runControlQuati(args, { env: { QUATIBOT_URL: session.info.url } }) as Promise<any>;
   const api = (path: string, body?: unknown, method = "POST") => request(path, body === undefined ? {} : { method, body: JSON.stringify(body) }, session.info.url) as Promise<any>;
   try {
     const chief = (await cli("new-bot", "--name", "Clive", "--section", "Leadership")).bot;
@@ -431,7 +431,7 @@ it("does not treat self-opened work or an abandoned human branch as new human au
 }), 45_000);
 
 it("returns a nested coordinated result after Claude retries a transient provider exit", async () => {
-  const scratch = mkdtempSync(join(tmpdir(), "omb-coordination-retry-"));
+  const scratch = mkdtempSync(join(tmpdir(), "quati-coordination-retry-"));
   try {
     await fixture(async f => {
       await f.start();
@@ -526,10 +526,10 @@ it("continues one recipient thread for every follow-up from the same conversatio
 
 it.each<[string, NodeJS.ProcessEnv]>([
   ["a headless server", {}],
-  ["the desktop app", { OMB_TEST_DESKTOP_OWNER_TOKEN: randomBytes(32).toString("base64url") }],
+  ["the desktop app", { QUATI_TEST_DESKTOP_OWNER_TOKEN: randomBytes(32).toString("base64url") }],
 ])("on %s, holds a follow-up sent while the teammate still works and runs it next in the same thread", (_where, env) => fixture(async f => {
-  expect((await f.api("/.well-known/openmausbot/environment", undefined, "GET")).capabilities.selfUpdate)
-    .toBe(env.OMB_TEST_DESKTOP_OWNER_TOKEN ? "desktop-managed" : "operator");
+  expect((await f.api("/.well-known/quatibot/environment", undefined, "GET")).capabilities.selfUpdate)
+    .toBe(env.QUATI_TEST_DESKTOP_OWNER_TOKEN ? "desktop-managed" : "operator");
   const gate = join(f.session.info.dataDir, "first-request.gate");
   f.plan[f.lead.id] = { turns: [{ gateFile: gate, reply: "Export implemented" }, { reply: "Header row added" }] };
   f.plan[f.chief.id] = { turns: [

@@ -1,5 +1,5 @@
-// ~/.openmausbot/config.json, with env vars overriding its credentials.
-import { readFileSync, mkdirSync, existsSync, renameSync, statSync } from "node:fs";
+// ~/.quatibot/config.json, with env vars overriding its credentials.
+import { readFileSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -437,7 +437,7 @@ const appConfigSchema = z.object({
     tidyHour: z.number().int().min(0).max(23).optional(),
   }).strict().optional(),
   threads: threadsConfigSchema.optional(),
-  /** Minimum days of decision-log month files kept; OMB_DECISION_RETENTION_DAYS wins. */
+  /** Minimum days of decision-log month files kept; QUATI_DECISION_RETENTION_DAYS wins. */
   decisions: z.object({ retentionDays: z.number().int().min(1).max(3650).optional() }).strict().optional(),
   loopGuard: loopGuardConfigSchema.optional(),
   safetyFloor: z.object({ enabled: z.boolean().optional() }).strict().optional(), // off by default: safetyFloorEnabled in server/safety-floor-gate.ts
@@ -466,7 +466,7 @@ const appConfigPatchSchema = appConfigSchema.omit({ instances: true, mcpServers:
 const jsonObjectSchema = z.record(z.string(), z.json());
 
 export interface AppConfig extends HelperConfig {
-  /** Overrides native global MCP activation only in MausBot's OpenCode processes. */
+  /** Overrides native global MCP activation only in Quati's OpenCode processes. */
   openCodeMcp?: Record<string, boolean>;
   customDomain?: string;
   signIn?: { admins?: string[]; members?: string[] };
@@ -620,7 +620,7 @@ export function parseConfigPatch(value: JsonValue): ConfigPatch {
     }
     const providerFields = ["xai", "anthropic", "mistral", "cerebras", "groq", "meta", "openai", "openrouter", "openaiCompat", "opencodeGo"];
     if (providerFields.some((field) => Object.hasOwn(value, field))) {
-      throw Object.assign(new Error("Configure model providers and credentials in OpenCode V2, not OpenMausBot."), { status: 400 });
+      throw Object.assign(new Error("Configure model providers and credentials in OpenCode V2, not QuatiBot."), { status: 400 });
     }
   }
   const parsed = appConfigPatchSchema.safeParse(value);
@@ -761,18 +761,11 @@ export function changedInstanceIds(before: Record<string, unknown>, after: Recor
     .filter((id) => !isDeepStrictEqual(before[id], after[id]));
 }
 
-export const DATA_DIR = process.env.OMB_DATA_DIR ?? join(homedir(), ".openmausbot");
-const LEGACY_DATA_DIR = join(homedir(), ".opengrokbot");
+export const DATA_DIR = process.env.QUATI_DATA_DIR ?? join(homedir(), ".quatibot");
 export const EVENTS_DIR = join(DATA_DIR, "events");
 export const NATIVE_DIR = join(DATA_DIR, "native");
 
 export function ensureDirs() {
-  if (!existsSync(DATA_DIR) && existsSync(LEGACY_DATA_DIR)) {
-    try {
-      renameSync(LEGACY_DATA_DIR, DATA_DIR);
-    } catch {
-    }
-  }
   for (const dir of [DATA_DIR, EVENTS_DIR, NATIVE_DIR]) mkdirSync(dir, { recursive: true });
   migrateLegacyFeatureFlags(DATA_DIR);
 }
@@ -804,23 +797,23 @@ export function loadConfig(): AppConfig {
   // Explicit server environment credentials override stored credentials.
   cfg.box = { ...cfg.box };
   cfg.tts = { ...cfg.tts };
-  if (process.env.OMB_TTS_KEY !== undefined) cfg.tts.key = process.env.OMB_TTS_KEY;
-  const presetVoice = process.env.OMB_TTS_DEFAULT_VOICE?.trim();
+  if (process.env.QUATI_TTS_KEY !== undefined) cfg.tts.key = process.env.QUATI_TTS_KEY;
+  const presetVoice = process.env.QUATI_TTS_DEFAULT_VOICE?.trim();
   if (presetVoice && !cfg.tts.voice?.trim() && (cfg.tts.provider ?? "elevenlabs") === "elevenlabs") cfg.tts.voice = presetVoice;
-  if (process.env.OMB_FISH_AUDIO_API_KEY !== undefined) cfg.tts.fishKey = process.env.OMB_FISH_AUDIO_API_KEY;
+  if (process.env.QUATI_FISH_AUDIO_API_KEY !== undefined) cfg.tts.fishKey = process.env.QUATI_FISH_AUDIO_API_KEY;
   cfg.decider = { ...cfg.decider };
-  if (process.env.OMB_JEV_API_KEY !== undefined) cfg.decider.key = process.env.OMB_JEV_API_KEY;
-  if (process.env.OMB_OPENROUTER_DECIDER_KEY !== undefined) cfg.decider.openrouterKey = process.env.OMB_OPENROUTER_DECIDER_KEY;
+  if (process.env.QUATI_JEV_API_KEY !== undefined) cfg.decider.key = process.env.QUATI_JEV_API_KEY;
+  if (process.env.QUATI_OPENROUTER_DECIDER_KEY !== undefined) cfg.decider.openrouterKey = process.env.QUATI_OPENROUTER_DECIDER_KEY;
   cfg.live = { ...cfg.live };
-  if (process.env.OMB_OPENAI_LIVE_KEY !== undefined) cfg.live.key = process.env.OMB_OPENAI_LIVE_KEY;
+  if (process.env.QUATI_OPENAI_LIVE_KEY !== undefined) cfg.live.key = process.env.QUATI_OPENAI_LIVE_KEY;
   cfg.imageGen = { ...cfg.imageGen };
-  if (process.env.OMB_OPENAI_IMAGE_KEY !== undefined) cfg.imageGen.key = process.env.OMB_OPENAI_IMAGE_KEY;
-  if (process.env.OMB_CUSTOM_IMAGE_KEY !== undefined) cfg.imageGen.customApiKey = process.env.OMB_CUSTOM_IMAGE_KEY;
+  if (process.env.QUATI_OPENAI_IMAGE_KEY !== undefined) cfg.imageGen.key = process.env.QUATI_OPENAI_IMAGE_KEY;
+  if (process.env.QUATI_CUSTOM_IMAGE_KEY !== undefined) cfg.imageGen.customApiKey = process.env.QUATI_CUSTOM_IMAGE_KEY;
   const splitEmails = (value: string) => value.split(/[,\s]+/).map((entry) => entry.trim().toLowerCase()).filter(Boolean);
-  if (process.env.OMB_SIGNIN_EMAILS !== undefined || process.env.OMB_SIGNIN_MEMBER_EMAILS !== undefined) {
+  if (process.env.QUATI_SIGNIN_EMAILS !== undefined || process.env.QUATI_SIGNIN_MEMBER_EMAILS !== undefined) {
     cfg.signIn = { ...cfg.signIn };
-    if (process.env.OMB_SIGNIN_EMAILS !== undefined) cfg.signIn.admins = splitEmails(process.env.OMB_SIGNIN_EMAILS);
-    if (process.env.OMB_SIGNIN_MEMBER_EMAILS !== undefined) cfg.signIn.members = splitEmails(process.env.OMB_SIGNIN_MEMBER_EMAILS);
+    if (process.env.QUATI_SIGNIN_EMAILS !== undefined) cfg.signIn.admins = splitEmails(process.env.QUATI_SIGNIN_EMAILS);
+    if (process.env.QUATI_SIGNIN_MEMBER_EMAILS !== undefined) cfg.signIn.members = splitEmails(process.env.QUATI_SIGNIN_MEMBER_EMAILS);
   }
   return cfg;
 }
@@ -845,13 +838,13 @@ export function cacheUntilConfigChanges<T>(derive: (config: AppConfig) => T): ()
 /** Keeps process.env in step with a saved credential ("" drops the var), because loadConfig() prefers env. */
 export function syncCredentialEnv(patch: Partial<Omit<AppConfig, "threads" | "newBots">>): void {
   const secrets: Array<[value: string | undefined, name: string]> = [
-    [patch.tts?.key, "OMB_TTS_KEY"],
-    [patch.tts?.fishKey, "OMB_FISH_AUDIO_API_KEY"],
-    [patch.decider?.key, "OMB_JEV_API_KEY"],
-    [patch.decider?.openrouterKey, "OMB_OPENROUTER_DECIDER_KEY"],
-    [patch.imageGen?.key, "OMB_OPENAI_IMAGE_KEY"],
-    [patch.imageGen?.customApiKey, "OMB_CUSTOM_IMAGE_KEY"],
-    [patch.live?.key, "OMB_OPENAI_LIVE_KEY"],
+    [patch.tts?.key, "QUATI_TTS_KEY"],
+    [patch.tts?.fishKey, "QUATI_FISH_AUDIO_API_KEY"],
+    [patch.decider?.key, "QUATI_JEV_API_KEY"],
+    [patch.decider?.openrouterKey, "QUATI_OPENROUTER_DECIDER_KEY"],
+    [patch.imageGen?.key, "QUATI_OPENAI_IMAGE_KEY"],
+    [patch.imageGen?.customApiKey, "QUATI_CUSTOM_IMAGE_KEY"],
+    [patch.live?.key, "QUATI_OPENAI_LIVE_KEY"],
   ];
   for (const [value, name] of secrets) {
     if (value === undefined) continue;
@@ -865,40 +858,40 @@ export const WORKSPACE_CREDENTIAL_ENV = [
   "XAI_API_KEY",
   "MISTRAL_API_KEY",
   "CEREBRAS_API_KEY",
-  "OMB_GROQ_API_KEY",
-  "OMB_META_API_KEY",
-  "OMB_ANTHROPIC_API_KEY",
-  "OMB_ANTHROPIC_API_URL",
-  "OMB_HOSTED_MODEL_TOKEN",
-  "OMB_HOSTED_MODELS",
+  "QUATI_GROQ_API_KEY",
+  "QUATI_META_API_KEY",
+  "QUATI_ANTHROPIC_API_KEY",
+  "QUATI_ANTHROPIC_API_URL",
+  "QUATI_HOSTED_MODEL_TOKEN",
+  "QUATI_HOSTED_MODELS",
   "OPENAI_COMPAT_API_KEY",
   "OPENAI_COMPAT_URL",
-  "OMB_OPENAI_API_KEY",
-  "OMB_OPENROUTER_API_KEY",
+  "QUATI_OPENAI_API_KEY",
+  "QUATI_OPENROUTER_API_KEY",
   "BOX_TOKEN",
   "OPENCODE_API_KEY",
-  "OMB_TTS_KEY",
-  "OMB_FISH_AUDIO_API_KEY",
-  "OMB_JEV_API_KEY",
-  "OMB_OPENROUTER_DECIDER_KEY",
-  "OMB_OPENAI_IMAGE_KEY",
-  "OMB_CUSTOM_IMAGE_KEY",
-  "OMB_OPENAI_LIVE_KEY",
+  "QUATI_TTS_KEY",
+  "QUATI_FISH_AUDIO_API_KEY",
+  "QUATI_JEV_API_KEY",
+  "QUATI_OPENROUTER_DECIDER_KEY",
+  "QUATI_OPENAI_IMAGE_KEY",
+  "QUATI_CUSTOM_IMAGE_KEY",
+  "QUATI_OPENAI_LIVE_KEY",
   "COMPOSIO_API_KEY",
-  "OMB_COMPOSIO_BROKER_TOKEN",
-  "OMB_CLOUD_BOAT_TOKEN",
-  "OMB_CLOUD_VOICE_TOKEN",
-  "OMB_CLOUD_DECIDER_TOKEN",
-  "OMB_CLOUD_AI_TOKEN",
+  "QUATI_COMPOSIO_BROKER_TOKEN",
+  "QUATI_CLOUD_BOAT_TOKEN",
+  "QUATI_CLOUD_VOICE_TOKEN",
+  "QUATI_CLOUD_DECIDER_TOKEN",
+  "QUATI_CLOUD_AI_TOKEN",
   // Not credentials, but they point a shell-capable agent at app-owned state.
-  "OMB_BROWSER_CONNECTION",
-  "OMB_USER_DATA",
-  "OMB_BOAT_API",
+  "QUATI_BROWSER_CONNECTION",
+  "QUATI_USER_DATA",
+  "QUATI_BOAT_API",
 ] as const;
 
-/** Operator secrets only this process reads, plus every `OMB_CLOUD_` var (the underscore leaves out OMB_CLOUDFLARED_PATH). */
-export const CONTROL_PLANE_ENV = ["OMB_LICENSE_KEY", "OMB_INSTALLATION_CREDENTIAL"] as const;
-export const CONTROL_PLANE_ENV_PREFIX = "OMB_CLOUD_";
+/** Operator secrets only this process reads, plus every `QUATI_CLOUD_` var (the underscore leaves out QUATI_CLOUDFLARED_PATH). */
+export const CONTROL_PLANE_ENV = ["QUATI_LICENSE_KEY", "QUATI_INSTALLATION_CREDENTIAL"] as const;
+export const CONTROL_PLANE_ENV_PREFIX = "QUATI_CLOUD_";
 
 /** Names compare case-insensitively because Windows environments do. */
 export function stripControlPlaneEnv(env: Record<string, string | undefined>): void {
@@ -956,10 +949,10 @@ function openCodeProviderKeyNameRefusal(name: string): string | undefined {
     return "Use the name the provider reads its key from: capitals, ending in _API_KEY, _KEY or _TOKEN, such as VENICE_API_KEY.";
   }
   if (name === "OPENCODE_API_KEY") return "Save the OpenCode key in the OpenCode API key box instead.";
-  const reserved = name.startsWith("OPENCODE_") || name.startsWith("OMB_")
+  const reserved = name.startsWith("OPENCODE_") || name.startsWith("QUATI_")
     || (WORKSPACE_CREDENTIAL_ENV as readonly string[]).includes(name)
     || ((PROVIDER_CREDENTIAL_ENV as readonly string[]).includes(name) && !(OPENCODE_PROVIDER_ENV as readonly string[]).includes(name));
-  return reserved ? `OpenMaus keeps ${name} for itself, so OpenCode can't be given it here. Put this key in opencode.json instead.` : undefined;
+  return reserved ? `Quati keeps ${name} for itself, so OpenCode can't be given it here. Put this key in opencode.json instead.` : undefined;
 }
 
 export function openCodeProviderKeys(cfg: Pick<AppConfig, "opencodeGo">): Record<string, string> {

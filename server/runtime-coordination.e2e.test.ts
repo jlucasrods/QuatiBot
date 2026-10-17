@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 
-import { launchVerificationServer, runControlOmb, verificationServerArgs, verificationServerEnvironment } from "../scripts/control-omb.ts";
+import { launchVerificationServer, runControlQuati, verificationServerArgs, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { ENVELOPE_MARK } from "./runtime/envelope.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
@@ -13,8 +13,8 @@ import { ownTurnText } from "./testing/room-handoff-agent.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SETTLED = "Your downstream room requests have settled.";
-const REPORT_FROM_MIRA = "[OpenMausBot report from @Mira";
-const RERUN_NOTE = "OpenMausBot restarted while your previous turn here was running";
+const REPORT_FROM_MIRA = "[QuatiBot report from @Mira";
+const RERUN_NOTE = "QuatiBot restarted while your previous turn here was running";
 const TEAMMATES_CUT = "A restart cut these teammates' turns";
 
 const jsonl = (path: string): any[] => existsSync(path)
@@ -59,7 +59,7 @@ async function scenario(test: (f: any) => Promise<void>) {
       try { parsed = JSON.parse(raw); } catch {}
       return { status: response.status, body: parsed };
     };
-    const cli = (...args: string[]) => runControlOmb([...args, "--url", url]) as Promise<any>;
+    const cli = (...args: string[]) => runControlQuati([...args, "--url", url]) as Promise<any>;
     const bot = async (name: string, section: string) => (await cli("new-bot", "--name", name, "--section", section)).bot;
     const clive = await bot("Clive", "Leadership");
     const mira = await bot("Mira", "Engineering");

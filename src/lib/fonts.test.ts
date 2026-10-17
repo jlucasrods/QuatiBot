@@ -50,7 +50,7 @@ describe("fonts", () => {
   });
 
   it("falls back to the default for an unknown stored value", () => {
-    localStorage.setItem("omb-font", "comic-sans");
+    localStorage.setItem("quati-font", "comic-sans");
     expect(readFont()).toBe(DEFAULT_FONT);
   });
 });

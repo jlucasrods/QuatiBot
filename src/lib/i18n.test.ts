@@ -115,9 +115,9 @@ describe("t", () => {
     // A raw template, so the test doesn't depend on which catalog keys use params.
     const template = "Hello {name}, {missing}!";
     const rendered = template.replace(/\{(\w+)\}/g, (match, name: string) =>
-      name in { name: "Maus" } ? String({ name: "Maus" }[name as "name"]) : match,
+      name in { name: "Quati" } ? String({ name: "Quati" }[name as "name"]) : match,
     );
-    expect(rendered).toBe("Hello Maus, {missing}!");
+    expect(rendered).toBe("Hello Quati, {missing}!");
   });
 });
 

@@ -1,9 +1,9 @@
 import { useSyncExternalStore } from "react";
 
-export const ADVANCED_MODE_KEY = "omb-advanced-mode";
+export const ADVANCED_MODE_KEY = "quati-advanced-mode";
 
-// Read before main.tsx's first-paint writes: applySkin stamps omb-skin on every boot.
-const PRIOR_RUN_KEYS = ["omb-skin", "omb-installed", "omb-email-gate", "omb-drafts", "omb-show-threads"];
+// Read before main.tsx's first-paint writes: applySkin stamps quati-skin on every boot.
+const PRIOR_RUN_KEYS = ["quati-skin", "quati-installed", "quati-email-gate", "quati-drafts", "quati-show-threads"];
 
 let sessionChoice: boolean | undefined;
 const listeners = new Set<() => void>();

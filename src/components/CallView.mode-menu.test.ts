@@ -74,7 +74,7 @@ beforeEach(() => {
   fixture.liveConfigured = true;
   fixture.liveCall = null;
   fixture.cloudHome = false;
-  vi.stubGlobal("window", { ogb: { speechStart: vi.fn(), speechStop: vi.fn(async () => {}) } });
+  vi.stubGlobal("window", { quati: { speechStart: vi.fn(), speechStop: vi.fn(async () => {}) } });
   configureLiveMedia({ getUserMedia: () => new Promise<MediaStream>(() => {}) });
 });
 afterEach(() => {

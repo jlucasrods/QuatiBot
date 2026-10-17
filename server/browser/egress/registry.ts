@@ -1,4 +1,4 @@
-// OpenMausBot's own listening ports, which no bot's browser may reach, and one egress gate per running browser.
+// QuatiBot's own listening ports, which no bot's browser may reach, and one egress gate per running browser.
 import { subscribe } from "node:diagnostics_channel";
 import type { Server } from "node:net";
 
@@ -16,7 +16,7 @@ const DEFAULT_PORTS = [8799, 18799, 28799, 8800, 8798, 18798, 28798, 8810, 8811,
 const FLEET_WORKSPACES = 100;
 /** A server's edge, Caddy's admin API, and the workspaces a fleet host runs side by side (server and webhooks). */
 const SERVER_PORTS = [8080, 2019, ...Array.from({ length: FLEET_WORKSPACES }, (_, n) => FLEET_FIRST_PORT + FLEET_PORT_STRIDE * n).flatMap((port) => [port, port + 1])];
-const PORT_ENV = ["OMB_PORT", "OMB_WEBHOOK_PORT", "OMB_COMPANION_PORT", "OMB_CONTROL_PORT"];
+const PORT_ENV = ["QUATI_PORT", "QUATI_WEBHOOK_PORT", "QUATI_COMPANION_PORT", "QUATI_CONTROL_PORT"];
 const DEVTOOLS_SCAN_MS = 2_000;
 const NOTICE_LIMIT = 20;
 const NOTICE_SHOWN = 3;
@@ -52,7 +52,7 @@ function hearDesktopReports(): void {
   hearingReports = true;
   parentPort.on("message", ({ data }) => {
     const message = data as { type?: unknown; ports?: unknown } | undefined;
-    if (message?.type !== "openmausbot:own-listeners" || !Array.isArray(message.ports) || message.ports.length > 256) return;
+    if (message?.type !== "quatibot:own-listeners" || !Array.isArray(message.ports) || message.ports.length > 256) return;
     reportedPorts = new Set(message.ports.filter(validPort));
   });
 }

@@ -15,9 +15,9 @@ function nvmBinDirs(): string[] {
   }
 }
 
-/** A sealed test fixture sees only its own PATH, OMB_EXTRA_PATH, app-managed dirs and its temporary home, never this machine's CLIs. */
+/** A sealed test fixture sees only its own PATH, QUATI_EXTRA_PATH, app-managed dirs and its temporary home, never this machine's CLIs. */
 function sealedFixture(): boolean {
-  return process.env.OMB_TEST_SEALED_PATH === "1";
+  return process.env.QUATI_TEST_SEALED_PATH === "1";
 }
 
 function knownDirs(): string[] {
@@ -63,7 +63,7 @@ export function augmentedPath(): string {
   if (cached === null) {
     cached = mergePaths([
       ...registeredDirs.filter((d) => existsSync(d)),
-      ...(process.env.OMB_EXTRA_PATH ? process.env.OMB_EXTRA_PATH.split(delimiter) : []),
+      ...(process.env.QUATI_EXTRA_PATH ? process.env.QUATI_EXTRA_PATH.split(delimiter) : []),
       ...(process.env.PATH ? process.env.PATH.split(delimiter) : []),
       // Keep the last login-shell result while a rescan re-probes, or rc-only CLIs vanish for the response that triggered it.
       ...(loginShellPath ? loginShellPath.split(delimiter) : []),

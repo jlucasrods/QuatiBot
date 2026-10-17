@@ -28,10 +28,10 @@ afterEach(async () => {
 });
 
 async function serve() {
-  const dir = mkdtempSync(join(tmpdir(), "omb-login-routes-"));
+  const dir = mkdtempSync(join(tmpdir(), "quati-login-routes-"));
   dirs.push(dir);
   const store = new LoginStore({ dataDir: dir });
-  const { sdk } = fakeOnePasswordSdk({ token: TOKEN, vaults: { v1: { title: "Shared with OMB", items: [
+  const { sdk } = fakeOnePasswordSdk({ token: TOKEN, vaults: { v1: { title: "Shared with QUATI", items: [
     { id: "i1", title: "Example", urls: ["https://vault.example.com"], username: "vault-user", password: VAULT_PASSWORD },
   ] } } });
   const onePassword = new OnePasswordLogins({ token: () => store.onePasswordToken(), grants: () => store.onePasswordGrants(), connect: (token) => sdkOnePasswordClient(sdk, token, "0.0.0") });
@@ -114,7 +114,7 @@ describe("Settings → Logins routes", () => {
     expect((await call("POST", "/api/logins/1password", { token: "ops_wrong-fake-token" })).body.error).toBe("1Password did not accept the token. Paste a service account token (it starts with ops_), or make a new one.");
     expect(store.onePasswordToken()).toBeNull();
 
-    expect(await call("POST", "/api/logins/1password", { token: TOKEN })).toMatchObject({ status: 200, body: { onePassword: { connected: true, vaults: [{ id: "v1", title: "Shared with OMB", items: 1, bots: "all" }], items: 1 } } });
+    expect(await call("POST", "/api/logins/1password", { token: TOKEN })).toMatchObject({ status: 200, body: { onePassword: { connected: true, vaults: [{ id: "v1", title: "Shared with QUATI", items: 1, bots: "all" }], items: 1 } } });
     expect(store.onePasswordToken()).toBe(TOKEN);
     const listed = await call("GET", "/api/logins");
     expect(listed.body.logins).toEqual([expect.objectContaining({ site: "example.com", hosts: ["vault.example.com"], username: "vault-user", source: "1password", bots: "all" })]);
