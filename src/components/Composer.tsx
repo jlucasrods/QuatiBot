@@ -177,7 +177,6 @@ export function Composer({ bot: profile, group, members, onEditLast, replyTo, on
     }, [replyToId]);
     const mentionListRef = useRef<HTMLDivElement>(null);
     const commandListRef = useRef<HTMLDivElement>(null);
-    const baseText = useRef("");
     const botSupportsImages = (candidate?: Bot) => Boolean(candidate &&
         state.instances.find((i) => i.instanceId === candidate.modelSelection.instanceId)?.capabilities?.images);
     const imageTargetsSupport = (message: string, mode: "chat" | "goal") => {
@@ -586,25 +585,10 @@ export function Composer({ bot: profile, group, members, onEditLast, replyTo, on
     useEffect(() => {
         if (!recording)
             return;
-        {
-            setRecording(false);
-            return;
-        }
-        setSpeechError(null);
-        void undefined;
-        return () => {
-            ;
-            ;
-            void undefined;
-        };
+        setRecording(false);
     }, [recording, editText]);
     const toggleMic = () => {
-        {
-            setSpeechError(t("composer.dictation.unavailable"));
-            return;
-        }
-        baseText.current = text.trim();
-        setRecording((r) => !r);
+        setSpeechError(t("composer.dictation.unavailable"));
     };
     return (<div className="pointer-events-none relative px-5 pb-3">
       {speechError && (<div className="pointer-events-auto mb-2 w-full rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">

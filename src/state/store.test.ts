@@ -78,17 +78,14 @@ describe("composer thread approval persistence", () => {
             const now = desktopCapabilitiesNow();
             cacheDesktopCapabilities({ ...now, host: { ...now.host, packaged: value } });
         };
-        undefined;
         try {
             packaged(false);
             expect(desktopApprovalBridge()).toBeUndefined();
             packaged(true);
             expect(desktopApprovalBridge()).toBe(approvals);
-            undefined;
             expect(desktopApprovalBridge()).toBeUndefined();
         }
         finally {
-            undefined;
             packaged(false);
         }
     });

@@ -209,7 +209,6 @@ describe("Settings full backups", () => {
         expect(window.location.reload).not.toHaveBeenCalled();
     });
     it("asks the operator to restart the server for a workspace restore", () => {
-        undefined;
         const view = render("restart");
         expect(view.html).toContain("restart the server process");
         expect(view.html).not.toContain("Restart and restore");

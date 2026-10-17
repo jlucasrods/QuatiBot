@@ -149,10 +149,6 @@ describe("SignInRequestCard while it waits", () => {
     expect(view({ place })).not.toContain("Save a login");
   });
 
-  it("does not offer to save a login from a desktop paired to another computer", () => {
-    vi.stubGlobal("window", { quati: { remoteClient: { active: true } } });
-    expect(view()).not.toContain("Save a login");
-  });
 
   it.each(["done", "cancel"] as const)("%s settles this card", async (choice) => {
     button(tree(), choice === "done" ? "Done" : "Cancel").props.onClick!();

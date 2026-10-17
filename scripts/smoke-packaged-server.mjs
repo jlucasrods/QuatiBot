@@ -130,7 +130,7 @@ if (listening) {
   const page = await fetch(`http://127.0.0.1:${port}/`);
   assert.equal(page.status, 200);
   const html = await page.text();
-  const script = html.match(/src="([^\"]+\.js)"/)?.[1];
+  const script = html.match(/src="([^"]+\.js)"/)?.[1];
   assert(script, "The web UI must reference its compiled JavaScript");
   assert.equal((await fetch(new URL(script, `http://127.0.0.1:${port}`))).status, 200);
   try {

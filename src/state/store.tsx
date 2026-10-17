@@ -3290,7 +3290,6 @@ export function StoreProvider({ children }: {
                             memberIds: action.memberIds,
                             name: action.name,
                             section: action.section,
-                            ...({}),
                         }),
                     })
                         .then(({ group }) => {
@@ -3627,13 +3626,13 @@ export function StoreProvider({ children }: {
                     return () => rawDispatch({ type: "notificationsHydrated", notifications: Array.isArray(notifications) ? notifications : [] });
                 },
             },
-            ...([{
+            {
                     key: "webhooks",
                     request: async () => {
                         const { webhooks, attempts, ingress } = await api("/api/webhooks");
                         return () => rawDispatch({ type: "webhooksHydrated", webhooks, attempts: attempts ?? [], ingress });
                     },
-                } satisfies PeripheralPart]),
+                } satisfies PeripheralPart,
         ];
         const partByKey = new Map(peripheralParts.map((part) => [part.key, part]));
         const schedulePeripheralRetry = (part: PeripheralPart, error?: Error) => {

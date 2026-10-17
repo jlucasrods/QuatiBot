@@ -87,7 +87,7 @@ import { fitsOnOneLine, parseBotProfilePatch } from "./bot-profile.ts";
 import { routeDirectTurn } from "./turn-route.ts";
 import { groupTurnCwd } from "./room-cwd.ts";
 import { RoomTurnDeadline, RoomTurnStallRegistry, effectiveRoomTurnTimeoutMinutes, parseConversationTurnTimeout, roomTurnTimeoutMessage } from "./room-turn-timeout.ts";
-import { roomTurnEnd, type RoomClaimEnd } from "./room-turn-end.ts";
+import { roomTurnEnd } from "./room-turn-end.ts";
 import { applyHoldDirective, classifyHoldDirective, heldMemberLine, rememberHeldMessage, stopWordPlacement } from "./room-holds.ts";
 import { finishedWithoutSummaryLine, ROOM_SUMMARY_REASK, roomTurnNarrationIds, roomTurnReply } from "./room-reply.ts";
 import { pickComputer } from "./computer-selection.ts";
@@ -525,7 +525,7 @@ import { createUsageRoutes } from "./routes/usage.ts";
 import { createBotMessageRoutes } from "./routes/bot-messages.ts";
 import { createThreadRoutes } from "./routes/threads.ts";
 
-const PORT = Number(process.env.QUATI_PORT || process.env.QUATI_PORT || 8799);
+const PORT = Number(process.env.QUATI_PORT || 8799);
 const WEBHOOK_PORT = Number(process.env.QUATI_WEBHOOK_PORT || PORT + 1);
 const WEBHOOK_PUBLIC_URL = process.env.QUATI_WEBHOOK_PUBLIC_URL || undefined;
 const STATIC_DIR = process.env.QUATI_STATIC_DIR || null;
@@ -9780,7 +9780,6 @@ async function runClaimedGroupMemberTurn(
   if (CLOUD_HOME) noteForeignTurn(bot.id, threadId, internalGeneration);
   const resourceOwner: TurnOwner = { threadId, generation: internalGeneration };
   turnResourceOwners.set(threadId, resourceOwner);
-  let roomClaimFailure: RoomClaimEnd | undefined;
   let roomVmTarget: ReturnType<typeof localVmTargetForBot> | null = null;
   let retainRoomVmLease = false;
   let roomSpeaker: { botId: string; name: string; color: string; since?: number } | undefined;
@@ -9998,14 +9997,9 @@ async function runClaimedGroupMemberTurn(
   }
 
   // A channel has no pin and no Auto fallback: only a destination the person chose reaches a desktop.
-  const roomSetupIsCurrent = () => !isCancelled?.() &&
-    groupSpeakers.get(threadId) === roomSpeaker &&
-    activeInternalGenerationByThread.get(threadId) === internalGeneration;
   try {
     if (roomPlan.computer === "local") {
       throw new Error("Host desktop control is not supported. Select the isolated VM or browser.");
-      if (!roomSetupIsCurrent()) return false;
-      roomComputerKind = "local";
     }
     if (roomPlan.computer === "cloud") throw new Error("Remote computers are not supported");
 
@@ -10238,9 +10232,9 @@ async function runClaimedGroupMemberTurn(
       if (e.type === "item.completed" && e.itemType === "assistant_text") turnTexts.push(e.text);
       else if (e.type === "turn.completed") {
         turnCompletedOk = e.ok;
-        const end = roomTurnEnd(e, Boolean(orchestration), roomClaimFailure);
+        const end = roomTurnEnd(e, Boolean(orchestration));
         if (orchestration && end.stopReason !== undefined) {
-          orchestration.result.stopReason = roomClaimFailure ? end.stopReason : stoppedTurnText(threadId, e.turnId, undefined, end.stopReason);
+          orchestration.result.stopReason = stoppedTurnText(threadId, e.turnId, undefined, end.stopReason);
         }
         finish(end.outcome);
       }

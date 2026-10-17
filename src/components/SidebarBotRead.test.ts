@@ -45,7 +45,7 @@ beforeEach(() => {
     menu = { botId: bot.id, x: 50, y: 50 };
     onClose.mockReset();
 });
-afterEach(() => { flushSync(() => root.unmount()); container.remove(); vi.unstubAllGlobals(); undefined; setLocale("en"); });
+afterEach(() => { flushSync(() => root.unmount()); container.remove(); vi.unstubAllGlobals(); setLocale("en"); });
 describe("bot menu bulk reads", () => {
     it("remains available with the full thread tree hidden, including Portuguese copy", () => {
         setLocale("pt-br");
@@ -110,7 +110,6 @@ describe("bot menu bulk reads", () => {
         expect(onClose).not.toHaveBeenCalled();
     });
     it("does not expose bulk sibling reads to thread-pinned remote clients", () => {
-        undefined;
         draw();
         expect(button()).toBeUndefined();
     });

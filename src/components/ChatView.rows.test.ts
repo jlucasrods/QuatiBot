@@ -184,7 +184,6 @@ describe("chat transcript rows", () => {
         expect(await regenerate()).toEqual(["m5"]);
     });
     it("follows this device's voice choice at the next store event", async () => {
-        undefined;
         const kept = new Map<string, string>();
         vi.stubGlobal("localStorage", { getItem: (key: string) => kept.get(key) ?? null, setItem: (key: string, value: string) => kept.set(key, value) });
         vi.stubGlobal("speechSynthesis", { getVoices: () => [] });
@@ -203,7 +202,6 @@ describe("chat transcript rows", () => {
             expect(await speak()).toEqual([`${t("chat.speak.needsKey")} (off)`, `${t("chat.speak.needsKey")} (off)`]);
         }
         finally {
-            undefined;
         }
     });
 });

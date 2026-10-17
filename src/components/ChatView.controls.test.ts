@@ -206,25 +206,21 @@ describe("thread control placement", () => {
     it("offers trusted modes in the composer without requiring a Full bot default", () => {
         const fullBot = { ...bot, busy: false, approvalMode: "full" as const };
         expect(renderToStaticMarkup(createElement(ChatView, { bot: fullBot }))).not.toContain("Use bot’s Full access for this thread");
-        undefined;
         expect(renderToStaticMarkup(createElement(ChatView, { bot: fullBot }))).not.toContain("Use bot’s Full access for this thread");
         renderToStaticMarkup(createElement(ChatView, { bot }));
         expect(fixture.approval?.trustedModesAvailable).toBe(true);
         fixture.approval!.onSelect("custom");
         expect(fixture.dispatch).toHaveBeenLastCalledWith({ type: "updateTask", botId: "bot", threadId: "selected", patch: { approvalMode: "custom" } });
-        undefined;
     });
     it("applies Full access from the composer at once, with or without the desktop bridge", () => {
         for (const bridge of [false, true]) {
             if (bridge)
-                undefined;
             fixture.dispatch.mockClear();
             const markup = renderToStaticMarkup(createElement(ChatView, { bot }));
             expect(fixture.approval?.trustedModesAvailable).toBe(bridge);
             fixture.approval!.onSelect("full");
             expect(fixture.dispatch).toHaveBeenCalledExactlyOnceWith({ type: "updateTask", botId: "bot", threadId: "selected", patch: { approvalMode: "full" } });
             expect(markup).not.toContain('role="alertdialog"');
-            undefined;
         }
         fixture.dispatch.mockClear();
         renderToStaticMarkup(createElement(ChatView, { bot }));
@@ -383,7 +379,6 @@ describe("thread control placement", () => {
     it("offers the matching macOS Settings and relaunch actions only for a named CUA permission failure", () => {
         fixture.platform = "darwin";
         fixture.localMessage = "Screen Recording required";
-        undefined;
         const screen = renderToStaticMarkup(createElement(ErrorRow, {
             message: "CUA Driver is not ready for this computer — embedded host failed: Screen Recording required. Relaunch QuatiBot after granting any missing macOS permission.",
         }));
@@ -405,7 +400,6 @@ describe("thread control placement", () => {
         fixture.localReasonCode = "cua-driver-unavailable";
         fixture.platform = "other";
         fixture.localMessage = "";
-        undefined;
     });
     it.each([
         "شغّل الاختبارات\nThen run typecheck\nوبعدها ارفع الفرع",
@@ -450,11 +444,9 @@ describe("thread control placement", () => {
         expect(fixture.dispatch).toHaveBeenLastCalledWith({ type: "updateTask", botId: "bot", threadId: "selected", patch: { approvalMode: "auto" } });
     });
     it("keeps both controls hidden for remote clients", () => {
-        undefined;
         const markup = renderToStaticMarkup(createElement(ChatView, { bot }));
         expect(markup).not.toContain("data-test-model-control");
         expect(markup).not.toContain("data-test-approval-control");
-        undefined;
     });
     it.each([true, false])("pins a place per conversation from the composer only in Advanced (advanced: %s)", (advanced) => {
         fixture.advanced = advanced;

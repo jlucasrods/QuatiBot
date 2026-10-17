@@ -5,7 +5,7 @@ import { orgCardAction, orgPackagePreview, type OrgLibraryListing, type OrgLibra
 import type { PackageDocument } from "../../shared/package-format";
 import type { Routine } from "@/lib/routines";
 import { api, useStore, type Bot, type Group } from "@/state/store";
-import { ArrowLeft, BookOpen, CalendarClock, NotebookPen, Check, Compass, Crown, ExternalLink, FolderOpen, Github, Loader2, MessageSquare, Plug, Search, Share2, UploadCloud, Users, X, } from "lucide-react";
+import { ArrowLeft, BookOpen, CalendarClock, NotebookPen, Check, Compass, Crown, ExternalLink, Github, Loader2, MessageSquare, Plug, Search, Share2, UploadCloud, Users, X, } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ShareTeamDialog } from "./ShareTeamDialog";
@@ -515,9 +515,6 @@ export function TeamLibraryPanel({ onClose, onImported, returnFocusRef, initialU
                 setScouting(false);
         }
     };
-    const pickScoutFolder = async () => {
-        return;
-    };
     const createProject = async () => {
         if (!scouted || creating)
             return;
@@ -798,10 +795,6 @@ export function TeamLibraryPanel({ onClose, onImported, returnFocusRef, initialU
                   </p>
                   <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                     <input value={scoutFolder} onChange={(event) => setScoutFolder(event.target.value)} onKeyDown={(event) => event.key === "Enter" && scoutTarget && void runScout(scoutTarget)} placeholder="/path/to/your/project" aria-label="Project folder to scout" className="min-w-0 flex-1 rounded-xl bg-raised/80 px-3 py-2.5 text-[13px] text-ink placeholder:text-ink-secondary focus:outline-none"/>
-                    {Boolean(undefined) && (<button onClick={() => void pickScoutFolder()} disabled={scouting} className="flex items-center justify-center gap-1.5 rounded-full bg-raised px-4 py-2.5 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-40">
-                        <FolderOpen size={14}/>
-                        Browse
-                      </button>)}
                     <button onClick={() => void runScout(scoutTarget)} disabled={!scoutTarget || scouting} className="flex items-center justify-center gap-1.5 rounded-full bg-accent px-4 py-2.5 text-[13px] font-medium text-white hover:bg-accent/90 disabled:opacity-40">
                       {scouting ? <Loader2 size={14} className="animate-spin"/> : <Compass size={14}/>}
                       {scouting ? "Scouting…" : "Scout"}

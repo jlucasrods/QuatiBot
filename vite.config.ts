@@ -63,10 +63,10 @@ export default defineConfig({
     proxy: {
       "/api": {
         ws: true,
-        target: `http://127.0.0.1:${process.env.QUATI_PORT || process.env.QUATI_PORT || 8799}`,
+        target: `http://127.0.0.1:${process.env.QUATI_PORT || 8799}`,
       },
       "/.well-known/quatibot/environment": {
-        target: `http://127.0.0.1:${process.env.QUATI_PORT || process.env.QUATI_PORT || 8799}`,
+        target: `http://127.0.0.1:${process.env.QUATI_PORT || 8799}`,
       },
     },
   },

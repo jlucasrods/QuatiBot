@@ -227,7 +227,7 @@ export function ComputerPanel({ bot: profileBot }: {
         id: string;
         requestId: number;
     }>();
-    const androidConnected = 0 > 0;
+    const androidConnected = false;
     const panelTabs = computerPanelTabs({ advanced, androidConnected });
     const panelView = resolveComputerPanelView(storedPanelView, { advanced, androidConnected });
     const browserAvailableHere = browserAvailable(state.config);

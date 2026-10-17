@@ -1001,7 +1001,7 @@ function ChatHeaderMenu({ bot, messages, findOpen, onFind }: {
                 trailing: <span title={usage.detail} data-testid="usage-chip" className={cn("tabular-nums text-[12px]", usage.tone === "danger" ? "text-danger" : usage.tone === "warning" ? "text-warning" : "text-ink-secondary")}>{usage.short}</span>,
                 onSelect: () => dispatch({ type: "toggleSettings", open: true, section: "usage" }),
             } satisfies SidebarMenuItem] : []),
-        ...([{
+        {
                 key: "activity",
                 label: "Activity",
                 icon: <ListChecks size={16}/>,
@@ -1017,7 +1017,7 @@ function ChatHeaderMenu({ bot, messages, findOpen, onFind }: {
                 heading: usage ? undefined : advancedOnly,
                 disabled: !advanced,
                 onSelect: () => dispatch({ type: "toggleInspector" }),
-            } satisfies SidebarMenuItem]),
+            } satisfies SidebarMenuItem,
     ];
     return (<SidebarPopoverMenu items={items} ariaLabel={t("chat.more")} openOnHover placement="below" renderTrigger={({ open }) => (<span data-testid="chat-more" className={cn("flex rounded-md p-1.5 hover:bg-raised", open || findOpen || state.inspectorOpen || state.activityOpen ? "text-accent" : "text-ink-secondary hover:text-ink")} title={t("chat.more")}>
           <MoreHorizontal size={18}/>

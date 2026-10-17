@@ -5,9 +5,7 @@ export async function answerSignIn(ref: Pick<ComputerHelpRef, "botId" | "threadI
         method: "POST",
         body: JSON.stringify({ threadId: ref.threadId }),
     });
-    if (ref.place === "vm" || ref.place === "cloud")
-        void undefined;
 }
 export function signInHostIsHere(): boolean {
-    return Boolean(undefined) && true;
+    return false;
 }
