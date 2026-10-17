@@ -1,7 +1,6 @@
 // Invariant: every window line is in the text sent, or was shown to this same native session in exactly this form; any doubt sends the whole window.
 import { createHash } from "node:crypto";
 
-import { MAX_WINDOW_MINUTES } from "../cache-keepwarm.ts";
 import type { RuntimeEvent } from "../contracts.ts";
 import { Handoffs, handedStateUsable, sessionStart, unseenMessages, type HandedState, type HandoffStore, type SessionStart } from "../delta-context.ts";
 import { sessionIdlePolicy } from "../drivers/session-idle.ts";
@@ -11,7 +10,6 @@ import { isRoomContextMessage, type RoomLine, type RoomWindow } from "./room-tra
 
 export const ROOM_SESSION_ENGINES: Readonly<Record<string, string>> = { claudeAgent: "CLAUDE" };
 
-// Known gap: a process kept warm past this (prompt-cache keep-warm) goes on in the recorded session after a start, so a line can be sent twice.
 export function roomSessionIdleMs(driverKind: string, env: Record<string, string | undefined> = process.env): number | undefined {
   return Object.hasOwn(ROOM_SESSION_ENGINES, driverKind) ? sessionIdlePolicy(ROOM_SESSION_ENGINES[driverKind]!, env).idleMs : undefined;
 }
@@ -176,7 +174,7 @@ export function createRoomSessions(deps: RoomSessionsDeps): RoomSessions {
 
   function prune(at: number): void {
     const life = Math.max(0, ...Object.keys(ROOM_SESSION_ENGINES).map((kind) => roomSessionIdleMs(kind) ?? 0));
-    const readingLife = Math.max(ABANDONED_TURN_MS, MAX_WINDOW_MINUTES * 60_000) + 2 * life;
+    const readingLife = ABANDONED_TURN_MS + 2 * life;
     for (const [threadId, flight] of inFlight) {
       if (at - flight.since <= ABANDONED_TURN_MS) continue;
       land(threadId);

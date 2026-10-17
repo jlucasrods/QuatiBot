@@ -1,5 +1,4 @@
 import type { AppState, Bot } from "@/state/store";
-import { keepWarmLine } from "./cache-keepwarm";
 import { t } from "./i18n";
 import { contextChip, contextDetail, contextShare, costCaption, formatUsd, hasFiniteCost, lastTurnDetail, usageChip, usageDetail } from "./usage";
 
@@ -15,7 +14,6 @@ export function usageSummary(bot: Bot, instances: AppState["instances"]): { shor
     lastTurnDetail(usage),
     contextDetail(usage),
     share?.tone === "danger" ? t("chat.usage.contextNudge") : null,
-    keepWarmLine(task?.cacheKeepWarm),
     hasFiniteCost(usage.costUsd) ? `${formatUsd(usage.costUsd)} ${costCaption(billing)}` : null,
   ]
     .filter(Boolean)

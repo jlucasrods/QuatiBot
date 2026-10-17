@@ -112,7 +112,6 @@ import { chiefOfStaffSystemPrompt } from "./chief-of-staff.ts";
 import { buildRecall, recallRooms, recallThreadIds, withRecalled } from "./recall.ts";
 import { hostTimeZone, takesTurnClock, turnClockLine, withTurnClock } from "./turn-clock.ts";
 import { createMemoryUpkeep, upkeepEnabled } from "./memory-upkeep.ts";
-import { createCacheKeepWarm, type KeepWarmStatus, type KeepWarmTarget } from "./cache-keepwarm.ts";
 import { createSkillReview, turnToolSteps } from "./skill-review.ts";
 import { createSideJobs, helperSelection } from "./side-jobs.ts";
 import type { CaptureTurn, RoomLine } from "./memory-capture.ts";
@@ -136,7 +135,7 @@ import {
   type Runtime,
 } from "./container-computer.ts";
 import { attachForTurn, saveBotAttachment } from "./bot-attachment.ts";
-import { cacheUntilConfigChanges, ensureDirs, instanceConfigs, loadConfig, changedInstanceIds, engineLaunches, localVmIdleTimeoutMinutes, localVmMaxInstances, localVmMode, roomTurnTimeoutMinutes, mcpCallTimeoutMinutes, cacheKeepWarmSettings, threadEventLogMaxBytes, maxConcurrentBotThreads, threadEventLogRetentionDays, saveConfig, showToolCallsEnabled, routinesInConversationEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, autoRecallEnabled, captureQuietMs, roomMemoryCaptureEnabled, tidyHour, sharedComputersEnabled, builtInBrowserEnabled, llmThreadTitlesEnabled, browserProfilePartitionTarget, stripWorkspaceCredentialEnv, PROVIDER_CREDENTIAL_ENV, type AppConfig, DATA_DIR, EVENTS_DIR, onConfigSaved, liveSettingsFor } from "./config.ts";
+import { cacheUntilConfigChanges, ensureDirs, instanceConfigs, loadConfig, changedInstanceIds, engineLaunches, localVmIdleTimeoutMinutes, localVmMaxInstances, localVmMode, roomTurnTimeoutMinutes, mcpCallTimeoutMinutes, threadEventLogMaxBytes, maxConcurrentBotThreads, threadEventLogRetentionDays, saveConfig, showToolCallsEnabled, routinesInConversationEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, autoRecallEnabled, captureQuietMs, roomMemoryCaptureEnabled, tidyHour, sharedComputersEnabled, builtInBrowserEnabled, llmThreadTitlesEnabled, browserProfilePartitionTarget, stripWorkspaceCredentialEnv, PROVIDER_CREDENTIAL_ENV, type AppConfig, DATA_DIR, EVENTS_DIR, onConfigSaved, liveSettingsFor } from "./config.ts";
 import { sweepThreadEventLogs, type ThreadLogRetentionCandidate } from "./thread-retention.ts";
 import { ComputerControl } from "./computer-control.ts";
 import { augmentedPath, resetPathCache } from "./env-path.ts";
@@ -3014,12 +3013,10 @@ try {
 if (browserCleanupReferencesReconciled) browserCleanup.startPending();
 
 let activeCoordinationForThread = (_threadId: string): boolean => false;
-let cacheKeepWarmStatus = (_threadId: string): KeepWarmStatus | undefined => undefined;
 const wireTask = (task: TaskRecord, botModel: ModelSelection): WireTask => {
   // Snoozes heal on read against the server clock; the 0 sentinel ("until new activity") survives reads.
   const { snoozedUntil, ...base } = toWireTask(task, botModel);
-  const keepWarm = cacheKeepWarmStatus(task.threadId);
-  const coordinated = { ...base, waitingForTeammates: activeCoordinationForThread(task.threadId) && !task.busy, ...(keepWarm ? { cacheKeepWarm: keepWarm } : {}) };
+  const coordinated = { ...base, waitingForTeammates: activeCoordinationForThread(task.threadId) && !task.busy };
   const asleep = snoozedUntil === 0 || (snoozedUntil !== undefined && snoozedUntil > Date.now());
   return asleep ? { ...coordinated, snoozedUntil } : coordinated;
 };
@@ -3696,7 +3693,6 @@ type GroupTurnOperation = {
 const groupTurnOperations = new Map<string, Set<GroupTurnOperation>>();
 const groupSpeakers = new Map<string, { botId: string; name: string; color: string; since?: number }>();
 const roomMemberContexts = new RoomContextTracker({
-  heldUntil: (threadId) => cacheKeepWarmStatus(threadId)?.until,
   expired: (threadId) => { const room = store.groupByThread(threadId); if (room) broadcast({ kind: "group", group: publicGroupState(room) }); },
 });
 /** Holds a member for the thread it was handed to until that turn marks the bot busy. */
@@ -5498,95 +5494,6 @@ function captureTurnFor(threadId: string, turnId: string): CaptureTurn | null {
     turnId,
   };
 }
-
-// Prompt-cache keep-warm (server/cache-keepwarm.ts; design from Cache Tax,
-// MIT, Karan Bansal): an idle Claude thread with a big context gets one
-// forked, tool-less cache read per idle stretch while its window is open,
-// instead of a full re-write on the next message.
-const keepWarmTargets = new Map<string, KeepWarmTarget>();
-const keepWarmContext = new Map<string, number>();
-function keepWarmBotFor(threadId: string): BotRecord | null {
-  return store.botByThread(threadId) ?? (groupSpeakers.get(threadId) ? store.bot(groupSpeakers.get(threadId)!.botId) : null);
-}
-const cacheKeepWarm = createCacheKeepWarm({
-  now: () => Date.now(),
-  after: (ms, fn) => {
-    const timer = setTimeout(fn, ms);
-    timer.unref?.();
-    return { cancel: () => clearTimeout(timer) };
-  },
-  windowMs: (botId) => {
-    const bot = store.bot(botId);
-    const workspace = cacheKeepWarmSettings(cfg);
-    const on = bot?.cacheKeepWarm ?? workspace.enabled;
-    return bot && on ? workspace.windowMinutes * 60_000 : null;
-  },
-  ineligible: ({ threadId, botId, instanceId }) => {
-    if (!store.bot(botId)) return "the bot was deleted";
-    if (!store.taskByThread(botId, threadId) && !store.groupByThread(threadId)) return "the thread was deleted";
-    const instance = registry.get(instanceId);
-    if (!instance?.adapter.cacheKeepWarm) return "this engine cannot keep its cache warm";
-    if (policyModelRefusal(instance)) return "this engine is not allowed here";
-    // A metered API key's cache lives five minutes: pinging it costs more than the re-write it saves.
-    if (registry.lastSnapshot(instanceId)?.billing !== "subscription") return "keep-warm runs only on a Claude subscription sign-in";
-    return null;
-  },
-  busy: ({ threadId, botId }) => threadBusy(botId, threadId) || botHasActiveTurn(botId) || Boolean(store.groupByThread(threadId)?.busyBotId),
-  overBudget: () => spendState(cfg, DATA_DIR)?.exceeded === true,
-  ping: async ({ threadId, instanceId }, signal) => {
-    const warm = registry.get(instanceId)?.adapter.cacheKeepWarm;
-    return warm ? warm.ping(threadId, { signal }) : { ok: false, reason: "this engine cannot keep its cache warm" };
-  },
-  hold: ({ threadId, instanceId }, until) => { registry.get(instanceId)?.adapter.cacheKeepWarm?.hold(threadId, until); },
-  book: ({ threadId, botId, instanceId }, result) => {
-    const bot = store.bot(botId);
-    const instance = registry.get(instanceId);
-    if (!bot || !instance) return;
-    bookTurnUsage({
-      botId: bot.id,
-      botName: bot.name,
-      threadId,
-      instanceId,
-      driverKind: instance.driverKind,
-      model: result.model ?? store.taskByThread(bot.id, threadId)?.modelSelection?.model ?? bot.modelSelection.model,
-      input: result.input + result.cacheRead + result.cacheWrite,
-      output: result.output,
-      cachedInput: result.cacheRead,
-      costUsd: result.costUsd,
-      trigger: { kind: "bot", botId: bot.id },
-    });
-  },
-  changed: ({ threadId }) => {
-    const bot = store.botByThread(threadId);
-    if (bot) broadcast({ kind: "bot", bot: wireBot(bot) });
-  },
-});
-cacheKeepWarmStatus = (threadId) => cacheKeepWarm.status(threadId);
-onConfigSaved((before, after) => {
-  if (JSON.stringify(before.cacheKeepWarm ?? null) !== JSON.stringify(after.cacheKeepWarm ?? null)) setImmediate(() => cacheKeepWarm.refresh());
-});
-bus.subscribe((event: RuntimeEvent) => {
-  if (shouldIgnoreProviderEvent(event)) return;
-  try {
-    if (event.type === "thread.token-usage.updated") {
-      if (event.contextTokens !== undefined) keepWarmContext.set(event.threadId, event.contextTokens);
-    } else if (event.type === "turn.started") {
-      keepWarmContext.delete(event.threadId);
-      const bot = keepWarmBotFor(event.threadId);
-      if (bot && event.providerInstanceId) keepWarmTargets.set(event.threadId, { threadId: event.threadId, botId: bot.id, instanceId: event.providerInstanceId });
-      cacheKeepWarm.noteTurnStarted(event.threadId);
-    } else if (event.type === "turn.completed") {
-      const target = keepWarmTargets.get(event.threadId);
-      const contextTokens = keepWarmContext.get(event.threadId);
-      keepWarmTargets.delete(event.threadId);
-      keepWarmContext.delete(event.threadId);
-      if (!target || routines?.runForThread(event.threadId)) return;
-      cacheKeepWarm.noteTurnCompleted(target, { ok: event.ok, stopReason: event.stopReason, contextTokens });
-    }
-  } catch (error) {
-    console.warn(`cache keep-warm: ${(error as Error).message}`);
-  }
-});
 
 const ROOM_CAPTURE_LINES = 12;
 
@@ -9063,7 +8970,6 @@ async function deleteBotWithLifecycle(botId: string, revalidate: () => void = ()
           webhooks.disableForBot(bot.id);
           calendarCalls!.removeBot(bot.id);
           browserLive.closeForBot(bot.id);
-          cacheKeepWarm.cancelBot(bot.id);
           await forgetTemporaryBrowser(bot.id);
           dataSheets.delete(bot.id);
           if (dataEngine.unavailable() === null) await dataEngine.deleteBot(bot.id).catch((error) => console.warn(`data: could not delete ${bot.id}'s database`, error));
@@ -12043,7 +11949,6 @@ function configStatus() {
     rooms: { turnTimeoutMinutes: roomTurnTimeoutMinutes(cfg) },
     mcp: { callTimeoutMinutes: mcpCallTimeoutMinutes(cfg) },
     automaticRecovery: cfg.automaticRecovery ?? { enabled: false },
-    cacheKeepWarm: cacheKeepWarmSettings(cfg),
     newBots: cfg.newBots?.effort ? { effort: cfg.newBots.effort } : {},
     threads: {
       maxConcurrentPerBot: maxConcurrentBotThreads(cfg),
@@ -12407,7 +12312,7 @@ ROUTES.push(createBotSettingsRoutes({
   canManageCommandAllowlist, commandAllowlistResponse, cardAnswerRefusal,
 }));
 ROUTES.push(createBotPatchRoutes({
-  store, cfg, registry, sessions, browserRuntime, browserLive, memoryUpkeep, cacheKeepWarm, hostedModels, supportsApprovalMode,
+  store, cfg, registry, sessions, browserRuntime, browserLive, memoryUpkeep, hostedModels, supportsApprovalMode,
   routines: () => routines,
   hostedWorkspace: HOSTED_WORKSPACE, hostedFullAccessRefusal: HOSTED_FULL_ACCESS_REFUSAL, desktopManaged: DESKTOP_MANAGED, maxWorkspaceBots: MAX_WORKSPACE_BOTS,
   broadcast, wireBot, publicGroupState, audienceChanged, storedAvatarExists, requestedTaskBot, threadBusy, activeGroupTurnForBot,
@@ -15590,7 +15495,6 @@ const gracefulShutdown = createGracefulShutdown({
       routines?.stop();
       calendarCalls?.stop();
       memoryUpkeep.stop();
-      cacheKeepWarm.dispose();
       skillReview.stop();
       webhookIngress?.server.close();
     },

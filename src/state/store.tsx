@@ -278,7 +278,6 @@ export interface Task {
     updatedAt?: number;
     lastThreadOrderAt?: number;
     usage?: TaskUsage;
-    cacheKeepWarm?: import("../../shared/wire").CacheKeepWarmStatus;
     cwd?: string | null;
     modelSelection?: ModelSelection;
     followsBotModel?: boolean;
@@ -389,7 +388,6 @@ export interface Bot {
     browser?: boolean;
     recordBrowserSteps?: boolean;
     memoryUpkeep?: boolean;
-    cacheKeepWarm?: boolean | null;
     helperModel?: boolean;
     mcpServers?: string[] | null;
     browserProfile?: string | null;
@@ -481,7 +479,7 @@ export function visibleMessages(bot: Pick<Bot, "messages" | "activeLeafId">): Me
 import type { BrowserEngineSummary, BrowserProfile, ConfigStatus, ManagedPolicySummary } from "./config-status";
 export type { BrowserEngineSummary, BrowserProfile, ConfigStatus, ManagedPolicySummary };
 // A section left out here is wiped from state.config whenever a config frame lands.
-export type ConfigStatusFrame = Pick<ConfigStatus, "xai" | "mistral" | "cerebras" | "groq" | "meta" | "anthropic" | "openai" | "openrouter" | "openaiCompat" | "fleet" | "composio" | "box" | "vps" | "rooms" | "mcp" | "threads" | "automaticRecovery" | "cacheKeepWarm" | "localVm" | "opencodeGo" | "tts" | "decider" | "imageGen" | "live" | "profile" | "language" | "features" | "onboarding" | "browserEngine" | "browserProfiles" | "edition" | "budgets" | "billing" | "managedPolicy" | "cloudHome">;
+export type ConfigStatusFrame = Pick<ConfigStatus, "xai" | "mistral" | "cerebras" | "groq" | "meta" | "anthropic" | "openai" | "openrouter" | "openaiCompat" | "fleet" | "composio" | "box" | "vps" | "rooms" | "mcp" | "threads" | "automaticRecovery" | "localVm" | "opencodeGo" | "tts" | "decider" | "imageGen" | "live" | "profile" | "language" | "features" | "onboarding" | "browserEngine" | "browserProfiles" | "edition" | "budgets" | "billing" | "managedPolicy" | "cloudHome">;
 export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
     return {
         xai: frame.xai,
@@ -501,7 +499,6 @@ export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
         mcp: frame.mcp,
         threads: frame.threads,
         automaticRecovery: frame.automaticRecovery,
-        cacheKeepWarm: frame.cacheKeepWarm,
         localVm: frame.localVm,
         opencodeGo: frame.opencodeGo,
         tts: frame.tts,

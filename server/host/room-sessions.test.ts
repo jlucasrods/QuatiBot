@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { MAX_WINDOW_MINUTES } from "../cache-keepwarm.ts";
 import type { RuntimeEvent } from "../contracts.ts";
 import { sessionIdlePolicy } from "../drivers/session-idle.ts";
 import { escapeNotes } from "../peer-provenance.ts";
@@ -19,9 +18,7 @@ const IDLE_MS = sessionIdlePolicy("CLAUDE").idleMs;
 const MIN = 60_000;
 /** How long a turn never seen to end is kept (ABANDONED_TURN_MS in the module). */
 const DAY = 24 * 60 * 60_000;
-/** How long a member's last reading is kept: the longer of an abandoned turn's life and keep-warm's longest
- * window, plus two idle lives, so that it outlives its record and any process the driver can still hold. */
-const READING_LIFE = Math.max(DAY, MAX_WINDOW_MINUTES * MIN) + 2 * IDLE_MS;
+const READING_LIFE = DAY + 2 * IDLE_MS;
 
 const engine = (instanceId: string, driverKind = "claudeAgent", strictResume = true): RoomSessionEngine =>
   ({ instanceId, driverKind, adapter: { capabilities: { strictResume } } });
@@ -1630,25 +1627,6 @@ describe("room sessions: long turns, and turns in other rooms meanwhile", () => 
     r.say("And now?");
     const after = r.dispatch("editor", reading(25_000));
     expect(after.result).toStrictEqual({ mode: "start", text: r.full(after), send: {} });
-  });
-
-  it("keeps a reading past keep-warm's longest window plus the idle time a hold's end re-arms", () => {
-    // Keep-warm may hold a process for its maximum window, and when the hold
-    // ends the driver arms its idle timer for a full idle time, so a process
-    // can take a start that long after the member's last turn. The reading
-    // kept for its session must still be there to show a compaction on it.
-    const { r } = ready();
-    r.finish(r.dispatch("editor", reading(60_000)), "S1", { reply: "Trimmed." });
-    const T0 = r.state.now;
-    r.state.now = T0 + MAX_WINDOW_MINUTES * MIN + IDLE_MS + MIN;
-    r.say("Tighten the outro.");
-    const start = r.dispatch("editor", reading(120_000));
-    expect(start.result).toStrictEqual({ mode: "start", text: r.full(start), send: {} });
-    // the held process takes it: S1 again, which compacts unseen
-    r.finish(start, "S1", { reply: "Tightened." });
-    r.say("Export it.");
-    const next = r.dispatch("editor", reading(25_000));
-    expect(next.result).toStrictEqual({ mode: "start", text: r.full(next), send: {} });
   });
 
   it("keeps a reading longer than a record when the idle life is set above a day", () => {

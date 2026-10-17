@@ -11,7 +11,6 @@ import { createHash } from "node:crypto";
 
 import { PROVIDER_CREDENTIAL_ENV, stripControlPlaneEnv, WORKSPACE_CREDENTIAL_ENV } from "../../config.ts";
 import { openStartupModelCatalog, writeStartupModelCache } from "../../startup-model-catalog.ts";
-import { decodeInjectId } from "../local-inject.ts";
 import { DeviceAuthController, type DeviceSignIn } from "../device-auth.ts";
 import { deletePromptSplitReceipt, promptHalves, readPromptSplitReceipt, splitSessionPrompt, writePromptSplitReceipt } from "../prompt-split.ts";
 import type { PromptSplitReceipt } from "../prompt-split.ts";
@@ -23,10 +22,6 @@ import {
   type LogSignal, type ProcessSample, type QuietState,
 } from "./quiet-status.ts";
 import { readSessionReport } from "./session-reports.ts";
-
-export function skipSubscriptionAuthForLocalInject(model: string | undefined): boolean {
-  return Boolean(decodeInjectId(model));
-}
 
 /** A catalog can contain credential-bearing native configuration, including late replies. */
 export function acpNativeIncomingLogMessage(message: any, privateResponses: ReadonlySet<number>): unknown {
@@ -294,8 +289,7 @@ export interface AcpSupport {
     config: AcpConfig,
     instanceId: string,
   ): boolean | Promise<boolean>;
-  /** Refuse a first-party cloud turn before spawning when snapshot auth is
-   * false. Local injected models deliberately bypass this subscription gate. */
+  /** Refuse a turn before spawning when snapshot authentication is false. */
   requireAuthenticationBeforeSpawn?: boolean;
   /** Classify provider-native failures without coupling the core to messages. */
   classifyError?(error: unknown): ProviderErrorCode | undefined;
@@ -1292,7 +1286,6 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         const env = childEnv(turnConfig);
         if (
           support.requireAuthenticationBeforeSpawn
-          && !skipSubscriptionAuthForLocalInject(turn.model)
           && !(await support.isAuthenticated(env, turnConfig, instanceId))
         ) {
           emit({ ...base(threadId, turnId), type: "turn.started" });
@@ -1506,7 +1499,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                 const major = typeof version === "string" ? Number(version.match(/(?:^|v)(\d+)\./u)?.[1]) : NaN;
                 if (major !== support.minimumMajorVersion) throw new Error(`${support.displayName} requires version ${support.minimumMajorVersion}.x.`);
               }
-              if (!skipSubscriptionAuthForLocalInject(turn.model) && !session.authenticated) {
+              if (!session.authenticated) {
                 const methods: Array<{ id?: string }> = Array.isArray(session.initResult?.authMethods)
                   ? session.initResult.authMethods
                   : [];
@@ -1626,7 +1619,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                 // A pooled process missing a catalog model predates the catalog: fail and respawn, never run another.
                 staleProcess = Boolean(support.fallbackModel && wanted && !launchedThisTurn && offered.length
                   && !offered.includes(wanted) && models.options.some((option) => option.id === wanted));
-                if (support.fallbackModel && offered.length && !skipSubscriptionAuthForLocalInject(turn.model)
+                if (support.fallbackModel && offered.length
                     && !staleProcess && (!wanted || !offered.includes(wanted))) {
                   const fallback = support.fallbackModel(session.sessionConfigResult, models.default);
                   if (fallback && fallback !== wanted && offered.includes(fallback)) {

@@ -247,19 +247,7 @@ export interface ProviderAdapter {
   hasSession(threadId: ThreadId): boolean;
   stopAll(): Promise<void>;
   onEvent(listener: RuntimeEventListener): () => void;
-  /** `ping` sends one tool-less forked request without touching the thread's session; `hold` keeps the live session open until
-   * `until` (epoch ms; null releases) and says whether one exists. */
-  cacheKeepWarm?: {
-    ping(threadId: ThreadId, options?: { signal?: AbortSignal }): Promise<CacheWarmPingResult>;
-    hold(threadId: ThreadId, until: number | null): boolean;
-  };
 }
-
-/** Tokens are the ping's own; `costUsd` is notional on a subscription. `busy`: a turn was running and nothing was sent;
- * `limit`: the account's usage limit refused it. */
-export type CacheWarmPingResult =
-  | { ok: true; input: number; cacheRead: number; cacheWrite: number; output: number; costUsd: number | null; model: string | null }
-  | { ok: false; reason: string; busy?: boolean; limit?: boolean };
 
 export type SteerOutcome = "steered" | "refused" | "indeterminate";
 
