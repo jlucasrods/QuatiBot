@@ -64,18 +64,19 @@ describe("OpenCode V2 ACP turns", () => {
     expect(session.cwd).toBe(home);
   });
 
-  it("passes internal browser and computer MCPs only to the session", async () => {
+  it("passes internal browser, computer and Android MCPs only to the session", async () => {
     const recorder = await create();
     const server = { command: process.execPath, args: ["fixture-mcp"], env: { FIXTURE_TOKEN: "session-secret" } };
     await instance.adapter.sendTurn({
       threadId: "thread", text: "Use my tools", cwd: home,
-      integrations: { browser: server, localComputer: server },
+      integrations: { browser: server, localComputer: server, phone: server },
     });
     expect(await recorder.until((event) => event.type === "turn.completed")).toMatchObject({ ok: true });
     const session = JSON.parse(readFileSync(join(home, "dump.json.session.json"), "utf8"));
     expect(session.mcpServers).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "browser", env: [{ name: "FIXTURE_TOKEN", value: "session-secret" }] }),
       expect.objectContaining({ name: "computer" }),
+      expect.objectContaining({ name: "phone", env: [{ name: "FIXTURE_TOKEN", value: "session-secret" }] }),
     ]));
   });
 

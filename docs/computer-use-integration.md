@@ -26,3 +26,13 @@ Auto execution can choose supported agent environments. Explicit VM selection re
 Browser and VM tools return screenshots from their own environment. The `record_screen` coordination tool records `browser` or `vm`, for an integer duration from 1 to 30 seconds. It requires `ffmpeg` on the backend host and saves a WebM attachment in the bot's attachment directory.
 
 The recording route rechecks active turn authority and the selected environment while capturing. A live preview is separate from a saved, replayable video. Recordings can contain sensitive page or application content; share them intentionally.
+
+## Android over USB
+
+Install `adb` on the Linux server running QuatiBot, enable USB debugging on the Android device, connect it by USB and accept the device's authorization prompt. Run `adb devices -l` as the server user to confirm the device is authorized. Set `QUATI_ADB_PATH` when the executable is not on that user's PATH or in `~/Android/Sdk/platform-tools/adb`.
+
+Ask a bot to work on your Android phone or celular. When ADB is available, the phone skill adds an internal `phone` MCP server to that OpenCode turn, including room turns. It can list USB devices and apps, inspect screen text, take screenshots, open apps, tap, swipe and type supported text. No global OpenCode MCP configuration is changed.
+
+Only physical USB devices are supported. Wireless ADB and emulators are excluded. With multiple devices, pass the device serial to the tool or set `PH_ANDROID_SERIAL`. An unauthorized or disconnected device returns an explicit error.
+
+The first tool call claims the phone for its active conversation. Every subsequent call revalidates that authority; concurrent conversations wait for the claim to be released, and a proxy retained after its turn ends cannot act. Tool-selection restrictions also apply to the injected MCP. For container deployments, ADB and USB access must be deliberately provided inside the backend container; the standard Compose example does not expose host devices.

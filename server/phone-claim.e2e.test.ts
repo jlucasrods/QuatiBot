@@ -33,22 +33,23 @@ async function until<T>(read: () => T | Promise<T>, accept: (value: T) => boolea
 }
 // The fake CLI writes its dump in one go; a poll can land mid-write, so a partial file is "not yet".
 const dump = () => until(() => {
-  if (!existsSync(dumpFile)) return null;
-  try { return JSON.parse(readFileSync(dumpFile, "utf8")); } catch { return null; }
+  if (!existsSync(`${dumpFile}.mcp.json`)) return null;
+  try { return { mcpServers: JSON.parse(readFileSync(`${dumpFile}.mcp.json`, "utf8")) }; } catch { return null; }
 }, Boolean);
 const idle = (botId: string) => until(() => api("GET", "/api/bots?messages=0"), s => !s.bots.find((b: any) => b.id === botId)?.busy);
 const busy = (botId: string) => until(() => api("GET", "/api/bots?messages=0"), s => s.bots.find((b: any) => b.id === botId)?.busy === true);
 const phoneSpec = (d: any) => {
-  expect(d.mcpConfig?.mcpServers?.phone, "phone tools should be mounted").toBeTruthy();
-  return d.mcpConfig.mcpServers.phone;
+  const phone = d.mcpServers?.find((server: { name: string }) => server.name === "phone");
+  expect(phone, "phone tools should be mounted through ACP").toBeTruthy();
+  return { ...phone, env: Object.fromEntries(phone.env.map((entry: { name: string; value: string }) => [entry.name, entry.value])) };
 };
 const holdDirectTurn = async (botId: string, text: string) => {
-  rmSync(dumpFile, { force: true });
+  rmSync(`${dumpFile}.mcp.json`, { force: true });
   await api("POST", `/api/bots/${botId}/messages`, { text });
   return phoneSpec(await dump());
 };
 const holdRoomTurn = async (groupId: string, text: string) => {
-  rmSync(dumpFile, { force: true });
+  rmSync(`${dumpFile}.mcp.json`, { force: true });
   await api("POST", `/api/groups/${groupId}/messages`, { text });
   return phoneSpec(await dump());
 };
@@ -61,10 +62,9 @@ const noPhoneConflict = async (...botIds: string[]) => {
 };
 
 // Speak just enough MCP to one spawned phone proxy: initialize, then tools/call frames, collected by id.
-async function withPhoneProxy<T>(spec: any, run: (call: (name: string) => Promise<any>) => Promise<T>): Promise<T> {
-  // Node acts as an inert cross-platform ADB; never discover or contact a real attached phone.
+async function withPhoneProxy<T>(spec: any, run: (call: (name: string, args?: Record<string, string | number>) => Promise<any>) => Promise<T>): Promise<T> {
   const proxy = spawn(spec.command, spec.args, { cwd: fixtureHome,
-    env: { ...process.env, ...spec.env, HOME: fixtureHome, USERPROFILE: fixtureHome, QUATI_ADB_PATH: process.execPath },
+    env: { ...process.env, ...spec.env, HOME: fixtureHome, USERPROFILE: fixtureHome, QUATI_ADB_PATH: join(fixtureHome, "adb") },
     stdio: ["pipe", "pipe", "ignore"] });
   try {
     const responses = new Map<number, any>();
@@ -97,8 +97,8 @@ async function withPhoneProxy<T>(spec: any, run: (call: (name: string) => Promis
     await awaitResponse(1);
     proxy.stdin!.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
     let nextId = 2;
-    return await run(async (name: string) => {
-      send(nextId, "tools/call", { name, arguments: {} });
+    return await run(async (name: string, args = {}) => {
+      send(nextId, "tools/call", { name, arguments: args });
       return awaitResponse(nextId++);
     });
   } finally {
@@ -108,7 +108,12 @@ async function withPhoneProxy<T>(spec: any, run: (call: (name: string) => Promis
 
 beforeAll(async () => {
   fixtureHome = mkdtempSync(join(tmpdir(), "quati-phone-claim-"));
-  writeFileSync(join(fixtureHome, "devices"), 'process.stdout.write("List of devices attached\\n");');
+  writeFileSync(join(fixtureHome, "adb"), `#!${process.execPath}
+const args = process.argv.slice(2);
+if (args[0] === 'devices') console.log('List of devices attached\\nfixture-usb device usb:1 model:Fixture');
+else if (args.includes('screencap')) process.stdout.write(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS9sAAAAASUVORK5CYII=', 'base64'));
+else if (args.includes('cat')) console.log('<hierarchy><node text="Continue" content-desc="" resource-id="continue" class="android.widget.Button" bounds="[10,20][90,60]"/></hierarchy>');
+`, { mode: 0o700 });
   dumpFile = join(fixtureHome, "dump.json");
   finishFile = join(fixtureHome, "finish");
   const data = join(fixtureHome, "data");
@@ -116,9 +121,10 @@ beforeAll(async () => {
   mkdirSync(data); mkdirSync(join(ui, "assets"), { recursive: true });
   writeFileSync(join(ui, "index.html"), "<title>Phone claim</title>");
   writeFileSync(join(ui, "assets", "test.css"), "body{}");
-  writeFileSync(join(data, "config.json"), JSON.stringify({ instances: { claude: {
-    driver: "claudeAgent", config: { cli: join(ROOT, "server/testing/fake-claude-cli.ts") },
-    environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_DUMP: dumpFile, FAKE_CLAUDE_SLOW_FINISH_GATE: finishFile },
+  mkdirSync(join(data, "providers/opencode/discovery"), { recursive: true });
+  writeFileSync(join(data, "providers/opencode/discovery/.quati-project"), "");
+  writeFileSync(join(data, "config.json"), JSON.stringify({ instances: { opencodeGo: {
+    driver: "opencodeGo", config: { cli: join(ROOT, "server/testing/fake-acp-cli.ts") },
   } } }));
   const port = await freePortBlock([0, 1]);
   base = `http://127.0.0.1:${port}`;
@@ -128,6 +134,9 @@ beforeAll(async () => {
       APPDATA: join(fixtureHome, "appdata"), LOCALAPPDATA: join(fixtureHome, "localappdata"),
       TEMP: fixtureHome, TMP: fixtureHome, TMPDIR: fixtureHome,
       QUATI_PORT: String(port), QUATI_WEBHOOK_PORT: String(port + 1), QUATI_STATIC_DIR: ui,
+      QUATI_ADB_PATH: join(fixtureHome, "adb"),
+      FAKE_ACP_MODE: "echo-gated", FAKE_ACP_DUMP: dumpFile, FAKE_ACP_GATE_FILE: finishFile,
+      FAKE_ACP_MODELS: "fixture/default", FAKE_ACP_AGENT_NAME: "OpenCode", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_VERSION: "2.0.31",
     }, stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout!.on("data", () => {});
@@ -166,6 +175,21 @@ const makeRoom = async (name: string, botId: string) => {
 const roomIdle = (groupId: string) => until(() => api("GET", "/api/bots?messages=0"), s => s.groups.find((g: any) => g.id === groupId)?.working !== true);
 
 describe("Lazy phone claim on the real server", () => {
+  it("uses the injected ACP phone server to inspect a USB screen and act on it", async () => {
+    rmSync(finishFile, { force: true });
+    const bot = await makeBot("USB Android operator");
+    const spec = await holdDirectTurn(bot.id, "read my android phone screen");
+    await withPhoneProxy(spec, async (call) => {
+      const status = await call("status");
+      expect(status.result.content[0].text).toContain("fixture-usb");
+      const screen = await call("read_screen");
+      expect(screen.result.content[0].text).toContain("Continue");
+      const screenshot = await call("screenshot");
+      expect(screenshot.result.content).toContainEqual(expect.objectContaining({ type: "image", mimeType: "image/png" }));
+      const tap = await call("tap", { x: 50, y: 40 });
+      expect(tap.result.content[0].text).toBe("Tapped 50,40");
+    });
+  });
   it("rejects a retained proxy after its turn settles, before and after a new owner claims", async () => {
     rmSync(finishFile, { force: true });
     const holder = await makeBot("Old retained phone caller");
@@ -215,7 +239,7 @@ describe("Lazy phone claim on the real server", () => {
     await roomIdle(room.id);
 
     rmSync(finishFile, { force: true });
-    await holdRoomTurn(room.id, "now give a short status update");
+    await api("POST", `/api/groups/${room.id}/messages`, { text: "now give a short status update" });
     await until(() => api("GET", "/api/bots?messages=0"), s => s.groups.find((g: any) => g.id === room.id)?.working === true);
 
     const other = await makeBot("Unrelated phone user");

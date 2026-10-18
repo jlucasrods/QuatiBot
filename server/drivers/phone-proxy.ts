@@ -35,21 +35,13 @@ const KNOWN_PACKAGES: Record<string, string> = {
   uber: "com.ubercab",
 };
 
-function executableName(platform = process.platform) {
-  return platform === "win32" ? "adb.exe" : "adb";
-}
-
-export function resolveAdbPath(env: NodeJS.ProcessEnv = process.env, platform = process.platform): string | null {
-  const executable = executableName(platform);
+export function resolveAdbPath(env: NodeJS.ProcessEnv = process.env): string | null {
+  const executable = "adb";
   const home = homedir();
   const candidates = [
     env.QUATI_ADB_PATH,
-    env.QUATI_RESOURCES_PATH && join(env.QUATI_RESOURCES_PATH, "android-platform-tools", platform, executable),
     ...(env.PATH ?? "").split(delimiter).map((entry) => entry && join(entry, executable)),
-    platform === "darwin" && join(home, "Library/Android/sdk/platform-tools/adb"),
-    platform === "darwin" && "/opt/homebrew/bin/adb",
-    platform === "darwin" && "/usr/local/bin/adb",
-    platform === "linux" && join(home, "Android/Sdk/platform-tools/adb"),
+    join(home, "Android/Sdk/platform-tools/adb"),
   ].filter((candidate): candidate is string => Boolean(candidate));
   for (const candidate of candidates) {
     try {
@@ -62,9 +54,9 @@ export function resolveAdbPath(env: NodeJS.ProcessEnv = process.env, platform = 
 
 async function runAdb(args: string[], options: { binary?: boolean; timeoutMs?: number } = {}): Promise<Buffer> {
   const adb = resolveAdbPath();
-  if (!adb) throw new Error("Android platform tools are unavailable. Reopen QuatiBot or install adb.");
+  if (!adb) throw new Error("Install adb on the QuatiBot server or configure QUATI_ADB_PATH.");
   return new Promise((resolve, reject) => {
-    const child = spawn(adb, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const child = spawn(adb, args, { stdio: ["ignore", "pipe", "pipe"] });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let size = 0;

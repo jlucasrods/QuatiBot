@@ -1975,6 +1975,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             computerMcp: true,
             browserMcp: true,
             dataMcp: true,
+            phoneMcp: true,
             images: support.images !== false,
             nativeImageInput: support.images === true,
             effortLevels: support.effortLevels,

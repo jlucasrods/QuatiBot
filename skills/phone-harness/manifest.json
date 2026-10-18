@@ -11,7 +11,10 @@
     "adb",
     "my phone",
     "mobile app",
-    "on the phone"
+    "on the phone",
+    "celular",
+    "telefone",
+    "depuração usb"
   ],
   "requiredCapabilities": ["phoneMcp"]
 }

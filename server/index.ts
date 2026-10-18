@@ -510,6 +510,7 @@ import { createNotificationRoutes } from "./routes/notifications.ts";
 import { createUsageRoutes } from "./routes/usage.ts";
 import { createBotMessageRoutes } from "./routes/bot-messages.ts";
 import { createThreadRoutes } from "./routes/threads.ts";
+import { resolveAdbPath } from "./drivers/phone-proxy.ts";
 
 const PORT = Number(process.env.QUATI_PORT || 8799);
 const WEBHOOK_PORT = Number(process.env.QUATI_WEBHOOK_PORT || PORT + 1);
@@ -2425,7 +2426,6 @@ function phoneIntegration(botId: string, threadId: string, generation: string) {
     QUATI_HARNESS_URL: `http://127.0.0.1:${PORT}`,
   };
   if (process.env.QUATI_ADB_PATH) env.QUATI_ADB_PATH = process.env.QUATI_ADB_PATH;
-  if (process.env.QUATI_RESOURCES_PATH) env.QUATI_RESOURCES_PATH = process.env.QUATI_RESOURCES_PATH;
   if (process.env.PH_ANDROID_SERIAL) env.PH_ANDROID_SERIAL = process.env.PH_ANDROID_SERIAL;
   return { command: process.execPath, args: [phoneProxyPath], env };
 }
@@ -7725,7 +7725,7 @@ async function startTurn(
       const selectedSkills = selectBundledSkills(
         providerText,
         [
-          ...(instance.adapter.capabilities.phoneMcp === true ? ["phoneMcp"] : []),
+          ...(instance.adapter.capabilities.phoneMcp === true && resolveAdbPath() ? ["phoneMcp"] : []),
           ...(skillAuthoring ? ["skillAuthoring"] : []),
         ],
         availableSkills(),
@@ -9576,7 +9576,7 @@ async function runClaimedGroupMemberTurn(
   const selectedSkills = mergeSkills(
     selectBundledSkills(
       roomContext,
-      instance.adapter.capabilities.phoneMcp === true ? ["phoneMcp"] : [],
+      instance.adapter.capabilities.phoneMcp === true && resolveAdbPath() ? ["phoneMcp"] : [],
       skills,
     ),
     selectBundledSkills(
