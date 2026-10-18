@@ -479,7 +479,7 @@ export function visibleMessages(bot: Pick<Bot, "messages" | "activeLeafId">): Me
 import type { BrowserEngineSummary, BrowserProfile, ConfigStatus, ManagedPolicySummary } from "./config-status";
 export type { BrowserEngineSummary, BrowserProfile, ConfigStatus, ManagedPolicySummary };
 // A section left out here is wiped from state.config whenever a config frame lands.
-export type ConfigStatusFrame = Pick<ConfigStatus, "xai" | "mistral" | "cerebras" | "groq" | "meta" | "anthropic" | "openai" | "openrouter" | "openaiCompat" | "fleet" | "composio" | "box" | "vps" | "rooms" | "mcp" | "threads" | "automaticRecovery" | "localVm" | "opencodeGo" | "tts" | "decider" | "imageGen" | "live" | "profile" | "language" | "features" | "onboarding" | "browserEngine" | "browserProfiles" | "edition" | "budgets" | "billing" | "managedPolicy" | "cloudHome">;
+export type ConfigStatusFrame = Pick<ConfigStatus, "xai" | "mistral" | "cerebras" | "groq" | "meta" | "anthropic" | "openai" | "openrouter" | "openaiCompat" | "composio" | "box" | "vps" | "rooms" | "mcp" | "threads" | "automaticRecovery" | "localVm" | "opencodeGo" | "tts" | "decider" | "imageGen" | "live" | "profile" | "language" | "features" | "onboarding" | "browserEngine" | "browserProfiles" | "edition" | "budgets" | "billing" | "managedPolicy" | "cloudHome">;
 export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
     return {
         xai: frame.xai,
@@ -491,7 +491,6 @@ export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
         openai: frame.openai,
         openrouter: frame.openrouter,
         openaiCompat: frame.openaiCompat,
-        fleet: frame.fleet,
         composio: frame.composio,
         box: frame.box,
         vps: frame.vps,
@@ -614,7 +613,7 @@ export interface InstanceInfo {
     };
     freeUpSpace?: boolean;
 }
-export type AppSettingsSection = "general" | "desktopWorkspaces" | "organization" | "cloudAccount" | "appearance" | "experimental" | "connections" | "decisionModel" | "engines" | "remoteAccess" | "remote" | "computer" | "logins" | "usage" | "people" | "activity" | "backups" | "workspaces" | "skills";
+export type AppSettingsSection = "general" | "desktopWorkspaces" | "organization" | "cloudAccount" | "appearance" | "experimental" | "connections" | "decisionModel" | "engines" | "remoteAccess" | "remote" | "computer" | "logins" | "usage" | "people" | "activity" | "backups" | "skills";
 export type BotSettingsSection = "overview" | "identity" | "slack" | "soul" | "skills" | "memory" | "routines" | "access" | "model" | "permissions" | "voice" | "visibility" | "history" | "usage";
 export interface ModelVariantSession {
     instanceId: string;

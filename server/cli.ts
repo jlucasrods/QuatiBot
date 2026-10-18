@@ -26,9 +26,6 @@ import { restartPolicy } from "./restart.ts";
 import { ensureCaddy, normalizeDomainOption, startCaddy, type RunningCaddy } from "./caddy.ts";
 import { runServiceCommand } from "./service-cli.ts";
 import { runSentinelCli } from "./sentinel/cli.ts";
-import { runFleetCommand, type FleetInput } from "./fleet-cli.ts";
-import { startFleetAgent } from "./fleet-agent.ts";
-import { fleetLayout } from "./fleet.ts";
 import { explainTailscaleFailure, tailscaleServe, tailscaleServeOff, tailscaleStatus, type TailscaleStatus } from "./tailscale.ts";
 import { SetupCancelled } from "./cli-prompts.ts";
 import { HEADLESS_VERB_NAMES, USAGE } from "./cli-usage.ts";
@@ -37,7 +34,7 @@ import { browserSignInLines, pairingBlock } from "./cli-pairing.ts";
 import type { AppConfig } from "./config.ts";
 const HERE = dirname(fileURLToPath(import.meta.url));
 export interface CliOptions {
-    command: "setup" | "start" | "serve" | "pair" | "sessions" | "status" | "service" | "browser" | "fleet" | "help";
+    command: "setup" | "start" | "serve" | "pair" | "sessions" | "status" | "service" | "browser" | "help";
     port: number;
     dataDir: string;
     label?: string;
@@ -55,23 +52,6 @@ export interface CliOptions {
     email?: string;
     /** `browser install [--with-deps]` */
     browserAction?: "install" | "status";
-    /** `fleet init|create|list|users|suspend|resume|delete|upgrade|agent` */
-    fleetAction?: FleetInput["action"] | "agent";
-    operator?: string;
-    socket?: string;
-    group?: string;
-    slug?: string;
-    admins?: string[];
-    members?: string[];
-    brandFile?: string;
-    anthropicKeyFile?: string;
-    cap?: number;
-    licenseKey?: string;
-    memory?: string;
-    dryRun?: boolean;
-    yes?: boolean;
-    keepData?: boolean;
-    fleetUserAction?: "add" | "remove";
     withDeps?: boolean;
     json: boolean;
     /** Explicitly ignore saved remote access for this launch. */
@@ -79,7 +59,7 @@ export interface CliOptions {
     open?: boolean;
     guided?: boolean;
 }
-const COMMANDS = ["setup", "start", "serve", "pair", "sessions", "status", "service", "browser", "fleet", "help", "--help", "-h"];
+const COMMANDS = ["setup", "start", "serve", "pair", "sessions", "status", "service", "browser", "help", "--help", "-h"];
 export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env): CliOptions | {
     error: string;
 } {
@@ -145,42 +125,6 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
                 options.browserAction = arg;
             else if (options.command === "browser" && arg === "--with-deps")
                 options.withDeps = true;
-            else if (options.command === "fleet" && !options.fleetAction && ["init", "create", "list", "users", "suspend", "resume", "delete", "upgrade", "agent"].includes(arg))
-                options.fleetAction = arg as FleetInput["action"] | "agent";
-            else if (options.command === "fleet" && options.fleetAction && !["init", "list", "upgrade", "agent"].includes(options.fleetAction) && !options.slug && !arg.startsWith("--"))
-                options.slug = arg;
-            else if (options.command === "fleet" && arg === "--operator")
-                options.operator = value();
-            else if (options.command === "fleet" && arg === "--socket")
-                options.socket = value();
-            else if (options.command === "fleet" && arg === "--group")
-                options.group = value();
-            else if (options.command === "fleet" && options.fleetAction === "users" && options.slug && !options.fleetUserAction && (arg === "add" || arg === "remove")) {
-                options.fleetUserAction = arg;
-                options.email = value();
-            }
-            else if (options.command === "fleet" && arg === "--admin")
-                options.admins = [...(options.admins ?? []), value()];
-            else if (options.command === "fleet" && arg === "--member")
-                options.members = [...(options.members ?? []), value()];
-            else if (options.command === "fleet" && arg === "--brand")
-                options.brandFile = resolve(value());
-            else if (options.command === "fleet" && arg === "--anthropic-key-file")
-                options.anthropicKeyFile = resolve(value());
-            else if (options.command === "fleet" && arg === "--cap")
-                options.cap = Number(value());
-            else if (options.command === "fleet" && arg === "--license-key")
-                options.licenseKey = value();
-            else if (options.command === "fleet" && arg === "--memory")
-                options.memory = value();
-            else if (options.command === "fleet" && arg === "--dry-run")
-                options.dryRun = true;
-            else if (options.command === "fleet" && arg === "--yes")
-                options.yes = true;
-            else if (options.command === "fleet" && arg === "--keep-data")
-                options.keepData = true;
-            else if (options.command === "fleet" && arg === "--chat-only")
-                options.chatOnly = true;
             else
                 return { error: `unknown argument "${arg}"` };
         }
@@ -200,16 +144,6 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
         return { error: "--local cannot be combined with a remote-access option" };
     if (options.command === "browser" && !options.browserAction)
         return { error: "browser needs an action: install or status" };
-    if (options.command === "fleet") {
-        if (!options.fleetAction)
-            return { error: "fleet needs one of: init --domain HOST [--operator USER], create NAME --admin EMAIL, list, users NAME add|remove EMAIL, suspend NAME, resume NAME, delete NAME --yes, upgrade, agent" };
-        if (["create", "users", "suspend", "resume", "delete"].includes(options.fleetAction) && !options.slug)
-            return { error: `fleet ${options.fleetAction} needs a workspace name` };
-        if (options.fleetAction === "users" && !options.fleetUserAction)
-            return { error: "fleet users needs: NAME add|remove EMAIL [--chat-only]" };
-        if (options.cap !== undefined && (!Number.isFinite(options.cap) || options.cap < 0))
-            return { error: "--cap must be a dollar amount of 0 or more" };
-    }
     return options;
 }
 export interface CliIo {
@@ -780,43 +714,6 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             return runServiceCommand({
                 action: options.serviceAction ?? "install", dataDir: options.dataDir, port: options.port, domain: options.domain,
                 tailscale: options.tailscale, label: options.label, sentinel: options.sentinel, script: process.argv[1] ?? "", node: process.execPath,
-            }, { log: (line) => console.log(line), error: (line) => console.error(line) });
-        case "fleet":
-            if (options.fleetAction === "agent") {
-                const layout = fleetLayout();
-                await startFleetAgent({
-                    socketPath: options.socket ?? layout.socketPath,
-                    group: options.group,
-                    node: process.execPath,
-                    script: process.argv[1] ?? "",
-                    licenseKey: options.licenseKey ?? process.env.QUATI_LICENSE_KEY,
-                }, { log: (line) => console.log(line) });
-                await new Promise<void>((resolveStop) => {
-                    for (const signal of ["SIGTERM", "SIGINT"] as const)
-                        process.once(signal, () => resolveStop());
-                });
-                return 0;
-            }
-            return runFleetCommand({
-                action: options.fleetAction as FleetInput["action"],
-                slug: options.slug,
-                domain: options.domain,
-                operator: options.operator ?? process.env.SUDO_USER,
-                admins: options.admins ?? [],
-                members: options.members ?? [],
-                brandFile: options.brandFile,
-                anthropicKeyFile: options.anthropicKeyFile,
-                cap: options.cap,
-                licenseKey: options.licenseKey ?? process.env.QUATI_LICENSE_KEY,
-                memory: options.memory,
-                dryRun: options.dryRun ?? false,
-                yes: options.yes ?? false,
-                keepData: options.keepData ?? false,
-                userAction: options.fleetUserAction,
-                email: options.email,
-                chatOnly: options.chatOnly,
-                node: process.execPath,
-                script: process.argv[1] ?? "",
             }, { log: (line) => console.log(line), error: (line) => console.error(line) });
         case "browser":
             return runBrowser(options);

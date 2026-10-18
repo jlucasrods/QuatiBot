@@ -2158,7 +2158,7 @@ describe("live config frames", () => {
         expect(status.budgets).toEqual(frame.budgets);
         expect(status.billing).toEqual(frame.billing);
     });
-    it("keeps saved provider keys and the fleet flag after a config SSE frame lands after a save's own response", () => {
+    it("keeps saved provider key status after a config SSE frame lands after a save's own response", () => {
         const saved = reducer(initialState, {
             type: "configStatus",
             config: configStatusFromFrame({ ...baseFrame, openaiCompat: { configured: true, url: "http://127.0.0.1:1/v1" } }),
@@ -2170,7 +2170,6 @@ describe("live config frames", () => {
             groq: { configured: true },
             meta: { configured: true },
             openaiCompat: { configured: true, url: "http://127.0.0.1:1/v1" },
-            fleet: { available: true },
         };
         const state = reducer(saved, { type: "configStatus", config: configStatusFromFrame(frame) });
         expect(state.config).toMatchObject({
@@ -2179,7 +2178,6 @@ describe("live config frames", () => {
             groq: { configured: true },
             meta: { configured: true },
             openaiCompat: { configured: true, url: "http://127.0.0.1:1/v1" },
-            fleet: { available: true },
         });
     });
     it("carries the organisation's read-only desktop policy through a config frame", () => {

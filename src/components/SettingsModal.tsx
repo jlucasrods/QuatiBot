@@ -23,7 +23,6 @@ import { shortcutLabel } from "./ShortcutHint";
 import { UsageSection } from "./UsageSection";
 import { SkillsSection } from "./SkillsSection";
 import { LicenseExpiryBanner } from "./LicenseExpiryBanner";
-import { WorkspacesSection, workspacesAvailable } from "./WorkspacesSection";
 import { SkinPicker } from "./SkinPicker";
 import { ChatWidthRow, FontRow, SidebarToolsLayoutRow } from "./AppearanceSelectRows";
 import { setColorUserBubbles, useColorUserBubbles } from "@/lib/user-bubble-preference";
@@ -78,7 +77,6 @@ export const SECTIONS: Array<{
     { id: "usage", group: "account", labelKey: "settings.section.usage", icon: Coins, keywords: ["tokens", "cost", "history", "model", "used"] },
     { id: "backups", group: "account", labelKey: "settings.section.backups", icon: Archive, keywords: ["export", "import", "restore", "full backup", "password", "recovery"] },
     { id: "activity", group: "account", labelKey: "settings.section.activity", icon: ScrollText, keywords: ["activity", "audit", "log", "history", "who changed", "approvals", "decisions", "admin"] },
-    { id: "workspaces", group: "account", labelKey: "settings.section.workspaces", icon: Building2, keywords: ["clients", "tenants", "fleet", "workspaces", "installation", "installations"] },
     { id: "experimental", group: "account", labelKey: "settings.section.experimental", icon: FlaskConical, keywords: ["early", "preview", "learn", "skill", "authoring"] },
 ];
 export type SimpleSettingsPage = {
@@ -94,7 +92,7 @@ export const SIMPLE_PAGES: SimpleSettingsPage[] = [
     { id: "computers", labelKey: "settings.group.computers", icon: Monitor, sections: ["remoteAccess", "desktopWorkspaces", "computer", "logins"] },
     { id: "account", labelKey: "settings.group.account", icon: CircleUser, sections: ["cloudAccount", "organization", "people", "activity"] },
 ];
-export const SIMPLE_HIDDEN_SECTIONS: readonly AppSettingsSection[] = ["usage", "backups", "experimental", "workspaces", "skills"];
+export const SIMPLE_HIDDEN_SECTIONS: readonly AppSettingsSection[] = ["usage", "backups", "experimental", "skills"];
 export function simpleSettingsPages(available: ReadonlyArray<(typeof SECTIONS)[number]>, open: AppSettingsSection): SimpleSettingsPage[] {
     const allowed = new Set(available.map((entry) => entry.id));
     const pages = SIMPLE_PAGES
@@ -444,7 +442,6 @@ export function SettingsModal() {
         .filter((entry) => entry.id !== "desktopWorkspaces" || Boolean(undefined))
         .filter((entry) => entry.id !== "organization" || Boolean(undefined))
         .filter((entry) => entry.id !== "cloudAccount" || Boolean(undefined))
-        .filter((entry) => entry.id !== "workspaces" || workspacesAvailable(state.config))
         .filter((entry) => entry.id !== "people" || (state.config?.cloudHome !== true))
         .filter((entry) => entry.id !== "activity" || (ownerOrAdmin === true));
     const availableSections = baseSections.filter((entry) => entry.id !== "skills" || skillsLibraryEnabled(state.config));
@@ -591,8 +588,6 @@ export function SettingsModal() {
                 return skillsLibraryEnabled(state.config) ? <SkillsSection /> : null;
             case "activity":
                 return <ActivitySection />;
-            case "workspaces":
-                return <WorkspacesSection />;
             default:
                 return null;
         }

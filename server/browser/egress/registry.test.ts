@@ -11,12 +11,12 @@ import type { ListenerOwnership } from "./ownership.ts";
 const noScans = { streamPorts: () => [], devToolsPorts: () => [] };
 
 describe("QuatiBot's own listeners", () => {
-  it("lists the default ports everywhere, and a server's edge, Caddy admin and fleet ports on servers", () => {
+  it("lists the default ports everywhere, and a server's edge and Caddy admin ports on servers", () => {
     const desktop = staticOwnPorts("desktop", {});
     for (const port of [8799, 18799, 28799, 8800, 8798, 18798, 28798, 8810, 8811, 8812, 5199, 6080]) expect(desktop.has(port), String(port)).toBe(true);
     for (const port of [8080, 2019, 8820, 8821]) expect(desktop.has(port), String(port)).toBe(false);
     const server = staticOwnPorts("server", { QUATI_PORT: "9100", QUATI_WEBHOOK_PORT: "9101" });
-    for (const port of [8080, 2019, 8810, 8820, 8821, 9800, 9801, 9100, 9101]) expect(server.has(port), String(port)).toBe(true);
+    for (const port of [8080, 2019, 8810, 9100, 9101]) expect(server.has(port), String(port)).toBe(true);
     expect(staticOwnPorts("cloud", {}).has(2019)).toBe(true);
   });
 

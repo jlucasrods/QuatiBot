@@ -34,11 +34,6 @@ export const USAGE = `quatibot — your team of AI bots, ready in a few steps
                     [--sentinel]   (the health scan below, every two minutes, instead of the server)
   quatibot sentinel [--data-dir DIR] [--out DIR] [--once] [--json]   (read-only health scan; see --help)
   quatibot browser install [--with-deps] | status
-  quatibot fleet init --domain HOST [--operator USER] | create NAME --admin EMAIL [--member EMAIL] [--brand FILE]
-                    [--anthropic-key-file FILE] [--cap USD] [--license-key KEY] [--memory 1G]
-                  | list | users NAME add|remove EMAIL [--chat-only] | suspend NAME | resume NAME
-                  | delete NAME --yes [--keep-data] | upgrade   (all take --dry-run)
-                  | agent [--socket PATH] [--group USER]   (root; installed by init --operator)
 
 setup   select an available OpenCode model; keep existing bots and chats
 start   same as quatibot: use your saved settings and open the workspace
@@ -56,13 +51,6 @@ browser install: the bots' browser engine (agent-browser, pinned) into the
         the Linux libraries Chrome needs (run as root once). Then run
         browser install as the user running serve, from that user's home.
         status: what the current user and data directory have.
-fleet   many client workspaces on one Linux server, each its own account,
-        service, data folder, brand, sign-in list and keys at NAME.HOST
-        behind the system Caddy. Plans are printed unless run as root;
-        --dry-run always prints. Install the package permanently first.
-        init --operator USER also installs the fleet agent, a root service
-        on a Unix socket only USER may open, so the workspace running as
-        USER manages the others from Settings → Installations.
 
 --tailscale  serve over your tailnet: Tailscale terminates HTTPS and the
              link uses this machine's MagicDNS name (needs Tailscale signed in
