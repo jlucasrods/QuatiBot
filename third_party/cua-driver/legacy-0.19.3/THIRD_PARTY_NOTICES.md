@@ -1,14 +1,15 @@
 # Cua Driver 0.19.3 third-party notices
 
-OpenMausBot redistributes two executables from the official Cua Driver 0.19.3 Linux x64 release: `cua-driver` and `cua-cursor-theme`.
+Historical license reference from upstream OpenMausBot's Cua Driver 0.19.3
+Linux x64 distribution (`cua-driver` and `cua-cursor-theme`). This is not an
+inventory of QuatiBot's current runtime; see [the current scope](../README.md).
 
 - Upstream source commit: [`a1672e7b11951275ecfba3384264d4530185d0db`](https://github.com/trycua/cua/commit/a1672e7b11951275ecfba3384264d4530185d0db)
 - Upstream `Cargo.lock` SHA-256: `c1a8df7f4bedd554f6fc90c852c3625c91a89b28d9f2c642d966279e9e372362`
 - Release archive SHA-256: `3db9d4257d84bacaf7eb104d225f85613ce67edbb20d6eeb83c1384b6d8a5b10`
-- Cua's eight workspace components remain under the accompanying MIT `LICENSE.md`.
+- Cua's eight workspace components remain under the MIT [LICENSE.md](../LICENSE.md).
 - The embedded Inter 4.001 font remains under the accompanying SIL OFL 1.1 `Inter-OFL-1.1.txt`.
 - Full license texts and attribution for all 330 crates.io packages and Inter are in `THIRD_PARTY_LICENSES.html`.
-- The machine-readable inventory contains 330 registry packages, 8 Cua packages, and Inter in `SBOM.cdx.json`.
 
 ## MPL-2.0 source availability
 

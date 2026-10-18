@@ -1,47 +1,32 @@
-# Cua Driver redistribution records
+# Cua Driver
 
-These files accompany the exact Cua Driver `0.19.3` Linux x64 runtime bundled by OpenMausBot. The upstream release archive omits its own license, the embedded Inter font license, a dependency notice, an SBOM, and artifact provenance, so they are preserved here and verified during packaging.
+QuatiBot's Local VM installs **Cua Driver 0.20.0** inside a Linux container,
+not a desktop application bundle. `server/container-computer.ts` pins the
+base image by digest and the PyPI wheels by version and SHA-256:
 
-Trust anchor:
+| Wheel | SHA-256 |
+|---|---|
+| `cua_driver-0.20.0-py3-none-manylinux_2_31_x86_64.whl` | `f60c35696a37f37ac954935e478ae4754f220856d022036625c9400d72185961` |
+| `cua_driver-0.20.0-py3-none-manylinux_2_31_aarch64.whl` | `48833bc5e4c60e701fc9eefb57dbac36ec77ef3990f816fbbe85b4e954af2c77` |
 
-- upstream commit: `a1672e7b11951275ecfba3384264d4530185d0db`;
-- archive: `cua-driver-rs-0.19.3-linux-x86_64-binary.tar.gz`;
-- archive SHA-256: `3db9d4257d84bacaf7eb104d225f85613ce67edbb20d6eeb83c1384b6d8a5b10`;
-- driver SHA-256: `ed5844fadf07b9b72c4a3b3802e1c47233c166d66d6198608d5991f807aab4ac`;
-- cursor-theme SHA-256: `e589b2b7521bbfeaf9e2bfce668a38e80ed1b9790b1327b13d374fc331d8312a`;
-- upstream `Cargo.lock` SHA-256: `c1a8df7f4bedd554f6fc90c852c3625c91a89b28d9f2c642d966279e9e372362`;
-- embedded Inter `4.001` SHA-256: `29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031`.
+The wheel is installed without dependencies into the container's Python
+environment. Its bundled executable is copied to
+`/usr/local/libexec/quatibot/cua-driver` and serves MCP requests. The runtime
+does not separately install the old `cua-cursor-theme` release archive.
 
-`THIRD_PARTY_NOTICES.md`, `THIRD_PARTY_LICENSES.html`, and `SBOM.cdx.json` are generated from two root-scoped `cargo-about 0.8.4` JSON reports. Do not feed the virtual workspace's raw `cargo metadata` graph to the generator: Cargo unifies features enabled by unrelated workspace members, which overstates the two release binaries.
+- Package: <https://pypi.org/project/cua-driver/0.20.0/>
+- Source project: <https://github.com/trycua/cua/tree/main/libs/cua-driver>
+- Cua's MIT license: [LICENSE.md](LICENSE.md).
 
-The official [`cargo-about-0.8.4-x86_64-unknown-linux-musl.tar.gz`](https://github.com/EmbarkStudios/cargo-about/releases/download/0.8.4/cargo-about-0.8.4-x86_64-unknown-linux-musl.tar.gz) archive used for the reviewed output has SHA-256 `c7381aa0cdc41fc0ee662cec8daa260da7817ad8ddea04cd4ddad425460adf14`. From the exact upstream checkout's `libs/cua-driver/rust` directory, run:
+## Dependency-license coverage
 
-```bash
-cargo-about generate \
-  --locked \
-  --target x86_64-unknown-linux-gnu \
-  --manifest-path crates/cua-driver/Cargo.toml \
-  --features portal-input \
-  --config /path/to/OpenMausBot/third_party/cua-driver/about.toml \
-  --format json \
-  > cua-driver.cargo-about.json
+The x64 0.20.0 wheel's metadata declares MIT but the archive does not include
+license texts, dependency notices or an SBOM. A dependency-license inventory
+verified against the current wheels and their exact build sources is still
+needed; the package's MIT declaration does not cover every dependency.
 
-cargo-about generate \
-  --locked \
-  --target x86_64-unknown-linux-gnu \
-  --manifest-path crates/cursor-theme-cli/Cargo.toml \
-  --config /path/to/OpenMausBot/third_party/cua-driver/about.toml \
-  --format json \
-  > cursor-theme.cargo-about.json
-
-node /path/to/OpenMausBot/scripts/generate-cua-sbom.mjs \
-  cua-driver.cargo-about.json \
-  cursor-theme.cargo-about.json \
-  Cargo.lock \
-  /path/to/OpenMausBot/third_party/cua-driver
-```
-
-The generator fails unless the reports contain the reviewed root-scoped sets: 325 registry packages for the driver, 113 for the cursor-theme sidecar, and a 330-package union. The final CycloneDX inventory contains those 330 packages, eight Cua workspace packages, and the embedded Inter font. The MPL-2.0 set is exactly seven packages. Regeneration is expected to produce a reviewed diff; no release process accepts new native inputs automatically.
-
-OpenMausBot ships only the CLI and cursor-theme sidecar. The Linux SDK `.so`, Node `.node`, ABI header, and GNOME helper are not included in Phase 5 because the current runtime does not load them and must not silently install a Shell extension.
-The app's npm Cua SDK is used by the separate macOS integration and may have a different version; it is not loaded by this Linux CLI-spawn runtime.
+`legacy-0.19.3/` retains the upstream fork's dependency license texts,
+attributions and Inter font license as a conservative legal reference.
+Those records describe **0.19.3 Linux x64 only**, not the current 0.20.0
+wheels or the container base image. They must not be treated as a verified
+inventory for the current runtime.
