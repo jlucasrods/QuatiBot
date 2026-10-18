@@ -211,10 +211,7 @@ import { mainThread, wasOldestThread } from "./main-thread.ts";
 import { CLOUD_HOME_SECRET_KEYS, CLOUD_IGNORED_KEYS, cloudHomeConfiguration, cloudHomeOffersPlace, cloudHomePlaceRefusal, firstCloudTurnPatch } from "./cloud-home.ts";
 import { createCloudHealth } from "./cloud-health.ts";
 import { createCloudSignedRoutes } from "./routes/cloud-signed.ts";
-import { noteSyncBotTurn } from "./routes/cloud-sync.ts";
 import { CLOUD_PERSONAL_REFUSAL, settleCloudOwnership, type CloudOwnership } from "./cloud-owner.ts";
-import { createCloudMoveRoutes, workspaceShared } from "./cloud-move-http.ts";
-import { RESTART_EXIT_CODE } from "./restart.ts";
 import { holdIncludedServices } from "./included-services.ts";
 
 import type { ProviderInstance } from "./contracts.ts";
@@ -316,7 +313,7 @@ import { expandLearnTurnText, learnSource } from "./skill-learn.ts";
 import { expandSetupTurnText, setupModeActive, setupSystemPrompt } from "./setup-mode.ts";
 import type { SkillRequestCardData } from "../shared/skill-request.ts";
 import { checkSoulDrift, readSoulDrift, soulFile, writeSoulMirror } from "./bot-folder.ts";
-import { botPersona, buildSystemPrompt, userProfileSystemPrompt, cloudHomePrompt, syncedFolders, computerPrompt, CREDENTIAL_PROMPT, longCommandsPrompt, THREADS_PROMPT, WIDGET_PROMPT, LEARN_PROMPT, PROFILE_PROMPT, TEAM_MEMORY_PROMPT, ROUTINE_PROMPT, ROUTINE_EXECUTION_PROMPT, WEBHOOK_PROMPT, resolveComputerPromptKind, savedLoginsPrompt, teamAvailabilityPart } from "./system-prompt.ts";
+import { botPersona, buildSystemPrompt, userProfileSystemPrompt, computerPrompt, CREDENTIAL_PROMPT, longCommandsPrompt, THREADS_PROMPT, WIDGET_PROMPT, LEARN_PROMPT, PROFILE_PROMPT, TEAM_MEMORY_PROMPT, ROUTINE_PROMPT, ROUTINE_EXECUTION_PROMPT, WEBHOOK_PROMPT, resolveComputerPromptKind, savedLoginsPrompt, teamAvailabilityPart } from "./system-prompt.ts";
 import { shellTimeoutHookResult } from "./shell-timeout-hint.ts";
 import { spillToolResult } from "./tool-result-spill.ts";
 
@@ -2868,7 +2865,7 @@ function previewSystemPrompt(bot: BotRecord) {
       computer: previewPlan.computer && previewPlan.computer !== "off" && computerPromptKind ? previewPlan.computer : null,
       browser: previewPlan.computer === undefined ? false : previewPlan.browser,
     }, { note: previewPlan.note, cloudHome: Boolean(CLOUD_HOME) }) },
-    { id: "cloud-home", label: "My Cloud", text: CLOUD_HOME ? cloudHomePrompt(agentsMounted && lendingEnabled(), syncedFolders(DATA_DIR)) : "" },
+
     { id: "browser", label: "Browser", text: previewPlan.browser ? browserPromptFor(bot, agentsMounted) : "" },
     { id: "coordination", label: "Team", text: agentsMounted && coordination ? ` ${coordination}` : "" },
     { id: "credential", label: "Credentials", text: agentsMounted ? CREDENTIAL_PROMPT : "" },
@@ -4839,8 +4836,6 @@ const memoryUpkeep = createMemoryUpkeep({
 
 bus.subscribe((event: RuntimeEvent) => {
   if (!CLOUD_HOME || event.type !== "turn.completed" || shouldIgnoreProviderEvent(event)) return;
-  const turnBot = store.botByThread(event.threadId);
-  if (turnBot) noteSyncBotTurn(turnBot.id, event.threadId);
   const patch = firstCloudTurnPatch({
     cloudHome: true, recorded: cfg.onboarding?.firstTurnAt, ok: event.ok,
     known: Boolean(store.botByThread(event.threadId) ?? store.groupByThread(event.threadId)),
@@ -7583,7 +7578,7 @@ async function startTurn(
         { id: "shell", label: "Long-running commands", text: worksInWorkspace ? longCommandsPrompt(computerPromptKind) : "" },
         { id: "computer", label: "Computer", text: computerPrompt(computerPromptKind) },
         { id: "plan", label: "Surface", text: surfacePrompt({ computer: mountedComputer, browser: Boolean(integrations.browser) }, { pinned: plan.pinned, note: plan.note + (computerSkipped && plan.computer !== "off" ? computerSkippedNote(redactSecretsInText(computerSkipped)) : ""), canSelect: computerSelectionTurns.has(threadId), cloudHome: Boolean(CLOUD_HOME) }) },
-        { id: "cloud-home", label: "My Cloud", text: CLOUD_HOME ? cloudHomePrompt(Boolean(integrations.agents) && lendingEnabled(), syncedFolders(DATA_DIR)) : "" },
+
         { id: "browser", label: "Browser", text: integrations.browser ? browserPromptFor(bot, Boolean(integrations.agents)) : "" },
         { id: "data", label: "Data", text: integrations.data ? BUILT_IN_DATA_SYSTEM_PROMPT : "" },
         { id: "coordination", label: "Team", text: coordinationPrompt ? ` ${coordinationPrompt}` : "" },
@@ -9340,7 +9335,7 @@ async function runClaimedGroupMemberTurn(
     { id: "shell", label: "Long-running commands", text: workspace ? longCommandsPrompt(roomComputerPromptKind) : "" },
     { id: "computer", label: "Computer", text: computerPrompt(roomComputerPromptKind) },
     { id: "plan", label: "Surface", text: surfacePrompt({ computer: roomVmTarget ? "vm" : surfaceOfComputerKind(roomComputerKind), browser: Boolean(integrations.browser) }, { note: roomPlan.note, cloudHome: Boolean(CLOUD_HOME) }) },
-    { id: "cloud-home", label: "My Cloud", text: CLOUD_HOME ? cloudHomePrompt(Boolean(integrations.agents) && lendingEnabled(), syncedFolders(DATA_DIR)) : "" },
+
     { id: "browser", label: "Browser", text: integrations.browser ? browserPromptFor(bot, Boolean(integrations.agents)) : "" },
     { id: "data", label: "Data", text: integrations.data ? BUILT_IN_DATA_SYSTEM_PROMPT : "" },
     { id: "recall", label: "Recall", text: integrations.agents && bot.memoryEnabled !== false ? SESSION_SEARCH_SYSTEM_PROMPT : "" },
@@ -11497,17 +11492,6 @@ const workspaceBackupRoutes = createWorkspaceBackupRoutes({
   restored: workspaceRestore,
   ...workspaceBackupAccess,
 });
-let restartRequested = false;
-const cloudMoveRoutes = createCloudMoveRoutes({
-  dataDir: DATA_DIR,
-  appVersion: serverVersion(),
-  environmentId: ENVIRONMENT_ID,
-  sharedWorkspace: () => workspaceShared({ hosted: HOSTED_WORKSPACE, cloudHome: Boolean(CLOUD_HOME), signIn: signInAllowList() }),
-  readBody,
-  restored: workspaceRestore,
-  ...workspaceBackupAccess,
-  restart: () => { restartRequested = true; gracefulShutdown(); },
-});
 
 // `workspaceAccess` is assigned at boot, after this line: read it per request.
 ROUTES.push(createHostedSlackRoutes({ bot: (id) => store.bot(id), hostedReady: () => Boolean(workspaceAccess) && entitled("admin") }));
@@ -12016,7 +12000,6 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
     }
     beginAdminAudit(req, res, method, path, auth);
     if (await workspaceBackupRoutes(req, res, path, auth)) return;
-    if (await cloudMoveRoutes(req, res, path, auth)) return;
     // Count requests until their handler returns, not until the browser disconnects: a cancelled upload can still write.
     if (path.startsWith("/api/") && path !== "/api/events" && path !== "/api/health" && path !== "/api/sync/changes" && !path.startsWith("/api/shared-computers/") && !isWorkspaceBackupSessionControl(method, path)) {
       releaseWorkspaceRequest = workspaceMaintenance.request();
@@ -14736,7 +14719,7 @@ const gracefulShutdown = createGracefulShutdown({
       }
       closeMessageDb();
       releaseDataDirLeaseAtExit();
-      process.exit(restartRequested && exitCode === 0 ? RESTART_EXIT_CODE : exitCode);
+      process.exit(exitCode);
     };
     // Streamed text and lines queued after the cleanup flush reach disk before exit; the deadline already elapsed, so the wait is short.
     void bus.flushWithin(1_000).then((done) => {

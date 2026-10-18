@@ -150,14 +150,6 @@ export function engineSummary<Instance extends SummaryInstance>(
   return { ready: personal, setup, company, allReady: company > 0 || (personal.length > 0 && setup.length === 0) };
 }
 
-export function cloudSignInDue<Instance>(
-  viewer: WelcomeViewer | null,
-  state: { connected: boolean; instances: readonly Instance[] },
-  ready: (instance: Instance) => boolean,
-): boolean {
-  return Boolean(viewer?.cloudHome && viewer.canSave) && state.connected && state.instances.length > 0 && !state.instances.some(ready);
-}
-
 
 export function reducedMotion(): boolean {
   if (typeof document !== "undefined" && document.documentElement.dataset.reducedMotion === "true") return true;

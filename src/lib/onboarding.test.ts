@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   beatWidth,
   beatsFor,
-  cloudSignInDue,
   flowDotsShown,
   companyModelCount,
   completionPatch,
@@ -89,35 +88,6 @@ describe("welcomeViewer", () => {
     expect(spotlightsQuiet({ hosted: true, canSave: false })).toBe(true);
     expect(spotlightsQuiet({ hosted: false, canSave: false })).toBe(false);
     expect(spotlightsQuiet(LOCAL_VIEWER)).toBe(false);
-  });
-});
-
-describe("first run on an QUATI Cloud home", () => {
-  const connected = welcomeViewer({ kind: "session", scopes: ["admin", "client"], via: "cookie", cloudHome: true });
-  const engine = (id: string, authenticated: boolean | undefined, state = "available") => ({ id, state, authenticated });
-  const ready = (instance: ReturnType<typeof engine>) => instance.state === "available" && instance.authenticated !== false;
-  const signedOut = [engine("claude", false), engine("codex", false), engine("opencodeGo", undefined, "unavailable")];
-
-  it("routes the connected app to the engine sign-in, not the welcome flow", () => {
-    expect(cloudSignInDue(connected, { connected: true, instances: signedOut }, ready)).toBe(true);
-    expect(welcomeDue({ onboarding: EMPTY_ONBOARDING }, { remoteClient: false, legacyDone: false, ...connected })).toBe(false);
-  });
-
-  it("hands over to the chat once any engine can run", () => {
-    for (const signedIn of [engine("claude", true), engine("codex", true), engine("anthropic-key", undefined)]) {
-      expect(cloudSignInDue(connected, { connected: true, instances: [...signedOut, signedIn] }, ready)).toBe(false);
-    }
-  });
-
-  it("waits for the server, and changes nothing anywhere else", () => {
-    expect(cloudSignInDue(connected, { connected: false, instances: signedOut }, ready)).toBe(false);
-    expect(cloudSignInDue(connected, { connected: true, instances: [] }, ready)).toBe(false);
-    expect(cloudSignInDue(null, { connected: true, instances: signedOut }, ready)).toBe(false);
-    expect(cloudSignInDue({ ...connected, canSave: false }, { connected: true, instances: signedOut }, ready)).toBe(false);
-    for (const viewer of [LOCAL_VIEWER, { hosted: true, canSave: true }, welcomeViewer({ kind: "session", scopes: ["admin", "client"] })]) {
-      expect(cloudSignInDue(viewer, { connected: true, instances: signedOut }, ready)).toBe(false);
-      expect(welcomeDue({ onboarding: EMPTY_ONBOARDING }, { remoteClient: false, legacyDone: false, ...viewer })).toBe(true);
-    }
   });
 });
 

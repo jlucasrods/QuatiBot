@@ -4,7 +4,7 @@ import { Loader2, Menu } from "lucide-react";
 import { openBot, StoreProvider, useStore } from "@/state/store";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
-import { cloudSignInDue, spotlightsQuiet, type WelcomeViewer } from "@/lib/onboarding";
+import { spotlightsQuiet } from "@/lib/onboarding";
 import { FirstConversationTour } from "@/components/onboarding/FirstConversationTour";
 import { GuidedTour } from "@/components/onboarding/GuidedTour";
 import { LiveCallHost } from "@/components/LiveCallHost";
@@ -18,13 +18,8 @@ import { ActivityPanel, BotSettingsDialog, ComputerPanel, InspectorPanel, Keyboa
 import { WorkspaceBackupRecovery } from "@/components/WorkspaceBackupSettings";
 import { NotificationRail, NotificationsPanel } from "@/components/NotificationsPanel";
 import { useNotificationFeed } from "@/lib/notification-preferences";
-import { CloudHowTo } from "@/components/CloudHowTo";
 import { DesktopCapabilitiesProvider } from "@/components/DesktopCapabilities";
 import { NoEngines } from "@/components/NoEngines";
-import { CloudEngineSignIn } from "@/components/CloudEngineSignIn";
-import { CloudIntent } from "@/components/CloudIntent";
-import { cloudIntentDue, cloudIntentShown, useCloudIntent } from "@/lib/cloud-intent";
-import { engineReady } from "@/components/EngineLibrary";
 import { CommandPalette } from "@/components/CommandPalette";
 import { setLocale } from "@/lib/i18n";
 import { shouldOpenKeyboardShortcuts } from "@/lib/keyboard-shortcuts";
@@ -32,18 +27,13 @@ import { effectiveLanguage, useLanguageChoice } from "@/lib/language-preference"
 import { botShowsUnread } from "@/lib/bot-unread";
 import { useExternalChatLinks } from "@/hooks/use-external-chat-links";
 import { ChatNotice } from "@/components/ChatErrorBanner";
-function Shell({ viewer }: {
-    viewer: WelcomeViewer | null;
-}) {
+function Shell() {
     const { state, dispatch } = useStore();
     const showThreads = useShowThreads();
     const unreadCount = state.bots.filter((bot) => !bot.hidden && botShowsUnread(bot)).length +
         state.groups.filter((group) => group.unread).length;
     const twoSidePanelsFit = useMediaQuery(TWO_SIDE_PANELS_FIT, true);
     const sidebarAndPanelFit = useMediaQuery(SIDEBAR_AND_PANEL_FIT, true);
-    useEffect(() => {
-        return;
-    }, [dispatch]);
     useExternalChatLinks(state, dispatch);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const language = effectiveLanguage(useLanguageChoice(), state.config?.language);
@@ -71,13 +61,6 @@ function Shell({ viewer }: {
     const noEngines = state.connected &&
         state.instances.length > 0 &&
         !state.instances.some((i) => i.snapshot.state === "available");
-    const cloudSignIn = cloudSignInDue(viewer, state, engineReady);
-    const cloudIntent = useCloudIntent();
-    const cloudAsk = cloudIntentShown(cloudIntentDue({
-        viewer, connected: state.connected, enginesKnown: state.instances.length > 0,
-        onboarding: state.config?.onboarding, reopened: false,
-    }), cloudIntent);
-    const cloudJobWaiting = Boolean(viewer?.cloudHome && viewer.canSave && cloudIntent.pending);
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.defaultPrevented || e.isComposing || state.shortcutsOpen)
@@ -177,7 +160,7 @@ function Shell({ viewer }: {
                 setDrawerOpen(false);
                 menuButtonRef.current?.focus();
             }}/>}
-      {state.activeView === "team-map" ? (<TeamMapPage />) : state.activeView === "routines" ? (<RoutinesPage onBack={closeCalendar} onOpenRoom={openCalendarRoom}/>) : localVmWorkspaceBotId ? (<LocalVmWorkspace primaryBotId={localVmWorkspaceBotId} overlayOpen={nativeViewOverlayOpen} onClose={() => setLocalVmWorkspaceBotId(null)} onOpenComputer={openComputerFromWorkspace}/>) : cloudAsk ? (<CloudIntent />) : cloudSignIn || cloudJobWaiting ? (<CloudEngineSignIn />) : noEngines ? (<NoEngines />) : group ? (<GroupView key={group.id} group={group}/>) : bot ? (<ChatView bot={bot}/>) : (<main className="relative flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-3 bg-app text-ink-secondary">
+      {state.activeView === "team-map" ? (<TeamMapPage />) : state.activeView === "routines" ? (<RoutinesPage onBack={closeCalendar} onOpenRoom={openCalendarRoom}/>) : localVmWorkspaceBotId ? (<LocalVmWorkspace primaryBotId={localVmWorkspaceBotId} overlayOpen={nativeViewOverlayOpen} onClose={() => setLocalVmWorkspaceBotId(null)} onOpenComputer={openComputerFromWorkspace}/>) : noEngines ? (<NoEngines />) : group ? (<GroupView key={group.id} group={group}/>) : bot ? (<ChatView bot={bot}/>) : (<main className="relative flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-3 bg-app text-ink-secondary">
           {null}
           <div className="w-full max-w-md"><ChatNotice notice={state.notice}/></div>
           <Loader2 size={20} className="animate-spin"/>
@@ -197,7 +180,6 @@ function Shell({ viewer }: {
       {notificationFeed && !calendarFocus && <NotificationRail />}
       {state.appSettingsOpen && <SettingsModal />}
       {null}
-      <CloudHowTo />
       {null}
       {state.pluginsOpen && <PluginsPanel />}
       {state.triggersOpen && <TriggersPanel />}
@@ -215,7 +197,7 @@ function Application() {
     return (<DesktopCapabilitiesProvider>
       <StoreProvider>
         <ThreadRefsProvider>
-          <Shell viewer={viewer}/>
+          <Shell />
         </ThreadRefsProvider>
         <WelcomeGate viewer={viewer}/>
         <GuidedTour />

@@ -56,7 +56,6 @@ export interface CloudAccountBridge {
   onState(callback: (state: CloudAccountState) => void): () => void;
   /** "Let My Cloud use this computer". */
   lending?: import("./computer-sharing.mjs").CloudLendingBridge;
-  files?: import("./cloud-sync.mjs").CloudFilesBridge;
 }
 /** On the person's own Cloud, open in this app's window: the plan, read
  * only, and two ways out. No account, credential or address. */
