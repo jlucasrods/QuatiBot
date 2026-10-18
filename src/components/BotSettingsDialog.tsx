@@ -8,8 +8,6 @@ import { BOT_SECTIONS } from "./bot-settings/sections";
 import { useBotSettingsDerived } from "./bot-settings/useBotSettingsDerived";
 import { OverviewSection } from "./bot-settings/OverviewSection";
 import { IdentitySection } from "./bot-settings/IdentitySection";
-import { SlackSection } from "./bot-settings/SlackSection";
-import { useSlackManagementUrl } from "./bot-settings/useSlackManagement";
 import { SoulSection } from "./bot-settings/SoulSection";
 import { SkillsSection } from "./bot-settings/SkillsSection";
 import { MemorySection } from "./bot-settings/MemorySection";
@@ -52,10 +50,8 @@ export function BotSettingsDialog({ bot, overlay = false }: {
             setShowAll(true);
     }, [wantsFullView, section]);
     const simpleView = !advanced && !showAll;
-    const slackUrl = useSlackManagementUrl(bot.id);
     const ownerOrAdmin = useOwnerOrAdmin();
     const sections = BOT_SECTIONS
-        .filter((entry) => entry.id !== "slack" || slackUrl !== null)
         .filter((entry) => entry.id !== "visibility" || (ownerOrAdmin === true));
     const visibleSections = sections.filter((entry) => sectionMatches(entry, q));
     const [overview, setOverview] = useState<BotOverview | null>(null);
@@ -236,8 +232,6 @@ export function BotSettingsDialog({ bot, overlay = false }: {
                 return (<IdentitySection bot={bot} patch={derived.patch} activeState={derived.activeState} mascotMotion={derived.mascotMotion}/>);
             case "soul":
                 return <SoulSection bot={bot} patch={derived.patch}/>;
-            case "slack":
-                return slackUrl ? <SlackSection managementUrl={slackUrl}/> : null;
             case "skills":
                 return <SkillsSection bot={bot}/>;
             case "memory":
@@ -269,7 +263,7 @@ export function BotSettingsDialog({ bot, overlay = false }: {
       <aside ref={dialogRef} role="dialog" aria-labelledby="bot-settings-title" tabIndex={-1} className={cn("animate-panel-in absolute inset-0 z-40 flex h-full min-w-0 flex-col border-l border-hairline/40 bg-panel outline-none focus-visible:outline-none", overlay
             ? "md:inset-auto md:right-0 md:top-0 md:bottom-0 md:w-[min(420px,42vw)] md:shadow-2xl"
             : "md:static md:z-auto md:w-[min(420px,42vw)] md:shrink-0")}>
-        {simpleView ? (<SimpleBotPanel bot={bot} derived={derived} slackUrl={slackUrl} onClose={() => dispatch({ type: "toggleSettings", open: false })} onAllSettings={() => setShowAll(true)} onAddSkill={() => {
+        {simpleView ? (<SimpleBotPanel bot={bot} derived={derived} onClose={() => dispatch({ type: "toggleSettings", open: false })} onAllSettings={() => setShowAll(true)} onAddSkill={() => {
                 setShowAll(true);
                 dispatch({ type: "toggleSettings", open: true, section: "skills" });
             }}/>) : <>

@@ -479,7 +479,7 @@ export function visibleMessages(bot: Pick<Bot, "messages" | "activeLeafId">): Me
 import type { BrowserEngineSummary, BrowserProfile, ConfigStatus, ManagedPolicySummary } from "./config-status";
 export type { BrowserEngineSummary, BrowserProfile, ConfigStatus, ManagedPolicySummary };
 // A section left out here is wiped from state.config whenever a config frame lands.
-export type ConfigStatusFrame = Pick<ConfigStatus, "xai" | "mistral" | "cerebras" | "groq" | "meta" | "anthropic" | "openai" | "openrouter" | "openaiCompat" | "composio" | "box" | "vps" | "rooms" | "mcp" | "threads" | "automaticRecovery" | "localVm" | "opencodeGo" | "tts" | "decider" | "imageGen" | "live" | "profile" | "language" | "features" | "onboarding" | "browserEngine" | "browserProfiles" | "edition" | "managedPolicy" | "cloudHome">;
+export type ConfigStatusFrame = Pick<ConfigStatus, "xai" | "mistral" | "cerebras" | "groq" | "meta" | "anthropic" | "openai" | "openrouter" | "openaiCompat" | "composio" | "box" | "vps" | "rooms" | "mcp" | "threads" | "automaticRecovery" | "localVm" | "opencodeGo" | "tts" | "decider" | "imageGen" | "live" | "profile" | "language" | "features" | "onboarding" | "browserEngine" | "browserProfiles" | "managedPolicy" | "cloudHome">;
 export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
     return {
         xai: frame.xai,
@@ -510,7 +510,6 @@ export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
         onboarding: frame.onboarding,
         browserEngine: frame.browserEngine,
         browserProfiles: frame.browserProfiles,
-        edition: frame.edition,
         managedPolicy: frame.managedPolicy,
         ...(frame.cloudHome ? { cloudHome: true } : {}),
     };

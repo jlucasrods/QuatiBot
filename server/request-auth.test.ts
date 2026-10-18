@@ -463,28 +463,27 @@ describe("loopback trust: owner on one person's machine, service on a shared wor
   it("ignores service trust while the desktop capability is in force", () => {
   });
 
-  it("defaults to service on a hosted workspace, owner elsewhere, and lets the operator choose", () => {
+  it("uses owner trust by default and honors explicit service trust", () => {
     const pick = (env: NodeJS.ProcessEnv, flags: { desktopManaged?: boolean; hostedWorkspace?: boolean } = {}) =>
-      resolveLoopbackTrust({ env, desktopManaged: false, hostedWorkspace: false, ...flags });
+      resolveLoopbackTrust({ env, desktopManaged: false, ...flags });
     expect(pick({})).toEqual({ trust: "owner", reason: "self-hosted default", localBrowsers: false });
-    expect(pick({}, { hostedWorkspace: true })).toEqual({ trust: "service", reason: "hosted workspace", localBrowsers: false });
     expect(pick({ QUATI_LOOPBACK_TRUST: "service" })).toEqual({ trust: "service", reason: "QUATI_LOOPBACK_TRUST", localBrowsers: false });
     expect(pick({ QUATI_LOOPBACK_TRUST: " Service " }).trust).toBe("service");
-    const forced = pick({ QUATI_LOOPBACK_TRUST: "owner" }, { hostedWorkspace: true });
+    const forced = pick({ QUATI_LOOPBACK_TRUST: "owner" });
     expect(forced.trust).toBe("owner");
-    expect(forced.warning).toMatch(/shared workspace/);
+    expect(forced.warning).toBeUndefined();
     const typo = pick({ QUATI_LOOPBACK_TRUST: "own3r\n" });
     expect(typo.trust).toBe("service");
     expect(typo.warning).toMatch(/not owner or service/);
     expect(typo.warning).not.toContain("\n");
     expect(pick({ QUATI_LOOPBACK_TRUST: "" }).trust).toBe("owner");
-    const desktop = pick({ QUATI_LOOPBACK_TRUST: "service" }, { desktopManaged: true, hostedWorkspace: true });
+    const desktop = pick({ QUATI_LOOPBACK_TRUST: "service" }, { desktopManaged: true });
     expect(desktop.trust).toBe("owner");
     expect(desktop.warning).toMatch(/ignored in the desktop app/);
   });
 
   it("is always service on an QUATI Cloud home, where a local request is only ever a process on the machine", () => {
-    const pick = (env: NodeJS.ProcessEnv) => resolveLoopbackTrust({ env, desktopManaged: false, hostedWorkspace: false, cloudHome: true });
+    const pick = (env: NodeJS.ProcessEnv) => resolveLoopbackTrust({ env, desktopManaged: false, cloudHome: true });
     expect(pick({})).toEqual({ trust: "service", reason: "QUATI Cloud home", localBrowsers: false });
     expect(pick({ QUATI_LOOPBACK_TRUST: "service" })).toEqual({ trust: "service", reason: "QUATI Cloud home", localBrowsers: false });
     const forced = pick({ QUATI_LOOPBACK_TRUST: "owner" });
@@ -573,14 +572,13 @@ describe("a browser on this machine is not the owner", () => {
   it("trusts local browsers only on a development server that asked for it", () => {
     expect(check(page, "/api/bots", "GET", { localBrowsers: true }).auth).toEqual({ kind: "loopback", scopes: ["admin", "client"] });
     const pick = (env: NodeJS.ProcessEnv, flags: { fromSource?: boolean; desktopManaged?: boolean; hostedWorkspace?: boolean } = {}) =>
-      resolveLoopbackTrust({ env, desktopManaged: false, hostedWorkspace: false, ...flags });
+      resolveLoopbackTrust({ env, desktopManaged: false, ...flags });
     const dev = { QUATI_DEV_TRUST_LOCAL_BROWSER: "1" };
     expect(pick(dev, { fromSource: true })).toMatchObject({ trust: "owner", localBrowsers: true, warning: expect.stringMatching(/development only/) });
     expect(pick(dev, { fromSource: false })).toMatchObject({ localBrowsers: false, warning: expect.stringMatching(/ignored/) });
     expect(pick(dev, { fromSource: true, desktopManaged: true })).toMatchObject({ localBrowsers: false, warning: expect.stringMatching(/ignored/) });
-    expect(pick(dev, { fromSource: true, hostedWorkspace: true })).toMatchObject({ trust: "service", localBrowsers: false });
     expect(pick({ ...dev, QUATI_LOOPBACK_TRUST: "service" }, { fromSource: true }).localBrowsers).toBe(false);
     expect(pick({ QUATI_DEV_TRUST_LOCAL_BROWSER: "true" }, { fromSource: true })).toEqual({ trust: "owner", reason: "self-hosted default", localBrowsers: false });
-    expect(resolveLoopbackTrust({ env: dev, desktopManaged: false, hostedWorkspace: false, cloudHome: true, fromSource: true }).localBrowsers).toBe(false);
+    expect(resolveLoopbackTrust({ env: dev, desktopManaged: false, cloudHome: true, fromSource: true }).localBrowsers).toBe(false);
   });
 });

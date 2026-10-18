@@ -50,7 +50,6 @@ vi.mock("react", async (original) => ({
 }));
 vi.mock("@/lib/interface-mode", () => ({ useAdvancedMode: () => fixture.advanced, setAdvancedMode: () => { } }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => fixture.ownerOrAdmin }));
-vi.mock("./bot-settings/useSlackManagement", () => ({ useSlackManagementUrl: () => null }));
 vi.mock("./bot-settings/useBotSettingsDerived", () => ({ useBotSettingsDerived: () => fixture.derived }));
 vi.mock("./DesktopCapabilities", async (importOriginal) => ({
     ...(await importOriginal<typeof import("./DesktopCapabilities")>()),
@@ -518,13 +517,6 @@ describe("the bot settings panel in Simple mode", () => {
         const hidden = panel(bot);
         expect(hidden.nodes.find((node) => node.type === MemorySection)!.props.active).toBe(false);
         expect(hidden.nodes.find((node) => node.props.role === "tabpanel" && node.props.hidden === true)).toBeDefined();
-    });
-    it("offers Slack only where the organization has it", () => {
-        const bot = makeBot();
-        const rendered = panel(bot);
-        expect(rendered.nodes.some((node) => node.props["data-simple-find"] === "slack")).toBe(false);
-        const withSlack = capture(() => SimpleBotPanel({ bot, derived: fixture.derived as never, slackUrl: "https://admin.example/slack", ...panelProps }));
-        expect(find(withSlack, "data-simple-find", "slack").props.href).toBe("https://admin.example/slack");
     });
 });
 describe("the Vault tab", () => {

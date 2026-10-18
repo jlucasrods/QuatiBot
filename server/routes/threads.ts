@@ -9,7 +9,6 @@ import type { ComputerControl } from "../computer-control.ts";
 import type { AppConfig } from "../config.ts";
 import type { Coordinator } from "../coordinator.ts";
 import type { ModelSelection } from "../contracts.ts";
-import type { WorkspaceAccess } from "../enterprise.ts";
 import type { GroupUsageReader } from "../group-thread-usage.ts";
 import { searchMessagesAsync } from "../message-db.ts";
 import {
@@ -33,11 +32,9 @@ export interface ThreadRouteDeps {
   cfg: Pick<AppConfig, "profile">;
   sessions: ResolveOptions["sessions"];
   groupUsageReader: Pick<GroupUsageReader, "refresh">;
-  hostedWorkspace: boolean;
   sessionCookie: string;
   loopback: { trust: ResolveOptions["loopbackTrust"]; localBrowsers: boolean };
   lendingEnabled(): boolean;
-  workspaceAccess(): WorkspaceAccess | null;
   cliOwnerToken(): string | undefined;
   defaultPage: number;
   pageSize(raw: string | null): number | null | undefined;
@@ -56,7 +53,7 @@ export interface ThreadRouteDeps {
 export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
   const {
     store, cfg, sessions, groupUsageReader, lendingEnabled,
-    hostedWorkspace: HOSTED_WORKSPACE, sessionCookie: SESSION_COOKIE, loopback: LOOPBACK, defaultPage: DEFAULT_PAGE,
+    sessionCookie: SESSION_COOKIE, loopback: LOOPBACK, defaultPage: DEFAULT_PAGE,
     pageSize, messagePage, messageWindow, publicBotQueuedMessages, publicGroupState, wireBot, wireTask,
     botComputerControlSnapshot, messageFileRootsForThread, viewerFor, visibleTo,
   } = deps;
@@ -64,7 +61,6 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
   const handle = async ({ req, res, url, path, method, auth, json, readBody }: RouteContext): Promise<unknown> => {
     let m: RegExpMatchArray | null = null;
     const visible = visibleTo(viewerFor(auth));
-    const workspaceAccess = deps.workspaceAccess();
     const cliOwnerToken = deps.cliOwnerToken();
     if (method === "GET" && path === "/api/bots") {
       try { groupUsageReader.refresh(); } catch { }
@@ -394,12 +390,6 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
         return ids.has(messageId);
       };
       const found = await searchMessagesAsync(q, visible.everything ? limit : Math.min(limit * 10, 1_000), threadId);
-      // A scan may outlive a revocation or audience edit: authorize again after the await.
-      if (HOSTED_WORKSPACE && auth.kind === "session") {
-        const failure = workspaceAccess ? await workspaceAccess.authorize(req, auth)
-          : { status: 503, error: "Workspace sign-in is unavailable." };
-        if (failure) return json(res, failure.status, { error: failure.error });
-      }
       const current = resolveRequestAuth(req, {
         sessions, cookieName: SESSION_COOKIE, streamPath: "/api/events", url,
         features: { sharedComputers: lendingEnabled() }, loopbackTrust: LOOPBACK.trust, cliOwnerToken, trustLocalBrowser: LOOPBACK.localBrowsers,

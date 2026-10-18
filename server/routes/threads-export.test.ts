@@ -27,7 +27,6 @@ async function serve(store: Store): Promise<string> {
     cfg: { profile: { name: "Alex" } },
     viewerFor: () => ({}),
     visibleTo: () => ({ bot: () => true, group: () => true }),
-    workspaceAccess: () => null,
     cliOwnerToken: () => undefined,
   } as unknown as ThreadRouteDeps;
   const routes = [createThreadRoutes(deps)];

@@ -53,12 +53,10 @@ export function serviceAllowed(method: string, path: string): boolean {
   return SERVICE_ALLOW.some((rule) => rule.methods.includes(upper) && rule.path.test(path));
 }
 
-/** Packaged desktop: `owner`. Else QUATI_LOOPBACK_TRUST=owner|service; unset, a hosted workspace (any QUATI_ADMIN_*)
- * gets `service` and a headless server `owner`. Any other value fails closed. `localBrowsers`: see localBrowserTrust. */
+/** QUATI_LOOPBACK_TRUST selects owner or service authority. Invalid values fail closed. */
 export function resolveLoopbackTrust(input: {
   env?: NodeJS.ProcessEnv;
   desktopManaged: boolean;
-  hostedWorkspace: boolean;
   /** A Cloud home's network traffic arrives through its edge proxy, so bare loopback is a bot's shell: always `service`. */
   cloudHome?: boolean;
   /** This server runs from TypeScript source rather than a build. */
@@ -83,15 +81,11 @@ function loopbackTrust(input: Parameters<typeof resolveLoopbackTrust>[0]): { tru
     return {
       trust: requested,
       reason: "QUATI_LOOPBACK_TRUST",
-      ...(requested === "owner" && input.hostedWorkspace
-        ? { warning: "QUATI_LOOPBACK_TRUST=owner on a shared workspace: every bot's shell can change settings and approve cards as the owner" }
-        : {}),
     };
   }
   if (raw !== undefined && requested !== "") {
     return { trust: "service", reason: "QUATI_LOOPBACK_TRUST", warning: `QUATI_LOOPBACK_TRUST="${raw.replace(/[^\w.-]/g, "").slice(0, 40)}" is not owner or service; using service` };
   }
-  if (input.hostedWorkspace) return { trust: "service", reason: "hosted workspace" };
   return { trust: "owner", reason: "self-hosted default" };
 }
 

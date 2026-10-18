@@ -22,7 +22,6 @@ import { EFFORT_LEVELS, isEffortLevel } from "../../shared/wire";
 import { shortcutLabel } from "./ShortcutHint";
 import { UsageSection } from "./UsageSection";
 import { SkillsSection } from "./SkillsSection";
-import { LicenseExpiryBanner } from "./LicenseExpiryBanner";
 import { SkinPicker } from "./SkinPicker";
 import { ChatWidthRow, FontRow, SidebarToolsLayoutRow } from "./AppearanceSelectRows";
 import { setColorUserBubbles, useColorUserBubbles } from "@/lib/user-bubble-preference";
@@ -671,7 +670,6 @@ export function SettingsModal() {
           </div>
 
           <div ref={scrollRef} className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-4 sm:px-5 sm:pb-5">
-            <LicenseExpiryBanner config={state.config}/>
             {advanced ? (renderSection(section)) : currentPage ? (currentPage.sections.map((id) => {
             const stacked = currentPage.sections.length > 1;
             const labelKey = SECTIONS.find((entry) => entry.id === id)?.labelKey;

@@ -9,7 +9,6 @@ import type { IncomingMessage } from "node:http";
 import { join } from "node:path";
 import type { Surface } from "../shared/wire.ts";
 import { writeFileAtomic } from "./atomic.ts";
-import { hostedWorkspaceConfigured } from "./enterprise.ts";
 import { formatPairingCode, type SessionRegistry } from "./sessions.ts";
 
 /** Any of these switches the server into Cloud home mode; then all are required. */
@@ -63,7 +62,7 @@ function exactHttpsOrigin(raw: string | undefined, name: string): string {
 export function cloudHomeConfiguration(env: NodeJS.ProcessEnv = process.env): CloudHomeConfig | null {
   if (!cloudHomeConfigured(env)) return null;
   if (env.QUATI_DESKTOP_PARENT === "1") invalid("the desktop app cannot run as a Cloud home machine");
-  if (hostedWorkspaceConfigured(env)) invalid("a Cloud home is not a hosted team workspace; remove QUATI_ADMIN_URL, QUATI_ADMIN_WORKSPACE and QUATI_ADMIN_MEMBERSHIP");
+  if ([env.QUATI_ADMIN_URL, env.QUATI_ADMIN_WORKSPACE, env.QUATI_ADMIN_MEMBERSHIP].some(value => value !== undefined)) invalid("a Cloud home is not a hosted team workspace; remove QUATI_ADMIN_URL, QUATI_ADMIN_WORKSPACE and QUATI_ADMIN_MEMBERSHIP");
   if (env.QUATI_CLOUD_ROLE !== "home") invalid('QUATI_CLOUD_ROLE must be "home"; this image runs the home machine');
   const machineId = env.QUATI_CLOUD_MACHINE_ID ?? "";
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{2,127}$/.test(machineId)) invalid("QUATI_CLOUD_MACHINE_ID must be the Admin's machine id (letters, digits, dashes)");

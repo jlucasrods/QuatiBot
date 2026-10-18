@@ -19,7 +19,6 @@ import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 
-import { hostedWorkspaceConfigured } from "./enterprise.ts";
 import { resolveLoopbackTrust } from "./request-auth.ts";
 import { restartPolicy } from "./restart.ts";
 
@@ -456,7 +455,7 @@ export async function runServe(options: CliOptions, log: (line: string) => void 
     if (options.local)
         delete env.QUATI_PUBLIC_URL;
     // The per-launch secret goes over stdin, not the environment that every engine the server starts inherits.
-    const serviceTrust = resolveLoopbackTrust({ env, desktopManaged: false, hostedWorkspace: hostedWorkspaceConfigured(env) }).trust === "service";
+    const serviceTrust = resolveLoopbackTrust({ env, desktopManaged: false }).trust === "service";
     const ownerToken = serviceTrust ? randomBytes(32).toString("base64url") : undefined;
     if (ownerToken)
         env.QUATI_CLI_OWNER_STDIN = "1";

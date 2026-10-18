@@ -5,7 +5,6 @@ import type { Bot } from "@/state/store";
 // The full fold-out panel this checks is Advanced mode's.
 vi.mock("@/lib/interface-mode", () => ({ useAdvancedMode: () => true, setAdvancedMode: () => { } }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => false }));
-vi.mock("./bot-settings/useSlackManagement", () => ({ useSlackManagementUrl: () => null }));
 vi.mock("./bot-settings/useBotSettingsDerived", () => ({ useBotSettingsDerived: () => ({}) }));
 vi.mock("@/state/store", async (importOriginal) => {
     const store = await importOriginal<typeof import("@/state/store")>();

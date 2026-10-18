@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ChevronRight, FileText, Image as ImageIcon, Slack, X } from "lucide-react";
+import { ChevronRight, FileText, Image as ImageIcon, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { writeComputerPanelView } from "@/lib/computer-panel-view";
 import { t } from "@/lib/i18n";
@@ -98,11 +98,10 @@ export function botLibraryItems(bot: Bot): LibraryItem[] {
     }
     return groups.flat();
 }
-export function SimpleBotPanel({ bot, derived, headerClassName, slackUrl = null, onClose, onAllSettings, onAddSkill, }: {
+export function SimpleBotPanel({ bot, derived, headerClassName, onClose, onAllSettings, onAddSkill, }: {
     bot: Bot;
     derived: ReturnType<typeof useBotSettingsDerived>;
     headerClassName?: string;
-    slackUrl?: string | null;
     onClose: () => void;
     onAllSettings: () => void;
     onAddSkill: () => void;
@@ -328,17 +327,6 @@ export function SimpleBotPanel({ bot, derived, headerClassName, slackUrl = null,
                     </div>))}
                 </div>)}
             </section>
-
-            {slackUrl && <section data-simple-where>
-              <h3 className={cn(sectionTitleCls, "mb-2")}>{t("botSettings.simple.whereToFind", { name: bot.name })}</h3>
-              <div className="grid gap-2">
-                {slackUrl && (<a href={slackUrl} target="_blank" rel="noopener noreferrer" data-simple-find="slack" className="flex min-w-0 flex-col items-start gap-0.5 rounded-xl border border-hairline/40 bg-inset px-3 py-2.5 text-left hover:bg-raised">
-                    <Slack size={16} className="mb-1 shrink-0 text-ink-secondary" aria-hidden="true"/>
-                    <span className="max-w-full truncate text-[13px] font-medium text-ink">Slack</span>
-                    <span className="max-w-full truncate text-[11.5px] text-ink-secondary">{t("botSettings.simple.slackHint")}</span>
-                  </a>)}
-              </div>
-            </section>}
 
             <button type="button" data-simple-all-settings onClick={onAllSettings} className="flex items-center gap-2 rounded-xl border border-dashed border-hairline px-4 py-3 text-left text-[13px] text-ink-secondary hover:bg-raised hover:text-ink">
               <span className="min-w-0 flex-1">

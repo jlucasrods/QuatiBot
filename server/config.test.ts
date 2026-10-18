@@ -54,6 +54,17 @@ const reloaded = (patch: object, cfg: AppConfig = {}) =>
   changedInstanceIds(engineLaunches(instanceConfigs(cfg), {}), engineLaunches(instanceConfigs({ ...cfg, ...patch } as AppConfig), {}));
 
 describe("configuration boundaries", () => {
+  it.each(["QUATI_ADMIN_URL", "QUATI_ADMIN_WORKSPACE", "QUATI_ADMIN_MEMBERSHIP"])("rejects external portal authority before loading local configuration: %s", (key) => {
+    const previous = process.env[key];
+    process.env[key] = "";
+    try {
+      expect(() => loadConfig()).toThrow("Managed portal authentication is not supported");
+    } finally {
+      if (previous === undefined) delete process.env[key];
+      else process.env[key] = previous;
+    }
+  });
+
   it("requires an explicit backup to opt into automatic recovery without reloading engines", () => {
     expect(parseStoredConfig({}).automaticRecovery).toBeUndefined();
     expect(parseConfigPatch({ automaticRecovery: { enabled: false } })).toEqual({ automaticRecovery: { enabled: false } });

@@ -30,12 +30,7 @@ import { BOT_PROFILE_LIMITS } from "../shared/bot-profile.ts";
 import { failedTurnTool } from "../shared/failed-turn.ts";
 import { STOPPED_TURN_NAME, assistantTranscript, errorTranscript } from "../shared/client-cancel.ts";
 import { canWorkOnCloud, type CloudEngine } from "../shared/cloud-computer.ts";
-import {
-  approvalModeFor,
-  modelSwitchNeedsAsk,
-  setDefaultApprovalMode,
-  type ApprovalMode,
-} from "../shared/approval-mode.ts";
+import { approvalModeFor, modelSwitchNeedsAsk, type ApprovalMode } from "../shared/approval-mode.ts";
 import { createApprovalModeSupport } from "./harness-capabilities.ts";
 import { escapeAttribute } from "../src/lib/composer-attachments.ts";
 import {
@@ -143,7 +138,7 @@ import { GroupUsageReader } from "./group-thread-usage.ts";
 import { ledgerCost } from "./model-prices.ts";
 import type { RequestAuth } from "./request-auth.ts";
 import { onKeyRejectionChange } from "./key-rejections.ts";
-import { HOSTED_CONTRACT_HEADER, HOSTED_CONTRACT_METADATA, HOSTED_CONTRACT_VERSION } from "./hosted-contract.ts";
+
 import { describeSpawnFailure, execCli } from "./procs.ts";
 import { buildMentionNotification, buildNotification, type Notification } from "./notify.ts";
 import { isModelVariant, TurnNotStartedError, type ModelSelection, type RequestOutcome, type RuntimeEvent, type SteerOutcome, newId } from "./contracts.ts";
@@ -404,7 +399,6 @@ import {
 } from "./turn-dispatch-guard.ts";
 import { createGracefulShutdown } from "./graceful-shutdown.ts";
 import { acquireDataDirLeaseForProcess } from "./data-dir-lease.ts";
-import { createWorkspaceAccess, describeEdition, editionStatus, entitled, hostedWorkspaceConfiguration, hostedWorkspaceConfigured, LICENSE_WARN_DAYS, licenseWarning, sharedWorkspaceFullAccessConfigured, loadEnterpriseLayer, workspaceMembership, type EditionStatus, type WorkspaceAccess } from "./enterprise.ts";
 import { environmentDescriptor, loadEnvironmentId, serverVersion } from "./environment.ts";
 import { WorkspaceBackupMaintenance } from "./workspace-backup-maintenance.ts";
 import { createWorkspaceBackupRoutes, isWorkspaceBackupSessionControl } from "./workspace-backup-http.ts";
@@ -413,20 +407,7 @@ import { repairMovedWorkspacePaths } from "./moved-paths-repair.ts";
 import { createCustomDomainVerifier, customDomainIpv4, normalizeCustomDomain } from "./custom-domain.ts";
 import { allowedScopes, parseAllowList } from "./session-membership.ts";
 import { ProviderAuthSessions } from "./provider-auth-sessions.ts";
-import {
-  clearSessionCookie,
-  isLoopbackHost,
-  isProxied,
-  labelFromUserAgent,
-  requestOrigin,
-  requestSource,
-  requiredScope,
-  resolveLoopbackTrust,
-  resolveRequestAuth,
-  parseCookies,
-  serializeSessionCookie,
-  sessionCookieName,
-} from "./request-auth.ts";
+import { clearSessionCookie, labelFromUserAgent, requestOrigin, requestSource, requiredScope, resolveLoopbackTrust, resolveRequestAuth, parseCookies, serializeSessionCookie, sessionCookieName } from "./request-auth.ts";
 import { cookieMaxAgeSeconds, formatPairingCode, SessionRegistry, type Scope, type SessionRecord } from "./sessions.ts";
 import { ThreadStarters } from "./thread-starters.ts";
 import {
@@ -464,7 +445,6 @@ import { deliverSseFrame } from "./sse-fanout.ts";
 // Keep these two last, so loading the route table leaves module start-up order as is.
 import { json, onJsonBody, parsedBodyOf, readBody } from "./harness/http.ts";
 import { ROUTES, dispatchRoutes } from "./routes/table.ts";
-import { createHostedSlackRoutes } from "./routes/hosted-slack.ts";
 import { createBotPresetRoutes } from "./routes/bot-presets.ts";
 import { createBotMemoryRoutes } from "./routes/bot-memory.ts";
 import { createBotCreateRoutes } from "./routes/bots-create.ts";
@@ -556,8 +536,7 @@ const sessions = new SessionRegistry({
     const membership = signInAllowList();
     return (email) => allowedScopes(email, membership);
   },
-  portalMembership: hostedWorkspaceConfiguration()?.portalMembership === true,
-});
+  });
 const sharedComputers = new SharedComputers(id => sessions.isLive(id));
 // A Cloud home's secrets come over the launcher's pipe, never this process's environment.
 const CLOUD_SECRETS = BOOT_CLOUD_SECRETS;
@@ -615,15 +594,9 @@ const onePassword = new OnePasswordLogins({
 if (logins.onePasswordToken()) void onePassword.refresh();
 const botLogins = new BotLogins(logins, onePassword);
 const SESSION_COOKIE = sessionCookieName(PORT, ENVIRONMENT_ID);
-const HOSTED_WORKSPACE = hostedWorkspaceConfigured();
-let workspaceAccess: WorkspaceAccess | null = null;
 const DESKTOP_MANAGED = process.env.QUATI_DESKTOP_PARENT === "1";
-const SHARED_WORKSPACE_FULL_ACCESS = sharedWorkspaceFullAccessConfigured();
-const sharedWorkspaceFullAccessEnabled = () => SHARED_WORKSPACE_FULL_ACCESS && Boolean(workspaceAccess) && entitled("admin");
-const HOSTED_FULL_ACCESS_REFUSAL = "On a shared company workspace Full access comes only from the operator's dedicated policy";
-if (HOSTED_WORKSPACE) setDefaultApprovalMode("ask");
 // On a shared workspace loopback is a service, not the owner: every bot's shell is a loopback caller too.
-const LOOPBACK = resolveLoopbackTrust({ desktopManaged: DESKTOP_MANAGED, hostedWorkspace: HOSTED_WORKSPACE, cloudHome: Boolean(CLOUD_HOME), fromSource: import.meta.url.endsWith(".ts") });
+const LOOPBACK = resolveLoopbackTrust({ desktopManaged: DESKTOP_MANAGED, cloudHome: Boolean(CLOUD_HOME), fromSource: import.meta.url.endsWith(".ts") });
 // The CLI's per-launch secret comes on stdin, never an env var: every engine this server starts inherits its environment.
 let cliOwnerToken: string | undefined;
 if (process.env.QUATI_CLI_OWNER_STDIN === "1" && LOOPBACK.trust === "service" && process.stdin) {
@@ -679,7 +652,7 @@ function personKey(session: Pick<SessionRecord, "id" | "email">): string {
 }
 
 function sharedMembership(): boolean {
-  return hostedWorkspaceConfiguration()?.portalMembership === true || signInAllowList().members.length > 0;
+  return signInAllowList().members.length > 0;
 }
 
 function linePersonKey(message: Message | undefined): string | undefined {
@@ -1229,7 +1202,6 @@ function memberFrameContext(visible: VisibleSet): FrameContext {
 
 function adminActivityRecording(): boolean {
   if (DESKTOP_MANAGED) return false;
-  if (HOSTED_WORKSPACE) return true;
   const chatOnly = (scopes: readonly string[]) => !scopes.includes("admin");
   return sharedSignIn(signInAllowList()) || sessions.list().some((session) => chatOnly(session.scopes)) ||
     sessions.openPairings().some((pairing) => chatOnly(pairing.scopes));
@@ -1415,7 +1387,6 @@ const providerAuthSessions = new ProviderAuthSessions();
 // OpenCode reads provider keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, …) from its environment. Wired before the first catalog probe below.
 const openCodeKeysAllowed = (): boolean => openCodeProviderKeysAllowed({
   cloudHome: Boolean(CLOUD_HOME),
-  hostedWorkspace: HOSTED_WORKSPACE,
   sharedSignIn: sharedSignIn(signInAllowList()),
 });
 setOpenCodeProviderKeyPolicy(openCodeKeysAllowed);
@@ -1710,7 +1681,7 @@ function agentsIntegration(
     createdBots: 0,
     openedThreads: 0,
     roomHandoffId,
-    ...(hostFiles && !CLOUD_HOME && !HOSTED_WORKSPACE ? { deliversSavedFiles: true } : {}),
+    ...(hostFiles && !CLOUD_HOME ? { deliversSavedFiles: true } : {}),
   });
   return {
     command: process.execPath, args: [SPAWNED_PROXIES.agents],
@@ -7559,7 +7530,7 @@ async function startTurn(
           skills: skillAuthoring,
           cwd: liveBot?.cwd ?? bot.cwd,
         }) },
-        { id: "files", label: "File locations", text: worksInWorkspace ? workspaceLocationsPrompt(bot.id, cwd, liveBot?.cwd ?? bot.cwd, { attachFile: Boolean(integrations.agents) && !CLOUD_HOME && !HOSTED_WORKSPACE }) : "" },
+        { id: "files", label: "File locations", text: worksInWorkspace ? workspaceLocationsPrompt(bot.id, cwd, liveBot?.cwd ?? bot.cwd, { attachFile: Boolean(integrations.agents) && !CLOUD_HOME }) : "" },
         { id: "shell", label: "Long-running commands", text: worksInWorkspace ? longCommandsPrompt(computerPromptKind) : "" },
         { id: "computer", label: "Computer", text: computerPrompt(computerPromptKind) },
         { id: "plan", label: "Surface", text: surfacePrompt({ computer: mountedComputer, browser: Boolean(integrations.browser) }, { pinned: plan.pinned, note: plan.note + (computerSkipped && plan.computer !== "off" ? computerSkippedNote(redactSecretsInText(computerSkipped)) : ""), canSelect: computerSelectionTurns.has(threadId), cloudHome: Boolean(CLOUD_HOME) }) },
@@ -9316,7 +9287,7 @@ async function runClaimedGroupMemberTurn(
   }
   const roomSystem = buildSystemPrompt(system, store.bot(bot.id)?.soul ?? bot.soul ?? "", [
     { id: "user-profile", label: "About the user", text: userProfileSystemPrompt(cfg.profile) },
-    { id: "files", label: "File locations", text: workspace ? workspaceLocationsPrompt(bot.id, cwd, readyBot.cwd, { attachFile: Boolean(integrations.agents) && !CLOUD_HOME && !HOSTED_WORKSPACE }) : "" },
+    { id: "files", label: "File locations", text: workspace ? workspaceLocationsPrompt(bot.id, cwd, readyBot.cwd, { attachFile: Boolean(integrations.agents) && !CLOUD_HOME }) : "" },
     { id: "shell", label: "Long-running commands", text: workspace ? longCommandsPrompt(roomComputerPromptKind) : "" },
     { id: "computer", label: "Computer", text: computerPrompt(roomComputerPromptKind) },
     { id: "plan", label: "Surface", text: surfacePrompt({ computer: roomVmTarget ? "vm" : surfaceOfComputerKind(roomComputerKind), browser: Boolean(integrations.browser) }, { note: roomPlan.note, cloudHome: Boolean(CLOUD_HOME) }) },
@@ -11196,16 +11167,6 @@ async function perBotLocalVmCountForModeChange(): Promise<number | null> {
   return existingPerBotLocalVmCount(runtime.runtime);
 }
 
-function editionForSettings(status: EditionStatus) {
-  const expiring = status.edition === "enterprise" && status.expiresAt && status.expiresInDays !== undefined &&
-    (status.graceEndsAt !== undefined || status.expiresInDays <= LICENSE_WARN_DAYS);
-  return {
-    edition: status.edition,
-    features: status.features,
-    ...(expiring ? { license: { expiresAt: status.expiresAt!, expiresInDays: status.expiresInDays!, ...(status.graceEndsAt ? { graceEndsAt: status.graceEndsAt } : {}) } } : {}),
-  };
-}
-
 function configStatus() {
   // Keys stay write-only: only settings and configured-or-not flags go out.
   const eventLogMaxBytes = threadEventLogMaxBytes(cfg);
@@ -11219,7 +11180,6 @@ function configStatus() {
     anthropic: { configured: Boolean(cfg.anthropic?.key), everyClaudeBot: cfg.anthropic?.everyClaudeBot !== false },
     openai: { configured: Boolean(cfg.openai?.key) },
     openrouter: { configured: Boolean(cfg.openrouter?.key) },
-    edition: editionForSettings(editionStatus()),
 
     decisions: { retentionDays: decisionRetentionDays(cfg.decisions?.retentionDays) },
     safetyFloor: { enabled: safetyFloorOn() },
@@ -11271,7 +11231,6 @@ function configStatus() {
     // partitionId is read-only routing metadata: config PATCH rejects callers that try to choose it.
     browserProfiles: cfg.browserProfiles ?? [],
     signIn: { admins: cfg.signIn?.admins ?? [], members: cfg.signIn?.members ?? [] },
-    membership: workspaceMembership(),
   };
 }
 
@@ -11280,7 +11239,6 @@ function configForAccess(status: ReturnType<typeof configStatus>, admin: boolean
   // Client sessions get configured-or-not only: no SSH alias, email, browser partition id or sign-in list.
   return {
     ...status,
-    edition: { edition: status.edition.edition, features: status.edition.features },
     signIn: { admins: [], members: [] },
     profile: { name: status.profile.name, email: "" },
     browserProfiles: status.browserProfiles.map((profile) => Object.fromEntries(Object.entries(profile).filter(([key]) => key !== "partitionId"))),
@@ -11473,9 +11431,6 @@ const workspaceBackupRoutes = createWorkspaceBackupRoutes({
   restored: workspaceRestore,
   ...workspaceBackupAccess,
 });
-
-// `workspaceAccess` is assigned at boot, after this line: read it per request.
-ROUTES.push(createHostedSlackRoutes({ bot: (id) => store.bot(id), hostedReady: () => Boolean(workspaceAccess) && entitled("admin") }));
 ROUTES.push(createBotPresetRoutes({ presets: presetStore }));
 // `routines` is assigned at boot, so it is read per request.
 ROUTES.push(createBotMessageRoutes({
@@ -11493,15 +11448,14 @@ ROUTES.push(createBotMessageRoutes({
 // `let` slots are read per request.
 ROUTES.push(createThreadRoutes({
   store, cfg, sessions, groupUsageReader, lendingEnabled,
-  hostedWorkspace: HOSTED_WORKSPACE, sessionCookie: SESSION_COOKIE, loopback: LOOPBACK, defaultPage: DEFAULT_PAGE,
-  workspaceAccess: () => workspaceAccess,
-  cliOwnerToken: () => cliOwnerToken,
+  sessionCookie: SESSION_COOKIE, loopback: LOOPBACK, defaultPage: DEFAULT_PAGE,
+    cliOwnerToken: () => cliOwnerToken,
   pageSize, messagePage, messageWindow, publicBotQueuedMessages, publicGroupState, wireBot, wireTask,
   botComputerControlSnapshot: botId => computerControl.snapshot(botId), messageFileRootsForThread, viewerFor, visibleTo, coordinator, groupThreadIsWorking,
 }));
 ROUTES.push(createBotCreateRoutes({
   store, cfg, presetStore,
-  hostedWorkspace: HOSTED_WORKSPACE, hostedFullAccessRefusal: HOSTED_FULL_ACCESS_REFUSAL, desktopManaged: DESKTOP_MANAGED,
+  desktopManaged: DESKTOP_MANAGED,
   maxWorkspaceBots: MAX_WORKSPACE_BOTS, cloudOwnerKey: CLOUD_OWNER_KEY, cloudRoutineAuthors,
   routines: () => routines,
   storedAvatarExists, defaultSelection, checkedModelSelection, cloudOwnerSession, wireBot,
@@ -11515,7 +11469,7 @@ ROUTES.push(createBotSettingsRoutes({
 ROUTES.push(createBotPatchRoutes({
   store, cfg, registry, sessions, browserRuntime, browserLive, memoryUpkeep, supportsApprovalMode,
   routines: () => routines,
-  hostedWorkspace: HOSTED_WORKSPACE, hostedFullAccessRefusal: HOSTED_FULL_ACCESS_REFUSAL, desktopManaged: DESKTOP_MANAGED, maxWorkspaceBots: MAX_WORKSPACE_BOTS,
+  desktopManaged: DESKTOP_MANAGED, maxWorkspaceBots: MAX_WORKSPACE_BOTS,
   broadcast, wireBot, publicGroupState, audienceChanged, storedAvatarExists, requestedTaskBot, threadBusy, activeGroupTurnForBot,
   checkedModelSelection, engineSwitchNeedsAsk, currentBrowserSession, interruptAllDirectThreads, cancelGroupTurnOperations,
   revokeInternalCapabilitiesForThread, runningTurnInstance, closeOpenApprovals, forgetTemporaryBrowser,
@@ -11614,8 +11568,6 @@ ROUTES.push(createTaskRoutes({
   store,
   cloudHome: Boolean(CLOUD_HOME),
   desktopManaged: DESKTOP_MANAGED,
-  hostedWorkspace: HOSTED_WORKSPACE,
-  hostedFullAccessRefusal: HOSTED_FULL_ACCESS_REFUSAL,
   routines: () => routines,
   coordinator,
   handoffs,
@@ -11626,7 +11578,6 @@ ROUTES.push(createTaskRoutes({
   actorKey,
   cloudOwnerSession,
   cloudThreadRefusal,
-  sharedWorkspaceFullAccessEnabled,
   supportsApprovalMode,
   threadBusy,
   publicBot,
@@ -11748,7 +11699,7 @@ ROUTES.push(createComputerRoutes({
 ROUTES.push(createStatusRoutes({
   store, cfg, outboundCounts,
   staticDir: STATIC_DIR,
-  sharedWorkspaceFullAccessEnabled, adminActivityRecording, configStatus, broadcast,
+  adminActivityRecording, configStatus, broadcast,
   browserEngineInstall: { get: () => browserEngineInstall, set: (install) => { browserEngineInstall = install; } },
   browserEngineInstallError: { set: (error) => { browserEngineInstallError = error; } },
 }));
@@ -11870,26 +11821,6 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
   let m: RegExpMatchArray | null = null;
   let releaseWorkspaceRequest: (() => void) | undefined;
   try {
-    if (method === "GET" && path === "/api/health/hosted") {
-      res.setHeader("cache-control", "no-store");
-      const hosted = hostedWorkspaceConfiguration();
-      if (!hosted?.portalMembership || !workspaceAccess || !entitled("admin")) {
-        return json(res, 503, { error: "Hosted workspace readiness is unavailable." });
-      }
-      res.setHeader(HOSTED_CONTRACT_HEADER, String(HOSTED_CONTRACT_VERSION));
-      return json(res, 200, { ok: true, service: "quatibot", membershipAuthority: "portal", workspace: hosted.workspace, ...HOSTED_CONTRACT_METADATA });
-    }
-    // Hosted workspaces have one sign-in authority: a missing optional layer must never reactivate email/QR credential minting.
-    if (HOSTED_WORKSPACE) {
-      if (method === "POST" && ["/api/auth/pair", "/api/pair", "/api/auth/pairing"].includes(path)) {
-        return json(res, 403, { error: "Sign in through the workspace portal." });
-      }
-      if (workspaceAccess) {
-        if (await workspaceAccess.handlePublic(req, res, url)) return;
-      } else if (path.startsWith("/api/auth/hosted/") || path === "/pair" || (path === "/" && (!isLoopbackHost(req.headers.host) || isProxied(req)))) {
-        return json(res, 503, { error: "Workspace sign-in is unavailable." });
-      }
-    }
     // Two public routes come first; everything else needs the loopback owner or a paired session with the right scope.
     if (method === "GET" && !path.startsWith("/api/") && !path.startsWith("/.well-known/") && serveStatic(res, path)) return;
     if (method === "GET" && path === "/.well-known/quatibot/environment") {
@@ -11948,7 +11879,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
     if (gate.auth?.kind === "session" && gate.auth.via === "cookie") {
       const presented = parseCookies(req.headers.cookie).get(SESSION_COOKIE);
       if (presented) {
-        const secure = HOSTED_WORKSPACE || requestOrigin(req)?.startsWith("https://") === true;
+        const secure = requestOrigin(req)?.startsWith("https://") === true;
         res.setHeader("set-cookie", serializeSessionCookie(SESSION_COOKIE, presented, { secure, maxAgeSeconds: cookieMaxAgeSeconds(gate.auth.session) }));
       }
     }
@@ -11958,12 +11889,6 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
     }
     if (!gate.auth) return json(res, gate.status, { error: gate.error });
     const auth = gate.auth;
-    if (HOSTED_WORKSPACE && auth.kind === "session") {
-      const failure = workspaceAccess
-        ? await workspaceAccess.authorize(req, auth)
-        : { status: 503, error: "Workspace sign-in is unavailable." };
-      if (failure) return json(res, failure.status, { error: failure.error });
-    }
     // A member reaches a restricted bot, its threads, rooms, routines and files exactly as an id that does not exist.
     const visible = visibleTo(viewerFor(auth));
     if (!visible.everything) {
@@ -11998,7 +11923,6 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
               environmentId: ENVIRONMENT_ID,
               ...(auth.session.email ? { email: auth.session.email } : {}),
               ...(auth.session.owner ? { owner: auth.session.owner } : {}),
-              ...(HOSTED_WORKSPACE ? { hosted: true } : {}),
               ...(CLOUD_HOME ? { cloudHome: true } : {}),
               ...(CLOUD_HOME && !cloudOwnerSession(auth) ? { cloudGuest: true, openedThreads: threadStarters.threadsOf(actorKey(auth), 2_000) } : {}),
             },
@@ -13973,13 +13897,6 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       }
       const browser = await browserIntegration(bot.id, bot.browserProfile);
       if (!browser) return json(res, 503, { error: "Install the browser engine first." });
-      // Discovery may have awaited while the portal closed this owner's streams: never open a late replacement on the earlier authorization.
-      if (HOSTED_WORKSPACE && auth.kind === "session") {
-        const failure = workspaceAccess
-          ? await workspaceAccess.authorize(req, auth)
-          : { status: 503, error: "Workspace sign-in is unavailable." };
-        if (failure) return json(res, failure.status, { error: failure.error });
-      }
       const owner = auth.kind === "session" ? auth.session.id : "local-owner";
       const isCurrent = () => {
         const current = store.bot(bot.id);
@@ -14502,11 +14419,6 @@ const server = createServer(handleRequest);
 desktopViewer.attach(server, handleRequest);
 
 calendarCalls.start();
-
-// Resolve the edition before accepting requests so /api/edition is never a guess.
-console.log(describeEdition(await loadEnterpriseLayer()));
-const startupLicenseWarning = licenseWarning(editionStatus());
-if (startupLicenseWarning) console.warn(startupLicenseWarning);
 console.log(LOOPBACK.trust === "service"
   ? `local requests: service trust (${LOOPBACK.reason}); without a session, loopback may use only health, the Slack worker's guarded routes and bot capability routes`
   : `local requests: owner trust (${LOOPBACK.reason})`);
@@ -14519,12 +14431,6 @@ const pruneDecisionLog = () => {
 };
 pruneDecisionLog();
 setInterval(pruneDecisionLog, 6 * 60 * 60_000).unref();
-workspaceAccess = createWorkspaceAccess({ sessions, cookieName: SESSION_COOKIE, closeSessionStreams });
-// With the bridge's five-second deadline, this bounds stale portal access on quiet streams to fifteen seconds.
-const workspaceAccessTimer = workspaceAccess ? setInterval(() => {
-  void workspaceAccess!.revalidate().catch((error) => console.warn("workspace access revalidation failed", error));
-}, 10_000) : null;
-workspaceAccessTimer?.unref();
 
 try {
   const reclaimedPartials = cleanupStaleAttachmentPartials();
@@ -14647,7 +14553,6 @@ const gracefulShutdown = createGracefulShutdown({
       // Before any provider is torn down, so what the teardown fails stays cut for the next start.
       coordinator.close();
       noteTurnsCutByShutdown();
-      if (workspaceAccessTimer) clearInterval(workspaceAccessTimer);
       // Invalidate turn bearers before any cleanup reaches an await: child MCP processes and the listener may outlive it.
       revokeAllInternalCapabilities();
       sharedComputers.close();

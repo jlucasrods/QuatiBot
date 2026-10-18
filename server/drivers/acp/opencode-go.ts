@@ -6,7 +6,6 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { ATTACHMENTS_DIR } from "../../attachments.ts";
 import { cloudHomeConfigured } from "../../cloud-home.ts";
 import { DATA_DIR, OPENCODE_PROVIDER_ENV } from "../../config.ts";
-import { hostedWorkspaceConfigured } from "../../enterprise.ts";
 import type { ModelCatalog, ProviderErrorCode } from "../../contracts.ts";
 import { killCliTree, spawnCli } from "../../procs.ts";
 import { globalMcpConfigFromEntries, openCodeApi, openCodeConfigDirectory } from "../../opencode-mcp.ts";
@@ -165,12 +164,12 @@ export function resetOpenCodeModelCache(): void {
   discoveryFolder = null;
 }
 
-export function openCodeProviderKeysAllowed(state: { cloudHome: boolean; hostedWorkspace: boolean; sharedSignIn: boolean }): boolean {
-  return !state.cloudHome && !state.hostedWorkspace && !state.sharedSignIn;
+export function openCodeProviderKeysAllowed(state: { cloudHome: boolean; sharedSignIn: boolean }): boolean {
+  return !state.cloudHome && !state.sharedSignIn;
 }
 
 let providerKeysAllowed = () => openCodeProviderKeysAllowed({
-  cloudHome: cloudHomeConfigured(), hostedWorkspace: hostedWorkspaceConfigured(), sharedSignIn: false,
+  cloudHome: cloudHomeConfigured(), sharedSignIn: false,
 });
 
 export function setOpenCodeProviderKeyPolicy(allowed: () => boolean): void {

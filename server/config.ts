@@ -737,6 +737,10 @@ export function ensureDirs() {
 let lastIgnoredConfigWarning = "";
 
 export function loadConfig(): AppConfig {
+  if (["QUATI_ADMIN_URL", "QUATI_ADMIN_WORKSPACE", "QUATI_ADMIN_MEMBERSHIP"].some(key => process.env[key] !== undefined)) {
+    throw new Error("Managed portal authentication is not supported. Remove QUATI_ADMIN_URL, QUATI_ADMIN_WORKSPACE and QUATI_ADMIN_MEMBERSHIP before starting a server with local pairing.");
+  }
+
   let cfg: AppConfig = {};
   try {
     cfg = parseStoredConfig(parseJson(readFileSync(join(DATA_DIR, "config.json"), "utf8")));

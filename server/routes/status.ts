@@ -4,7 +4,6 @@ import { activityCsv, activityEntries, parseActivityWhat, readAdminActivityRange
 import { browserEngineStatus, ensureChrome, installAgentBrowserBinary, resolveAgentBrowserBinary } from "../browser-engine.ts";
 import { DATA_DIR, EVENTS_DIR, NATIVE_DIR, type AppConfig } from "../config.ts";
 import { boundRetentionDays, decisionsCsv, readDecisionRange, readDecisions } from "../decision-log.ts";
-import { editionForMembers, editionStatus } from "../enterprise.ts";
 import type { OutboundCounts } from "../outbound-counts.ts";
 import type { Store } from "../store.ts";
 import { readThreadEvents } from "../thread-events.ts";
@@ -17,7 +16,6 @@ export interface StatusRouteDeps {
   cfg: AppConfig;
   outboundCounts: Pick<OutboundCounts, "today">;
   staticDir: string | null;
-  sharedWorkspaceFullAccessEnabled(): boolean;
   adminActivityRecording(): boolean;
   configStatus(): ConfigStatus;
   broadcast(payload: Record<string, unknown>): void;
@@ -27,16 +25,15 @@ export interface StatusRouteDeps {
 
 export function createStatusRoutes(deps: StatusRouteDeps): RouteHandler {
   const {
-    store, outboundCounts, staticDir: STATIC_DIR, sharedWorkspaceFullAccessEnabled, adminActivityRecording,
+    store, outboundCounts, staticDir: STATIC_DIR, adminActivityRecording,
     configStatus, broadcast, browserEngineInstall, browserEngineInstallError,
   } = deps;
-  return async ({ req, res, url, path, method, auth, json }) => {
+  return async ({ req, res, url, path, method, json }) => {
     let m: RegExpMatchArray | null = null;
     // The packaged app's port fallback: the forked child proves it is ours by echoing its pid.
     if (method === "GET" && path === "/api/health") {
       return json(res, 200, { app: "quatibot", pid: process.pid, static: Boolean(STATIC_DIR), capabilities: {
         guardedMessages: 1, guardedRequests: 1, guardedFullAccess: 1, guardedOnBehalfOf: 1,
-        ...(sharedWorkspaceFullAccessEnabled() ? { sharedWorkspaceFullAccess: 1 } : {}),
       } });
     }
     // JSON-only, so a form posted from another local page cannot start the install. One install at a time.
@@ -62,11 +59,6 @@ export function createStatusRoutes(deps: StatusRouteDeps): RouteHandler {
         broadcast({ kind: "config", ...configStatus() });
       }
       return json(res, 202, { installing: true });
-    }
-    if (method === "GET" && path === "/api/edition") {
-      // A member learns what is entitled; when the key lapses is for admins.
-      const status = editionStatus();
-      return json(res, 200, auth.scopes.includes("admin") ? status : editionForMembers(status));
     }
 
     m = path.match(/^\/api\/threads\/([\w-]+)\/events$/);

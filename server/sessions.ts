@@ -46,7 +46,7 @@ const sessionSchema = z.object({
   expiresAt: z.number(),
   userId: z.string().max(256).optional(),
   email: z.string().max(320).optional(),
-  /** Set only by the internal verified-portal issuance path, never by email or pairing input. */
+  /** Persisted external authority markers must be rejected, never treated as locally paired sessions. */
   membershipAuthority: z.literal("portal").optional(),
   /** A browser sign-in (PairingCode `browser`): accepted only as its browser's cookie, never as a bearer token. */
   cookieOnly: z.literal(true).optional(),
@@ -163,7 +163,6 @@ export interface SessionStoreOptions {
   now?: () => number;
   emailScopes?: EmailScopesResolver;
   emailScopesSnapshot?: () => EmailScopesResolver;
-  portalMembership?: boolean;
 }
 
 export class SessionRegistry {
@@ -395,16 +394,6 @@ export class SessionRegistry {
   }
 
   issue(input: { label: string; scopes: Scope[]; userId?: string; email?: string }): { token: string; session: PublicSession } {
-    return this.issueAccount(input);
-  }
-
-  /** Call only after consuming a verified, workspace-bound PKCE grant; no HTTP route accepts this marker as input. */
-  issuePortal(input: { email: string; grant: string; scopes: Scope[] }): { token: string; session: PublicSession } {
-    if (!/^[A-Za-z0-9_-]{43}$/.test(input.grant) || !input.email) throw new Error("A verified portal identity is required");
-    return this.issueAccount({ label: "Hosted workspace", email: input.email, userId: `portal:${input.grant}`, scopes: input.scopes }, "portal");
-  }
-
-  private issueAccount(input: { label: string; scopes: Scope[]; userId?: string; email?: string }, membershipAuthority?: "portal"): { token: string; session: PublicSession } {
     this.refusePersonal(input.scopes);
     this.prune();
     const now = this.now();
@@ -420,7 +409,6 @@ export class SessionRegistry {
     };
     if (input.userId) record.userId = input.userId;
     if (input.email) record.email = input.email;
-    if (membershipAuthority) record.membershipAuthority = membershipAuthority;
     this.sessions.push(record);
     this.lastSeenWrites.set(record.id, now);
     this.persist();
@@ -443,7 +431,7 @@ export class SessionRegistry {
   /** Email membership is live: losing any scope revokes the token and its streams; promotions never widen existing credentials. */
   revalidateEmailSessions(): void {
     if (this.closed) throw new Error("Session registry is closed.");
-    const eligible = this.sessions.filter(session => session.email !== undefined && !(this.options.portalMembership && session.membershipAuthority === "portal"));
+    const eligible = this.sessions.filter(session => session.email !== undefined || session.membershipAuthority === "portal");
     if (!eligible.length) return;
     let resolveScopes = this.options.emailScopes;
     try {
@@ -452,6 +440,7 @@ export class SessionRegistry {
       resolveScopes = undefined; // Never fall back to stale membership after a failed snapshot.
     }
     const revoked = eligible.filter((session) => {
+      if (session.membershipAuthority === "portal") return true;
       try {
         const allowed = resolveScopes?.(session.email!);
         return !allowed || session.scopes.some((scope) => !allowed.includes(scope));

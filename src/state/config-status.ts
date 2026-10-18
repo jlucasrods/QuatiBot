@@ -18,11 +18,7 @@ export interface ConfigStatus {
   /** what this server is entitled to; Settings shows only what works here.
    * `license` reaches admins only, and only while the key is inside its
    * warning window or grace period. */
-  edition?: {
-    edition: "oss" | "enterprise";
-    features: string[];
-    license?: { expiresAt: string; expiresInDays: number; graceEndsAt?: string };
-  };
+
   composio: { configured: boolean; mode?: "managed" | "self-hosted" | "unavailable" };
   /** `included`: cloud computers come with Cloud Pro, no key is saved. */
   box: { configured: boolean; included?: boolean };
