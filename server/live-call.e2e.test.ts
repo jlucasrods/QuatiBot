@@ -1,5 +1,5 @@
 // POSIX-gated: the fakes are shebang scripts.
-import { randomBytes } from "node:crypto";
+
 import { spawn, type ChildProcess } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,8 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LIVE_COPY } from "../shared/live-approval.ts";
-import { cloudPairingSignature } from "./cloud-home.ts";
-import { CLOUD_HOME_PLACE } from "./system-prompt.ts";
+
 import type { LiveCallState } from "../shared/wire.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { startFakeOpenAiLive, type FakeOpenAiLive } from "./testing/fake-openai-live.ts";
@@ -589,134 +588,5 @@ posixOnly("Live call e2e", () => {
       await expect.poll(() => isBusy(bot.id), { timeout: 20_000 }).toBe(false);
       sse.close();
     }
-  }, 40_000);
-});
-
-// Booted as a Cloud home behind its edge, with only loopback reachable.
-posixOnly("Live call on the person's Cloud", () => {
-  const HOST = "quati-t-0123456789ab.fly.dev";
-  const secret = randomBytes(32).toString("base64url");
-  const OWNER_KEY = "sk-fake-cloud-owner";
-  let child: ChildProcess;
-  let home = "";
-  let base = "";
-  let output = "";
-  let live: FakeOpenAiLive;
-  let ownerToken = "";
-
-  const request = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {
-    const res = await fetch(`${base}${path}`, {
-      method,
-      headers: {
-        // what the Caddy edge adds to every request it forwards
-        host: HOST, "x-forwarded-for": "203.0.113.9", "x-forwarded-proto": "https",
-        ...(ownerToken ? { authorization: `Bearer ${ownerToken}` } : {}),
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-        ...headers,
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    // SAFETY: test-only JSON bodies, checked field by field below.
-    return { status: res.status, body: await res.json().catch(() => null) as any };
-  };
-
-  beforeAll(async () => {
-    chmodSync(FAKE_CLAUDE, 0o755);
-    live = await startFakeOpenAiLive();
-    home = mkdtempSync(join(tmpdir(), "quati-live-cloud-"));
-    const dataDir = join(home, ".quatibot");
-    mkdirSync(dataDir, { recursive: true });
-    writeFileSync(join(dataDir, "config.json"), JSON.stringify({
-      instances: {
-        // Pin the fleet's other defaults so this never probes an installed CLI.
-        ...Object.fromEntries(["codex", "cursor", "openaiCompat", "qwen", "hermes", "pi"].map((id) => [id, { driver: "not-a-real-driver" }])),
-        claude: { driver: "claudeAgent", config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" } },
-      },
-    }));
-    mkdirSync(join(home, "web"));
-    writeFileSync(join(home, "web", "index.html"), "<!doctype html><title>QuatiBot</title>");
-    const port = await freePortBlock([0, 1]);
-    base = `http://127.0.0.1:${port}`;
-    // Only loopback answers: the fake GPT-Live. The Admin and OpenAI are offline.
-    const loopbackOnly = `data:text/javascript,${encodeURIComponent(
-      "const real = globalThis.fetch; globalThis.fetch = async (input, init) => new URL(input instanceof Request ? input.url : String(input)).hostname === \"127.0.0.1\" ? real(input, init) : new Response(\"offline fixture\", { status: 503 });",
-    )}`;
-    child = spawn(process.execPath, ["--import", loopbackOnly, join(SERVER_DIR, "index.ts")], {
-      cwd: join(SERVER_DIR, ".."),
-      env: {
-        ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-        HOME: home, USERPROFILE: home, QUATI_DATA_DIR: dataDir, QUATI_STATIC_DIR: join(home, "web"),
-        QUATI_PORT: String(port), QUATI_WEBHOOK_PORT: String(port + 1),
-        QUATI_CLOUD_ROLE: "home", QUATI_CLOUD_MACHINE_ID: "3f9c2a4e-8b1d-4c6e-9a7f-2d5e8c1b0a93", QUATI_CLOUD_ADMIN_URL: "https://cloud.example.test",
-        QUATI_CLOUD_BOOTSTRAP_SECRET: secret, QUATI_PUBLIC_URL: `https://${HOST}`,
-        // no QUATI_OPENAI_LIVE_KEY: no plan includes one
-        QUATI_OPENAI_LIVE_URL: live.url,
-        // and no QUATI_PRO_PLAN: a Cloud home is the plan's own machine, so Live
-        // calls need only the key below
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    child.stdout!.on("data", (chunk) => (output += chunk));
-    child.stderr!.on("data", (chunk) => (output += chunk));
-    const deadline = Date.now() + 90_000;
-    for (;;) {
-      if (child.exitCode !== null) throw new Error(`the Cloud home exited ${child.exitCode}. output:\n${output}`);
-      try {
-        const health = (await (await fetch(`${base}/api/health`)).json()) as { pid?: number };
-        if (health.pid === child.pid) break;
-      } catch {
-      }
-      if (Date.now() > deadline) throw new Error(`the Cloud home never came up. output:\n${output}`);
-      await new Promise((r) => setTimeout(r, 150));
-    }
-    const pairing = JSON.stringify({ label: "QuatiBot app (Cloud)", ttlSeconds: 300 });
-    const timestamp = String(Math.floor(Date.now() / 1000)), nonce = randomBytes(16).toString("base64url");
-    const granted = await request("POST", "/api/cloud/pairing", JSON.parse(pairing), {
-      "x-quati-cloud-timestamp": timestamp, "x-quati-cloud-nonce": nonce,
-      "x-quati-cloud-signature": `v1=${cloudPairingSignature(secret, timestamp, nonce, pairing)}`,
-    });
-    expect(granted.status, JSON.stringify(granted.body)).toBe(200);
-    const paired = await request("POST", "/api/auth/pair", { code: granted.body.code });
-    expect(paired.status, JSON.stringify(paired.body)).toBe(200);
-    ownerToken = paired.body.token;
-  }, 120_000);
-
-  afterAll(async () => {
-    if (child) await waitForExit(child, { signal: "SIGTERM" });
-    await live?.stop();
-    if (home) await removeTempDir(home);
-  });
-
-  it("saves the owner's OpenAI key on the Cloud, and a Live call starts with it", async () => {
-    const before = await request("GET", "/api/config");
-    expect(before.body).toMatchObject({ cloudHome: true, live: { configured: false } });
-    const created = await request("POST", "/api/bots", { name: "Ada", modelSelection: { instanceId: "claude", model: "claude-fake" } });
-    expect(created.status, JSON.stringify(created.body)).toBe(201);
-    const { id: botId, threadId } = created.body.bot as { id: string; threadId: string };
-
-    const refused = await request("POST", "/api/live/session", { botId, sdp: SDP, client: "desktop" });
-    expect(refused, JSON.stringify(refused.body)).toMatchObject({ status: 409, body: { needsKey: true } });
-    expect(live.sessions).toHaveLength(0);
-
-    const saved = await request("PUT", "/api/config", { live: { key: OWNER_KEY } });
-    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
-    expect(saved.body).toMatchObject({ cloudHome: true, live: { configured: true } });
-    expect(JSON.stringify(saved.body)).not.toContain(OWNER_KEY);
-
-    const started = await request("POST", "/api/live/session", { botId, sdp: SDP, client: "desktop" });
-    expect(started.status, JSON.stringify(started.body)).toBe(201);
-    expect(started.body).toMatchObject({ call: { botId, threadId }, transport: { type: "webrtc", sdp: expect.any(String) } });
-    expect(live.sessions).toHaveLength(1);
-    const [session] = live.sessions;
-    expect(session.key).toBe(OWNER_KEY);
-    const { instructions } = session.body.session as { instructions: string };
-    expect(instructions.split("\n")[0]).toBe(`You are Ada, an AI agent that runs on ${CLOUD_HOME_PLACE}.`);
-    expect(instructions).not.toContain("on the user's own computer");
-    await live.waitForAttach(session.id);
-
-    const ended = await request("POST", "/api/live/call/end", { callId: started.body.call.callId });
-    expect(ended).toMatchObject({ status: 200, body: { call: { status: "ended" } } });
-    expect(JSON.stringify(started.body)).not.toContain(OWNER_KEY);
-    expect(output).not.toContain(OWNER_KEY);
   }, 40_000);
 });

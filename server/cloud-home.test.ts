@@ -4,8 +4,8 @@ import { join } from "node:path";
 import type { IncomingMessage } from "node:http";
 import { afterEach, expect, it } from "vitest";
 import {
-  CLOUD_BROWSER_SIGN_IN_MAX_TTL_S, CLOUD_HOME_MARKER, CLOUD_IGNORED_KEYS, CLOUD_PAIRING_MAX_TTL_S, CLOUD_PAIRING_NONCE_MS, CLOUD_PAIRING_SKEW_S, cloudHomeConfiguration, cloudHomeConfigured,
-  cloudHomeHost, cloudHomeOffersPlace, cloudHomePlaceRefusal, cloudPairingSignature, cloudRequestSignature, createCloudPairing, firstCloudTurnPatch, prepareCloudHomeVolume,
+  CLOUD_HOME_MARKER, CLOUD_IGNORED_KEYS, cloudHomeConfiguration, cloudHomeConfigured,
+  cloudHomeHost, cloudHomeOffersPlace, cloudHomePlaceRefusal, firstCloudTurnPatch, prepareCloudHomeVolume,
   withoutIgnoredCloudKeys,
 } from "./cloud-home.ts";
 import { cloudHomeChildEnvironments, codeTrustProblem, passwdIds, spawnWithSecrets } from "./cloud-home-start.ts";
@@ -104,147 +104,6 @@ it("refuses the places it never offers with what is true there, not a setup step
     // A failed turn shows the first 160 characters of its error.
     expect(text.length).toBeLessThanOrEqual(160);
   }
-});
-
-
-function fixture() {
-  const root = directory();
-  let now = 1_800_000_000_000;
-  const sessions = new SessionRegistry({ file: join(root, "sessions.json"), now: () => now });
-  const pairing = createCloudPairing({ secret, sessions, now: () => now });
-  let counter = 0;
-  const sign = (body = JSON.stringify({ label: "QuatiBot app (Cloud)", ttlSeconds: 300 }), options: { key?: string; at?: number; nonce?: string } = {}) => {
-    const timestamp = String(Math.floor((options.at ?? now) / 1000)), nonce = options.nonce ?? `nonce-${String(++counter).padStart(12, "0")}`;
-    return { timestamp, nonce, signature: `v1=${cloudPairingSignature(options.key ?? secret, timestamp, nonce, body)}`, body: Buffer.from(body) };
-  };
-  const mint = (request = sign(), source = "203.0.113.9") => pairing.handle({ ...request, source });
-  const exchange = (code: string, source = "198.51.100.4", browser = false) => sessions.exchange({ code, label: "", source, browser });
-  return { sessions, sign, mint, exchange, advance: (ms: number) => { now += ms; }, now: () => now };
-}
-
-it("opens one ordinary pairing window for a correctly signed request", () => {
-  const f = fixture();
-  const granted = f.mint();
-  expect(granted.status).toBe(200);
-  expect(Object.keys(granted.body).sort()).toEqual(["code", "credential", "expiresAt"]);
-  expect(granted.body.code).toMatch(/^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/);
-  expect(granted.body.credential).toMatch(/^quati_pair_[A-Za-z0-9_-]{43}$/);
-  expect(granted.body.expiresAt).toBe(f.now() + 300_000);
-  const paired = f.exchange(granted.body.code as string);
-  expect(paired).toMatchObject({ ok: true, session: { label: "QuatiBot app (Cloud)", scopes: ["admin", "client"] } });
-});
-
-it("matches the Admin's signature byte for byte", () => {
-  // printf 'v1\\n1800000000\\nnonce-fixture-0001\\nPOST\\n/api/cloud/pairing\\n<b64url sha256 of {}>' | openssl dgst -sha256 -hmac k -binary | base64url
-  expect(cloudPairingSignature("k", "1800000000", "nonce-fixture-0001", "{}")).toBe("OlkaKFywjZ3VtoYxwTWpy025Itpl14gCeUrp8JYpX2o");
-  expect(cloudPairingSignature("k", "1800000000", "nonce-fixture-0001", Buffer.from("{}"))).toBe("OlkaKFywjZ3VtoYxwTWpy025Itpl14gCeUrp8JYpX2o");
-  expect(cloudRequestSignature("k", "1800000000", "nonce-fixture-0001", "POST", "/api/cloud/pairing", "{}")).toBe("OlkaKFywjZ3VtoYxwTWpy025Itpl14gCeUrp8JYpX2o");
-});
-
-it("signs a health read over its method, path and query, byte for byte as the Admin does", () => {
-  // Same vector in quati-cloud tests/cloud-health.test.ts:
-  // printf 'v1\n1800000000\nnonce-fixture-0001\nGET\n/api/cloud/health?after=0\n<b64url sha256 of the empty body>' | openssl dgst -sha256 -hmac k -binary | base64url
-  expect(cloudRequestSignature("k", "1800000000", "nonce-fixture-0001", "GET", "/api/cloud/health?after=0", "")).toBe("qX07j43XUqYYi8T3l9T8WnC-hWLZSYuuvmRguJpbJKc");
-  expect(cloudRequestSignature("k", "1800000000", "nonce-fixture-0001", "GET", "/api/cloud/health?after=1", "")).not.toBe("qX07j43XUqYYi8T3l9T8WnC-hWLZSYuuvmRguJpbJKc");
-});
-
-it("refuses a wrong key, a tampered request or a malformed signature, and counts each", () => {
-  const f = fixture();
-  const good = f.sign();
-  const variants = [
-    f.sign(undefined, { key: "W".repeat(43) }),
-    { ...good, body: Buffer.from(JSON.stringify({ label: "QuatiBot app (Cloud)", ttlSeconds: 600 })) },
-    { ...good, nonce: "nonce-tampered-000" },
-    { ...good, timestamp: String(Number(good.timestamp) + 1) },
-    { ...good, signature: good.signature.slice(3) },
-    { ...good, signature: `v2=${good.signature.slice(3)}` },
-    { ...good, signature: undefined },
-    { ...good, signature: `v1=${"A".repeat(43)}` },
-  ];
-  for (const request of variants) expect(f.mint(request as typeof good)).toEqual({ status: 401, body: { error: "invalid_signature" } });
-  expect(f.sessions.openPairings()).toHaveLength(0);
-  expect(f.sessions.failureSources()).toEqual(["203.0.113.9"]);
-  expect(f.mint(good).status).toBe(200);
-});
-
-it("locks out a source that keeps sending bad signatures", () => {
-  const f = fixture();
-  for (let i = 0; i < 10; i++) f.mint(f.sign(undefined, { key: "W".repeat(43) }));
-  expect(f.mint().status).toBe(429);
-  expect(f.mint(f.sign(), "192.0.2.77").status).toBe(200);
-});
-
-it("accepts only a fresh timestamp", () => {
-  const f = fixture();
-  const skew = CLOUD_PAIRING_SKEW_S * 1000;
-  expect(f.mint(f.sign(undefined, { at: f.now() - skew })).status).toBe(200);
-  expect(f.mint(f.sign(undefined, { at: f.now() + skew })).status).toBe(200);
-  expect(f.mint(f.sign(undefined, { at: f.now() - skew - 1000 }))).toEqual({ status: 401, body: { error: "stale_request" } });
-  expect(f.mint(f.sign(undefined, { at: f.now() + skew + 1000 }))).toEqual({ status: 401, body: { error: "stale_request" } });
-});
-
-it("refuses a replayed request for as long as its timestamp could be accepted", () => {
-  const f = fixture();
-  const request = f.sign();
-  expect(f.mint(request).status).toBe(200);
-  expect(f.mint(request)).toEqual({ status: 401, body: { error: "replayed_request" } });
-  expect(f.sessions.openPairings()).toHaveLength(1);
-  f.advance(CLOUD_PAIRING_NONCE_MS - 1);
-  expect(f.mint(f.sign(undefined, { nonce: request.nonce }))).toEqual({ status: 401, body: { error: "replayed_request" } });
-  expect(f.sessions.openPairings()).toHaveLength(0);
-});
-
-it("keeps every window single use and short lived, capping what the Admin asks for", () => {
-  const f = fixture();
-  const granted = f.mint();
-  expect(f.exchange(granted.body.code as string).ok).toBe(true);
-  expect(f.exchange(granted.body.code as string).ok).toBe(false);
-  expect(f.exchange(granted.body.credential as string).ok).toBe(false);
-  const long = f.mint(f.sign(JSON.stringify({ ttlSeconds: 86_400 })));
-  expect(long.body.expiresAt).toBe(f.now() + CLOUD_PAIRING_MAX_TTL_S * 1000);
-  f.advance(CLOUD_PAIRING_MAX_TTL_S * 1000);
-  expect(f.exchange(long.body.code as string).ok).toBe(false);
-  const plain = f.mint(f.sign("{}"));
-  expect(plain.body.expiresAt).toBe(f.now() + 300_000);
-  expect(f.exchange(plain.body.code as string)).toMatchObject({ ok: true, session: { label: "Quati Cloud" } });
-});
-
-it("opens a browser sign-in only a browser redeems, by credential alone, for at most two minutes", () => {
-  const f = fixture();
-  const granted = f.mint(f.sign(JSON.stringify({ label: "Web browser (Cloud page)", ttlSeconds: 120, purpose: "browser", owner: "ada@example.test" })));
-  expect(f.mint(f.sign(JSON.stringify({ purpose: "browser", owner: "ada.o'neil+cloud@example-mail.test" }))).status).toBe(200);
-  expect(granted.status).toBe(200);
-  expect(Object.keys(granted.body).sort()).toEqual(["credential", "expiresAt", "purpose"]);
-  expect(granted.body).toMatchObject({ credential: expect.stringMatching(/^quati_pair_[A-Za-z0-9_-]{43}$/), expiresAt: f.now() + 120_000, purpose: "browser" });
-  const credential = granted.body.credential as string;
-  expect(f.sessions.previewBrowserSignIn(credential)).toEqual({ owner: "ada@example.test", expiresAt: f.now() + 120_000 });
-  expect(f.exchange(credential).ok).toBe(false);
-  expect(f.exchange(credential, "198.51.100.4", true)).toMatchObject({ ok: true, session: { scopes: ["admin", "client"], owner: "ada@example.test" } });
-  expect(f.sessions.previewBrowserSignIn(credential)).toBeNull();
-  expect(f.exchange(credential, "198.51.100.5", true).ok).toBe(false);
-  const long = f.mint(f.sign(JSON.stringify({ ttlSeconds: 600, purpose: "browser", owner: "ada@example.test" })));
-  expect(long.body.expiresAt).toBe(f.now() + CLOUD_BROWSER_SIGN_IN_MAX_TTL_S * 1000);
-  expect(f.mint(f.sign(JSON.stringify({ purpose: "browser", owner: "ada@example.test" }))).body.expiresAt).toBe(f.now() + CLOUD_BROWSER_SIGN_IN_MAX_TTL_S * 1000);
-  f.advance(CLOUD_BROWSER_SIGN_IN_MAX_TTL_S * 1000);
-  expect(f.exchange(long.body.credential as string, "198.51.100.4", true).ok).toBe(false);
-  const ordinary = f.mint();
-  expect(f.exchange(ordinary.body.credential as string, "198.51.100.4", true).ok).toBe(false);
-  expect(f.exchange(ordinary.body.code as string).ok).toBe(true);
-});
-
-it("refuses a body that is not the expected JSON", () => {
-  const f = fixture();
-  for (const body of ["[]", "not json", JSON.stringify({ label: "tab\there" }), JSON.stringify({ label: "x".repeat(81) }),
-    JSON.stringify({ ttlSeconds: 0 }), JSON.stringify({ ttlSeconds: 1.5 }), JSON.stringify({ ttlSeconds: "300" }),
-    JSON.stringify({ purpose: "app" }), JSON.stringify({ purpose: true }),
-    ...[undefined, "", "ada", "ada@", 7, "ada@example.test\u202Eevil", "ada@exa mple.test", "a\nb@example.test", `${"a".repeat(250)}@example.test`,
-      // Printable ASCII only, one @, no angle brackets: what the Admin's email schemas accept.
-      "adé@example.test", "ada@exämple.test", "<ada@example.test", "ada@example.test>", "ada@team@example.test", "ada\t@example.test", "ada@example.test\u00a0"]
-      .map((owner) => JSON.stringify({ purpose: "browser", owner })),
-    JSON.stringify({ owner: "not an address" })]) {
-    expect(f.mint(f.sign(body)).status).toBe(400);
-  }
-  expect(f.sessions.openPairings()).toHaveLength(0);
 });
 
 

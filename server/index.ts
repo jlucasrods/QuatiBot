@@ -128,7 +128,7 @@ import {
   type Runtime,
 } from "./container-computer.ts";
 import { attachForTurn, saveBotAttachment } from "./bot-attachment.ts";
-import { cacheUntilConfigChanges, ensureDirs, instanceConfigs, loadConfig, changedInstanceIds, engineLaunches, localVmIdleTimeoutMinutes, localVmMaxInstances, localVmMode, roomTurnTimeoutMinutes, mcpCallTimeoutMinutes, threadEventLogMaxBytes, maxConcurrentBotThreads, threadEventLogRetentionDays, saveConfig, showToolCallsEnabled, routinesInConversationEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, autoRecallEnabled, captureQuietMs, roomMemoryCaptureEnabled, tidyHour, sharedComputersEnabled, builtInBrowserEnabled, llmThreadTitlesEnabled, browserProfilePartitionTarget, stripWorkspaceCredentialEnv, PROVIDER_CREDENTIAL_ENV, type AppConfig, DATA_DIR, EVENTS_DIR, onConfigSaved, liveSettingsFor } from "./config.ts";
+import { cacheUntilConfigChanges, ensureDirs, instanceConfigs, loadConfig, changedInstanceIds, engineLaunches, localVmIdleTimeoutMinutes, localVmMaxInstances, localVmMode, roomTurnTimeoutMinutes, mcpCallTimeoutMinutes, threadEventLogMaxBytes, maxConcurrentBotThreads, threadEventLogRetentionDays, saveConfig, showToolCallsEnabled, routinesInConversationEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, autoRecallEnabled, captureQuietMs, roomMemoryCaptureEnabled, tidyHour, sharedComputersEnabled, builtInBrowserEnabled, llmThreadTitlesEnabled, browserProfilePartitionTarget, stripWorkspaceCredentialEnv, PROVIDER_CREDENTIAL_ENV, type AppConfig, DATA_DIR, onConfigSaved, liveSettingsFor } from "./config.ts";
 import { sweepThreadEventLogs, type ThreadLogRetentionCandidate } from "./thread-retention.ts";
 import { ComputerControl } from "./computer-control.ts";
 import { augmentedPath, resetPathCache } from "./env-path.ts";
@@ -202,8 +202,6 @@ import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { mainThread, wasOldestThread } from "./main-thread.ts";
 import { CLOUD_HOME_SECRET_KEYS, CLOUD_IGNORED_KEYS, cloudHomeConfiguration, cloudHomeOffersPlace, cloudHomePlaceRefusal, firstCloudTurnPatch } from "./cloud-home.ts";
-import { createCloudHealth } from "./cloud-health.ts";
-import { createCloudSignedRoutes } from "./routes/cloud-signed.ts";
 import { CLOUD_PERSONAL_REFUSAL, settleCloudOwnership, type CloudOwnership } from "./cloud-owner.ts";
 import { holdIncludedServices } from "./included-services.ts";
 
@@ -2696,11 +2694,6 @@ const store = new Store(
 );
 const skillsHost = createSkillsLibraryHost({ store, cfg, appendSkillRequestCard });
 const { listBotSkills, readBotSkillFile } = skillsHost;
-const cloudHealth = CLOUD_HOME ? createCloudHealth({ store, bus, dataDir: DATA_DIR, eventsDir: EVENTS_DIR, version: serverVersion(), image: process.env.QUATI_CLOUD_IMAGE,
-  engines: () => registry.instances().map((instance) => ({ instanceId: instance.instanceId, driverKind: instance.driverKind, snapshot: registry.lastSnapshot(instance.instanceId) })),
-  connectors: async () => ({}),
-  browser: () => ({ available: browserReady(undefined), installing: Boolean(browserEngineInstall), interrupted: browserRuntime.interruptedCount() }) }) : null;
-const cloudSigned = CLOUD_HOME && cloudHealth ? createCloudSignedRoutes({ secret: CLOUD_HOME.bootstrapSecret, sessions, health: cloudHealth }) : null;
 let followupsReady = false;
 const sendSequencer = new SendSequencer();
 // Before the new-bot default is read: a saved default may name the engine.
@@ -8003,9 +7996,8 @@ routines = new RoutineManager({
     }
   },
   interruptGoal: interruptRoutineGroupGoal,
-  onRunChanged: (run) => { cloudHealth?.noteRoutineRun(run); syncRoutineRunToSource(run); },
+  onRunChanged: syncRoutineRunToSource,
   onRunFailed: (run) => {
-    cloudHealth?.noteRoutineRun(run);
     if (run.threadId) {
       if (run.error === ROUTINE_RESTARTED) {
         if (run.groupId) coordinator.cancelRoom(run.groupId, run.threadId, run.error);
@@ -11832,7 +11824,6 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       const challenge = customDomainVerifier.challenge(domainCheck[1]);
       return json(res, challenge ? 200 : 404, challenge ?? { error: "No active domain check." });
     }
-        if (cloudSigned && await cloudSigned({ req, res, url, path, method })) return;
     if (method === "POST" && path === "/api/auth/pair") {
       // JSON only: a cross-site HTML form cannot send this content type without a preflight, so no unused code is planted as a session.
       if (!/^application\/json\b/i.test(String(req.headers["content-type"] ?? ""))) {
