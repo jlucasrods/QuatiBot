@@ -613,7 +613,6 @@ export function mcpCallTimeoutMinutes(cfg: AppConfig): number {
   return cfg.mcp?.callTimeoutMinutes ?? DEFAULT_MCP_CALL_TIMEOUT_MINUTES;
 }
 
-
 export const LIVE_IDLE_MINUTES_DEFAULT = 5;
 
 export function liveSettingsFor(cfg: AppConfig): LiveSettings {
@@ -704,7 +703,6 @@ export function llmThreadTitlesEnabled(cfg: AppConfig): boolean {
   return cfg.features?.llmThreadTitles === true;
 }
 
-
 export function engineLaunches(configs: InstanceConfigMap, env: Record<string, string | undefined> = process.env): Record<string, unknown> {
   return Object.fromEntries(Object.entries(configs).map(([id, entry]) =>
     [id, { ...entry, fallbackEnv: Object.fromEntries(fallbackEnv(entry).map((name) => [name, env[name]])) }]));
@@ -731,6 +729,10 @@ export function ensureDirs() {
 let lastIgnoredConfigWarning = "";
 
 export function loadConfig(): AppConfig {
+  const cloudKeys = Object.keys(process.env).filter(key => key.startsWith("QUATI_CLOUD_") || key.startsWith("QUATI_HOSTED_MODEL"));
+  if (cloudKeys.length) {
+    throw new Error(`CloudHome is not supported. Remove ${cloudKeys.join(", ")} before starting a server with local pairing.`);
+  }
   if (["QUATI_ADMIN_URL", "QUATI_ADMIN_WORKSPACE", "QUATI_ADMIN_MEMBERSHIP"].some(key => process.env[key] !== undefined)) {
     throw new Error("Managed portal authentication is not supported. Remove QUATI_ADMIN_URL, QUATI_ADMIN_WORKSPACE and QUATI_ADMIN_MEMBERSHIP before starting a server with local pairing.");
   }

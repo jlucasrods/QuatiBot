@@ -40,7 +40,7 @@ export interface ChannelRouteDeps {
   desktopManaged: boolean;
   routines(): Pick<RoutineManager, "disableForGroup"> | null;
   broadcast(payload: Record<string, unknown>): void;
-  actorKey(auth: RequestAuth & { kind: "session" }): string;
+  personKey(session: { id: string; email?: string }): string;
   threadStarters: Pick<ThreadStarters, "set">;
   sendSequencer: Pick<SendSequencer, "run">;
   roomMemberContexts: Pick<RoomContextTracker, "request">;
@@ -48,7 +48,7 @@ export interface ChannelRouteDeps {
   groupSpeakers: ReadonlyMap<string, { botId: string }>;
   groupTurnOperations: ReadonlyMap<string, ReadonlySet<{ threadId: string; cancelled: boolean }>>;
   lastReply: Pick<Map<string, string>, "delete">;
-  cloudThreadRefusal(auth: RequestAuth, threadId: string): string | null;
+
   messageSender(auth: RequestAuth): ResolvedSender | undefined;
   usageTriggerFor(auth: RequestAuth): UsageTrigger;
   publicGroupState(record: GroupRecord): WireGroup;
@@ -85,19 +85,18 @@ const createGroupTaskRequestSchema = z.object({ title: z.string().optional() });
 
 export function createChannelRoutes(deps: ChannelRouteDeps): RouteHandler {
   const {
-    store, cfg, broadcast, actorKey, threadStarters, sendSequencer, roomMemberContexts, skillReview,
-    groupSpeakers, groupTurnOperations, lastReply, cloudThreadRefusal, messageSender, usageTriggerFor, publicGroupState,
+    store, cfg, broadcast, personKey, threadStarters, sendSequencer, roomMemberContexts, skillReview,
+    groupSpeakers, groupTurnOperations, lastReply, messageSender, usageTriggerFor, publicGroupState,
     groupWithThread, updateChannel, groupIsWorking, groupThreadIsWorking, readCursor, pageSize, messagePage,
     resolveReplyTarget, runningTurnInstance, startGroupTurn, engineSteersImages, applyRoomHoldsFromMessage, cancelGroupTurnOperations,
     drainQueuedChannelSends, clearTurnDigestState, closeOpenApprovals, revokeInternalCapabilitiesForThread,
     stagedSkillCleanupsForThread, rejectDeletedThreadSkillStages,
   } = deps;
   const DESKTOP_MANAGED = deps.desktopManaged;
-  const deleteRefusal = (auth: RequestAuth, groupId: string, threadId: string): { status: 403 | 404 | 409; error: string } | null => {
+  const deleteRefusal = (groupId: string, threadId: string): { status: 403 | 404 | 409; error: string } | null => {
     if (groupThreadIsWorking(groupId, threadId)) return { status: 409, error: "this task is running — stop it first" };
     if (!store.groupTaskByThread(groupId, threadId)) return { status: 404, error: "no such channel task" };
-    const notYours = cloudThreadRefusal(auth, threadId);
-    return notYours ? { status: 403, error: notYours } : null;
+    return null;
   };
   const deleteGroupTasks = (groupId: string, threadIds: string[]) => {
     const stagedSkillCleanups = new Map(threadIds.map((threadId) => [threadId, stagedSkillCleanupsForThread(threadId)]));
@@ -129,7 +128,7 @@ export function createChannelRoutes(deps: ChannelRouteDeps): RouteHandler {
       const task = store.createGroupTask(group.id, request.data.title);
       if (!task) return json(res, 500, { error: "couldn't create that task" });
       // Who opened it decides who may answer its cards on a shared workspace.
-      if (auth.kind === "session") threadStarters.set(task.threadId, actorKey(auth));
+      if (auth.kind === "session") threadStarters.set(task.threadId, personKey(auth.session));
       return json(res, 201, { group: groupWithThread(store.group(group.id)!), task });
     }
 
@@ -143,7 +142,7 @@ export function createChannelRoutes(deps: ChannelRouteDeps): RouteHandler {
       const allowed: string[] = [];
       const refused: BulkDeleteRefusal[] = [];
       for (const threadId of parsed.threadIds) {
-        const refusal = deleteRefusal(auth, group.id, threadId);
+        const refusal = deleteRefusal(group.id, threadId);
         if (!refusal) allowed.push(threadId);
         else refused.push({ threadId, reason: refusal.status === 409 ? "busy" : "not-found" });
       }
@@ -193,8 +192,6 @@ export function createChannelRoutes(deps: ChannelRouteDeps): RouteHandler {
       if (parsedLimit && !parsedLimit.ok) return json(res, 400, { error: parsedLimit.error });
       // Echoing the current title is not a rename: newer clients send it so an older server keeps the title.
       const titleChange = renaming && body.title !== existing.title;
-      const notYours = titleChange ? cloudThreadRefusal(auth, m[2]) : null;
-      if (notYours) return json(res, 403, { error: notYours });
       if (titleChange && groupThreadIsWorking(group.id, m[2])) {
         return json(res, 409, { error: "this task is running — stop it first" });
       }
@@ -220,7 +217,7 @@ export function createChannelRoutes(deps: ChannelRouteDeps): RouteHandler {
       const group = store.group(m[1]);
       if (!group) return json(res, 404, { error: "no such channel" });
       if (group.dm) return json(res, 400, { error: "bot-to-bot channels keep one canonical conversation" });
-      const refusal = deleteRefusal(auth, group.id, m[2]);
+      const refusal = deleteRefusal(group.id, m[2]);
       if (refusal) return json(res, refusal.status, { error: refusal.error });
       const updated = deleteGroupTasks(group.id, [m[2]]);
       if (!updated?.deleted.length) return json(res, 400, { error: "a channel keeps at least one task" });
@@ -233,12 +230,6 @@ export function createChannelRoutes(deps: ChannelRouteDeps): RouteHandler {
       if (auth.kind === "session" && !auth.scopes.includes("admin")) {
         const field = clientGroupPatchViolation(body);
         if (field) return json(res, 403, { error: `forbidden: this session may rename or mark a room, not change "${field}" (needs the admin scope)` });
-      }
-      const renamed = store.group(m[1]);
-      if (renamed && body && typeof body === "object" &&
-        ((body.name !== undefined && body.name !== renamed.name) || (body.bulletin !== undefined && body.bulletin !== (renamed.bulletin ?? "")))) {
-        const notYours = cloudThreadRefusal(auth, renamed.threadId);
-        if (notYours) return json(res, 403, { error: notYours });
       }
       const group = updateChannel(m[1], body);
       return json(res, 200, { group: publicGroupState(group) });
@@ -501,8 +492,6 @@ export function createChannelRoutes(deps: ChannelRouteDeps): RouteHandler {
       const group = store.group(m[1]);
       if (!group) return json(res, 404, { error: "no such room" });
       if (!group.memberIds.includes(m[2])) return json(res, 404, { error: "that bot is not in this room" });
-      const notYours = cloudThreadRefusal(auth, group.threadId);
-      if (notYours) return json(res, 403, { error: notYours });
       if (!roomMemberContexts.request(group.threadId, m[2])) {
         return json(res, 409, { error: "this bot has no measured context in this room yet" });
       }

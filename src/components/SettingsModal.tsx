@@ -435,7 +435,7 @@ export function SettingsModal() {
     const q = query.trim().toLowerCase();
     const ownerOrAdmin = useOwnerOrAdmin();
     const baseSections = SECTIONS.filter((_entry) => true)
-        .filter((entry) => entry.id !== "people" || (state.config?.cloudHome !== true))
+        .filter((entry) => entry.id !== "people" || true)
         .filter((entry) => entry.id !== "activity" || (ownerOrAdmin === true));
     const availableSections = baseSections.filter((entry) => entry.id !== "skills" || skillsLibraryEnabled(state.config));
     const visibleSections = availableSections.filter((entry) => sectionMatches(entry, q));
@@ -539,7 +539,7 @@ export function SettingsModal() {
             <Card title={t("settings.skin.title")} subtitle={t("settings.skin.subtitle")}>
               <SkinPicker />
             </Card>
-            {false}
+
             <FontRow />
             <ChatWidthRow />
             <ColorUserBubblesRow />
@@ -560,7 +560,7 @@ export function SettingsModal() {
             case "engines":
                 return <EnginesSettings />;
             case "backups":
-                return <><WorkspaceBackupSettings />{null}</>;
+                return <><WorkspaceBackupSettings /></>;
             case "remoteAccess":
                 return <>{<CustomDomainSettings />}</>;
             case "computer":

@@ -4,13 +4,14 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import type { Bot } from "@/state/store";
 import { browserAvailable, type FeatureFlagConfig } from "@/lib/feature-flags";
 import { t } from "@/lib/i18n";
+import { ComputerPanel } from "./ComputerPanel";
 
 const fixture = vi.hoisted(() => {
   vi.stubGlobal("window", {});
   vi.stubGlobal("document", { visibilityState: "visible" });
   const view = { current: "browser" };
   vi.stubGlobal("localStorage", { getItem: () => view.current });
-  return { config: {} as FeatureFlagConfig & { cloudHome?: boolean }, view };
+  return { config: {} as FeatureFlagConfig, view };
 });
 // These cover the Advanced panel; ComputerPanel.simple.test.ts covers Simple.
 vi.mock("@/lib/interface-mode", () => ({ useAdvancedMode: () => true, setAdvancedMode: () => {} }));
@@ -22,11 +23,10 @@ vi.mock("@/state/store", async (importOriginal) => ({
     flushBotPatches: vi.fn(),
   }),
 }));
-import { ComputerPanel } from "./ComputerPanel";
 
 afterAll(() => vi.unstubAllGlobals());
 const bot = { id: "browser-fixture", name: "Browser fixture", modelSelection: { instanceId: "fixture" } } as Bot;
-const render = (config: FeatureFlagConfig & { cloudHome?: boolean }, browser?: boolean) => {
+const render = (config: FeatureFlagConfig, browser?: boolean) => {
   fixture.config = config;
   return renderToStaticMarkup(createElement(ComputerPanel, { bot: { ...bot, browser } }));
 };
@@ -76,21 +76,15 @@ describe("Computer panel on a narrow screen", () => {
 
 describe("Computer panel Works on", () => {
   const places = (markup: string) => [...markup.matchAll(/<span>(Auto|Cloud computer|Local VM|This computer|Browser|Off)<\/span>/g)].map((match) => match[1]);
-  const computerTab = (config: FeatureFlagConfig & { cloudHome?: boolean }) => {
+  const computerTab = (config: FeatureFlagConfig) => {
     fixture.view.current = "computer";
     try { return render(config); } finally { fixture.view.current = "browser"; }
   };
 
-  it("lists this computer and a Local VM on a desktop or self-hosted server", () => {
+  it("offers a Local VM and browser", () => {
     const markup = computerTab({});
-    expect(places(markup)).toEqual(["Auto", "Cloud computer", "Local VM", "This computer", "Browser", "Off"]);
+    expect(places(markup)).toEqual(["Auto", "Local VM", "Browser", "Off"]);
     expect(markup).toContain("Choose where this bot can use a computer.</p>");
-  });
-
-  it("lists neither on My Cloud, and says why", () => {
-    const markup = computerTab({ cloudHome: true });
-    expect(places(markup)).toEqual(["Auto", "Cloud computer", "Browser", "Off"]);
-    expect(markup).toContain("Choose where this bot works. To let it use your computer, turn on Let My Cloud use this computer");
   });
 });
 

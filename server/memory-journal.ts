@@ -1,7 +1,7 @@
 // Kept outside the workspace on purpose: an audit trail the audited bot can rewrite is not an audit trail.
 // A journal write must never fail the change it records.
 import { randomUUID } from "node:crypto";
-import { closeSync, fstatSync, mkdirSync, openSync, readSync } from "node:fs";
+import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -16,7 +16,7 @@ import {
   writeMemoryDoc,
 } from "./memory-store.ts";
 import { redactSecretsInText } from "./redact.ts";
-import { memoryFilesOnDisk, readMemoryText, workspaceDir } from "./workspace.ts";
+import { memoryFilesOnDisk, workspaceDir } from "./workspace.ts";
 
 export type MemoryActor = "bot" | "person" | "import" | "upkeep";
 export type MemoryChangeKind = "created" | "edited" | "deleted";
@@ -51,7 +51,6 @@ const CONTEXT = 2;
 export function journalFile(botId: string): string {
   return join(JOURNAL_DIR, `${botId}.ndjson`);
 }
-
 
 type Op = { tag: " " | "-" | "+"; line: string };
 
@@ -153,7 +152,6 @@ export function unifiedDiff(before: string, after: string, path: string, cap = D
   return { text, added, removed, truncated };
 }
 
-
 const writeQueues = new Map<string, Promise<void>>();
 
 function enqueue(botId: string, entry: MemoryJournalEntry): void {
@@ -223,7 +221,6 @@ export function readMemoryJournal(botId: string, limit = 50): MemoryJournalEntry
   }
   return rows;
 }
-
 
 export interface MemoryChangeInput {
   path: string;
@@ -351,7 +348,6 @@ export function revertMemoryChange(botId: string, entryId: string, opts: { threa
   }
 }
 
-
 const turnBots = new Map<string, Set<string>>();
 
 function statsFor(botId: string): Map<string, { mtimeMs: number; bytes: number }> {
@@ -379,7 +375,7 @@ function currentDocs(botId: string): Map<string, string> {
     }
     let text: string;
     try {
-      text = readMemoryText(join(workspaceDir(botId), file.path));
+      text = readFileSync(join(workspaceDir(botId), file.path), "utf8");
     } catch {
       if (known !== undefined) docs.set(file.path, known);
       continue;

@@ -4,7 +4,6 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Bot, InstanceInfo } from "@/state/store";
 import type { EffortLevel } from "../../shared/wire";
-import { Select } from "./Select";
 
 // Hook-by-call-order harness: the picker's own state survives between renders, effects never run, and handlers are read
 // off the element tree.
@@ -13,7 +12,7 @@ const fixture = vi.hoisted(() => {
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   return {
     advanced: false,
-    cloudHome: false,
+
     ownerOrAdmin: true as boolean | null,
     values: [] as unknown[],
     index: 0,
@@ -42,7 +41,7 @@ vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => fixture.owne
 vi.mock("@/state/store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/state/store")>()),
   useStore: () => ({
-    state: { instances: fixture.instances, bots: fixture.bots, modelVariantSessions: {}, config: { cloudHome: fixture.cloudHome } },
+    state: { instances: fixture.instances, bots: fixture.bots, modelVariantSessions: {}, config: {  } },
     dispatch: fixture.dispatch,
     refreshInstances: fixture.refreshInstances,
     refreshModels: fixture.refreshModels,
@@ -142,7 +141,6 @@ const click = (node: Node | undefined) => (node!.props.onClick as () => void)();
 
 beforeEach(() => {
   fixture.advanced = false;
-  fixture.cloudHome = false;
   fixture.ownerOrAdmin = true;
   fixture.values = [];
   fixture.index = 0;
@@ -425,58 +423,6 @@ describe("the model picker in Simple mode", () => {
       type: "setModel", botId: "scout", threadId: "thread-scout", updateBotDefault: true,
       selection: expect.objectContaining({ instanceId: "claude", model: "claude-sonnet-5-5" }),
     }));
-  });
-
-  it.each([false, null])("keeps a Cloud guest's model and effort changes thread-only while owner status is %s", (ownerOrAdmin) => {
-    fixture.cloudHome = true;
-    fixture.ownerOrAdmin = ownerOrAdmin;
-    const opened = open(bot());
-    pane(opened)!.props.onPick("claude-sonnet-5-5");
-    expect(fixture.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({
-      type: "setModel", threadId: "thread-scout", updateBotDefault: false,
-      selection: expect.objectContaining({ model: "claude-sonnet-5-5" }),
-    }));
-    pane(opened)!.props.effort!.onPick("high");
-    expect(fixture.dispatch).toHaveBeenLastCalledWith({
-      type: "setModel", botId: "scout", threadId: "thread-scout",
-      selection: { instanceId: "claude", model: "claude-opus-5-5", effort: "high" },
-    });
-  });
-
-  it("still updates defaults for the Cloud owner", () => {
-    fixture.cloudHome = true;
-    const opened = open(bot());
-    pane(opened)!.props.onPick("claude-sonnet-5-5");
-    expect(fixture.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({ updateBotDefault: true }));
-    pane(opened)!.props.effort!.onPick("high");
-    expect(fixture.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({ updateBotDefault: true }));
-  });
-
-  it("does not reuse the full picker's bot scope for a Cloud guest's Simple choice", () => {
-    fixture.cloudHome = true;
-    fixture.ownerOrAdmin = false;
-    fixture.advanced = true;
-    const forBot = bot();
-    const full = open(forBot);
-    click(full.nodes.find((node) => node.type === "button" && node.props.children === "Thread + bot default"));
-    fixture.advanced = false;
-    pane(render(forBot))!.props.onPick("claude-sonnet-5-5");
-    expect(fixture.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({ updateBotDefault: false }));
-  });
-
-  it.each([false, null, true])("uses the Cloud owner's actual authority for named-variant defaults (%s)", (ownerOrAdmin) => {
-    fixture.cloudHome = true;
-    fixture.ownerOrAdmin = ownerOrAdmin;
-    const variants = [{ id: "default", label: "Default" }, { id: "high", label: "High" }];
-    fixture.instances = [{ ...claude(true, [{ id: "claude-opus-5-5", label: "Opus 5.5", variants }]), capabilities: { modelVariants: true } }];
-    const row = pane(open(bot()))!.props.variantsRow as ReactElement<ComponentProps<typeof ModelVariantRow>>;
-    const select = nodes(ModelVariantRow(row.props)).find((node) => node.type === Select)!;
-    (select.props.onChange as (event: unknown) => void)({ target: { value: "1" } });
-    expect(fixture.dispatch).toHaveBeenLastCalledWith({
-      type: "setModel", botId: "scout", threadId: "thread-scout",
-      ...(ownerOrAdmin === true ? { updateBotDefault: true } : {}),
-      selection: { instanceId: "claude", model: "claude-opus-5-5", variant: "high" },
-    });
   });
 
   it("keeps the Advanced picker's own scope choice (this thread unless asked)", () => {

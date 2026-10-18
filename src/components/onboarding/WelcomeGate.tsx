@@ -53,7 +53,7 @@ export function WelcomeGate({ viewer }: {
             legacyDone: emailGateDone(),
             hosted: viewer.hosted,
             canSave: viewer.canSave,
-            cloudHome: viewer.cloudHome,
+
         });
     if (!state.welcomeOpen && !due)
         return null;

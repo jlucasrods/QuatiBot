@@ -5,7 +5,6 @@ import { api, formatTime, openBot, openThread, useStore, type Bot } from "@/stat
 import { EMPTY_TEAM_MAP_SNAPSHOT, buildTeamMapEdges, buildTeamMapSections, teamMapBotCount, type TeamMapEdge, type TeamMapSnapshot, } from "@/lib/team-map";
 import { cn } from "@/lib/cn";
 import { useShowThreads } from "@/lib/thread-preferences";
-import { placeOffered } from "@/lib/place";
 import { TeamCanvas } from "./TeamCanvas";
 import { TeamDialog } from "./TeamDialog";
 import { TeamMemoryDialog } from "./TeamMemoryDialog";
@@ -317,7 +316,7 @@ export function TeamMapPage() {
             }}>
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] hover:bg-control" onClick={() => setTeamEditor({})}><Users size={14}/>{t("team.create")}</button>
 
-              {placeOffered("vm", state.config) && <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] hover:bg-control" onClick={() => dispatch({ type: "toggleAppSettings", section: "computer", open: true })}><Monitor size={14}/>Local VM…</button>}
+              {<button className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] hover:bg-control" onClick={() => dispatch({ type: "toggleAppSettings", section: "computer", open: true })}><Monitor size={14}/>Local VM…</button>}
             </div>
           </details>
         </div>}

@@ -47,14 +47,13 @@ export interface BrowserHostDeps {
     depth: number; skillAuthoring: boolean; createdBots: number; openedThreads: number;
   }): string;
   DESKTOP_MANAGED: boolean;
-  CLOUD_HOME: unknown;
   PORT: number;
 }
 
 type Spec = { command: string; args?: readonly string[]; env: Record<string, string> };
 
 export function createBrowserHost(deps: BrowserHostDeps) {
-  const { cfg, turnResources, activeInternalGenerationByThread, mintInternalCapability, DESKTOP_MANAGED, CLOUD_HOME, PORT } = deps;
+  const { cfg, turnResources, activeInternalGenerationByThread, mintInternalCapability, DESKTOP_MANAGED, PORT } = deps;
   const store: Pick<Store, "bots" | "bot"> = { get bots() { return deps.store().bots; }, bot: (id: string) => deps.store().bot(id) };
 
   const agentBrowserRuntime = new BrowserRuntime({
@@ -72,7 +71,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     onTiming: process.env.QUATI_BROWSER_TIMING === "1" ? (timing) => console.info(formatBrowserTiming(timing)) : undefined,
   });
   const agentBrowserLive = new BrowserLive({ runtime: agentBrowserRuntime });
-  const host: HostKind = DESKTOP_MANAGED ? "desktop" : CLOUD_HOME || existsSync("/.dockerenv") ? "container" : "server";
+  const host: HostKind = DESKTOP_MANAGED ? "desktop" : existsSync("/.dockerenv") ? "container" : "server";
   const chromeEngine = new ChromeEngine({
     dataDir: DATA_DIR,
     host,
@@ -84,7 +83,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
   const browserRuntime = new RuntimeRouter(agentBrowserRuntime, chromeEngine);
   const browserLive = new LiveRouter(agentBrowserLive, chromeEngine);
   const usedBrowserSessions = new Map<string, Spec>();
-  browserEgress.configure({ host: DESKTOP_MANAGED ? "desktop" : CLOUD_HOME ? "cloud" : "server", config: () => cfg.browserEngine?.egress });
+  browserEgress.configure({ host: DESKTOP_MANAGED ? "desktop" : "server", config: () => cfg.browserEngine?.egress });
   // The agent-browser daemon outlives its MCP transport and this server; My Chrome is the person's own.
   const agentBrowserSweep = new BrowserSweep({
     engine: () => { const engine = browserEngineStatus(); return engine.kind === "ready" ? engine.binaryPath : null; },

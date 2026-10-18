@@ -95,7 +95,6 @@ import { appendComposerDraft, appendDraftAttachments, useReplyDraft } from "@/li
 import { dayLabel, localDay, transcriptLookups, type TranscriptLookups } from "@/lib/transcript-derivations";
 import { citationPreviewText, splitTranscriptCitations, type CitationAttachment } from "@/lib/citations";
 import { highlightCitationSource } from "@/lib/citations-dom";
-import { useCanWriteIn } from "@/lib/cloud-guest";
 import { latestFailure, latestReply, type TranscriptSnapshot } from "@/lib/transcript-announcer";
 import { pendingApprovals } from "./PendingApproval";
 import { TranscriptAnnouncer } from "./TranscriptAnnouncer";
@@ -194,7 +193,7 @@ export function ErrorRow({ message, headline: plainHeadline, onRetry, action, se
           <span className="min-w-0 break-words">{headline}</span>
         </div>
         {headline !== message && <details className="mt-2 text-[12px] text-ink-secondary"><summary className="cursor-pointer">{macCuaReason ? t("computer.mac.permission.driverDetail") : t("chat.error.details")}</summary><p className="mt-1 break-words">{message}</p></details>}
-        {null}
+
         {usageUrl ? (<ManageUsageLink href={usageUrl} className="ui-button ui-button-md mt-2 border-transparent bg-ink text-app hover:brightness-110"/>) : claudeUpdateInstance ? (<ClaudeUpdatePrompt instance={claudeUpdateInstance} onRetry={onRetry}/>) : isProviderSafetyBlock(message) ? (<p className="mt-2 text-[12.5px] leading-relaxed text-ink-secondary">
             {PROVIDER_SAFETY_GUIDANCE}{" "}
             <a href={PROVIDER_SAFETY_HELP_URL} target="_blank" rel="noreferrer" className="underline">About provider safety checks</a>
@@ -215,7 +214,7 @@ function PlaceFailedRow({ place, botId, threadId, onRetry }: {
 }) {
     const { state, dispatch } = useStore();
     const { capabilities } = useDesktopCapabilities();
-    const seat = usePlaceSeat(state.config, capabilities.host.platform);
+    const seat = usePlaceSeat(capabilities.host.platform);
     const bot = state.bots.find((candidate) => candidate.id === botId);
     const view = placeRowViewFor(place, seat, worksOnSimpleLabel(bot?.computer, capabilities.host.platform));
     const id = view.action?.id;
@@ -678,7 +677,6 @@ export function ChatView({ bot: profile }: {
     const composerDockRef = useRef<HTMLDivElement>(null);
     const composerDock = useComposerDockPad(composerDockRef);
     const advanced = useAdvancedMode();
-    const canWrite = useCanWriteIn(bot.threadId);
     const computerStarting = computerStartLine(state.computerStarts[bot.id], bot.name);
     const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
     const [findOpen, setFindOpen] = useState(false);
@@ -804,9 +802,7 @@ export function ChatView({ bot: profile }: {
         }
     }, [lastUserMessage, bot.busy, bot.id, bot.threadId, dispatch]);
     const currentLink = profile.tasks?.find((task) => task.threadId === bot.threadId)?.link;
-    const threadLink = useMemo(() => canWrite !== false
-        ? { link: currentLink, assign: (link: string | null) => dispatch({ type: "updateTask", botId: bot.id, threadId: bot.threadId, patch: { link } }) }
-        : null, [canWrite, currentLink, bot.id, bot.threadId, dispatch]);
+    const threadLink = useMemo(() => ({ link: currentLink, assign: (link: string | null) => dispatch({ type: "updateTask", botId: bot.id, threadId: bot.threadId, patch: { link } }) }), [currentLink, bot.id, bot.threadId, dispatch]);
     const routineExecution = state.routineRuns.find((run) => run.target === "bot" && run.botId === bot.id && run.threadId === bot.threadId);
     const resultsThreadId = routineExecution?.resultsThreadId ?? routineExecution?.sourceThreadId;
     const canOpenResults = resultsThreadId && [...state.bots, ...state.groups].some((owner) => owner.threadId === resultsThreadId || owner.tasks?.some((task) => task.threadId === resultsThreadId));
@@ -871,7 +867,6 @@ export function ChatView({ bot: profile }: {
 
       <PinnedBanner bot={bot} pinnedId={bot.pinnedMessageId} messages={messages} onJump={(messageId) => dispatch({ type: "focusMessage", threadId: bot.threadId, messageId })} onUnpin={() => dispatch({ type: "updateTask", botId: bot.id, threadId: bot.threadId, patch: { pinnedMessageId: "" } })}/>
 
-
       </GlassBar>
 
       <div ref={scrollRef} className="glass-scroller h-full overflow-x-hidden overflow-y-auto overscroll-y-contain px-5 [overflow-anchor:none]" {...scrollHandlers}>
@@ -915,26 +910,17 @@ export function ChatView({ bot: profile }: {
           <JumpToLatestButton onClick={jumpToLatest} className="pointer-events-auto bottom-2"/>
         </div>)}
       <LiveCallBar bot={bot}/>
-      {canWrite === false ? (<NewConversationInstead onNew={() => dispatch({ type: "newTask", botId: bot.id })}/>) : (<Composer key={bot.threadId} bot={profile} replyTo={replyTo} onClearReply={clearReply} onConsumeReply={consumeReply} onRestoreReply={restoreReply} onEditLast={lastUserMessage && !lastUserMessageHasAttachments && !bot.busy && !lastUserMessage.id.startsWith("optimistic-")
+      <Composer key={bot.threadId} bot={profile} replyTo={replyTo} onClearReply={clearReply} onConsumeReply={consumeReply} onRestoreReply={restoreReply} onEditLast={lastUserMessage && !lastUserMessageHasAttachments && !bot.busy && !lastUserMessage.id.startsWith("optimistic-")
                 ? () => setEditingId(lastUserMessage.id)
-                : undefined}/>)}
-      {canWrite !== false && (<CitationSelectionToolbar key={`${bot.id}:${bot.threadId}`} viewportRef={scrollRef} onAdd={(citation) => appendDraftAttachments(`bot:${citation.source.ownerId}:${citation.source.threadId}`, [citation])}/>)}
+                : undefined}/>
+      <CitationSelectionToolbar key={`${bot.id}:${bot.threadId}`} viewportRef={scrollRef} onAdd={(citation) => appendDraftAttachments(`bot:${citation.source.ownerId}:${citation.source.threadId}`, [citation])}/>
       </div>
       </GlassScrollFrame>
 
     </main>
     </ThreadLinkContext>);
 }
-export function NewConversationInstead({ onNew }: {
-    onNew: () => void;
-}) {
-    return (<div className="pointer-events-auto mx-5 mb-4 flex items-center justify-between gap-3 rounded-2xl border border-hairline/60 bg-raised px-4 py-3" data-testid="cloud-guest-composer">
-      <p className="text-[13px] text-ink-secondary">{t("chat.cloudGuest.notYours")}</p>
-      <button type="button" onClick={onNew} className="shrink-0 rounded-full bg-accent px-3 py-1 text-[13px] font-medium text-white">
-        {t("chat.cloudGuest.newConversation")}
-      </button>
-    </div>);
-}
+
 function ChatHeaderMenu({ bot, messages, findOpen, onFind }: {
     bot: Bot;
     messages: readonly Message[];

@@ -1,14 +1,11 @@
 
 
-
 import { browserEngineStatus, browserSessionId } from "../browser-engine.ts";
 import { browserEngineKind } from "../browser/config.ts";
 import type { BrowserCleanupCoordinator, BrowserCleanupRequest } from "../browser-lifecycle-cleanup.ts";
 import { finalizeBrowserCleanupMutation, requireBrowserCleanupAcknowledged } from "../browser-lifecycle-cleanup.ts";
 import type { BrowserLive } from "../browser-live.ts";
 import type { BrowserRuntime } from "../browser-runtime.ts";
-
-import { CLOUD_PERSONAL_REFUSAL } from "../cloud-owner.ts";
 
 import { browserProfilePartitionTarget, browserProfileReplacementConflict, builtInBrowserEnabled, changedInstanceIds, engineLaunches, loadConfig, localVmMode, parseConfigPatch, saveConfig, syncCredentialEnv, type AppConfig } from "../config.ts";
 import type { InstanceConfigMap, ModelSelection } from "../contracts.ts";
@@ -29,7 +26,6 @@ export interface BusyFlag {
   set(busy: boolean): void;
 }
 
-
 export type ModelSelectionCheck = { ok: true; selection: ModelSelection } | { ok: false; status: number; error: string };
 
 export type ConfigStatus = Record<string, unknown>;
@@ -47,7 +43,7 @@ export interface ConfigRouteDeps {
   /** After browserEngine.engine changed: closes the viewers and the browsers the other engine ran. */
   browserEngineSwitched(): void;
   decider: Pick<Decider, "testKey">;
-  cloudHome: boolean;
+
   providerConfigs(): InstanceConfigMap;
   localVmIdleMs(): number;
   localVmIdles: { values(): Iterable<Pick<LocalVmIdleTimer, "setIdleMs">> };
@@ -71,7 +67,7 @@ export interface ConfigRouteDeps {
 export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
   const {
     store, cfg, registry, sessions, browserCleanup, browserLive, browserRuntime, usedBrowserSessions, decider,
-    closeBrowser, browserEngineSwitched, cloudHome: CLOUD_HOME, providerConfigs,
+    closeBrowser, browserEngineSwitched,  providerConfigs,
     localVmIdleMs, localVmIdles, localVmActiveThreads, localVmLifecycleBusy, localVmImageBusy, localVmModeChangeBusy,
     providerConfigBusy,
     perBotLocalVmCountForModeChange, checkedModelSelection, browserSessionSpec, configStatus,
@@ -85,9 +81,7 @@ export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
     if ((method === "PUT" || method === "PATCH") && path === "/api/config") {
       const body = await readBody(req);
       const patch = parseConfigPatch(body);
-      if (CLOUD_HOME && (patch.signIn?.admins?.length || patch.signIn?.members?.length)) {
-        return json(res, 403, { error: CLOUD_PERSONAL_REFUSAL, code: "cloud_personal" });
-      }
+
       if (patch.newBotDefaults) {
         if (patch.newBotDefaults.profile.modelSelection) {
           const checked = checkedModelSelection(patch.newBotDefaults.profile.modelSelection);

@@ -7,7 +7,7 @@ export interface EnvironmentDescriptor {
         remoteSessions: true;
         selfUpdate: "desktop-managed" | "operator";
         emailSignIn?: boolean;
-        cloudHome?: true;
+
     };
 }
 export type SessionState = {
@@ -19,7 +19,7 @@ export type SessionState = {
     label: string;
     scopes: string[];
     expiresAt: number;
-    cloudGuest?: true;
+
     openedThreads?: string[];
 } | {
     kind: "unauthenticated";
@@ -50,10 +50,7 @@ export async function readSessionState(fetchImpl: typeof fetch = fetch): Promise
             label: typeof record.label === "string" ? record.label : "",
             scopes: Array.isArray(record.scopes) ? record.scopes.filter((s): s is string => typeof s === "string") : [],
             expiresAt: typeof record.expiresAt === "number" ? record.expiresAt : 0,
-            ...(record.cloudGuest === true ? {
-                cloudGuest: true as const,
-                openedThreads: Array.isArray(record.openedThreads) ? record.openedThreads.filter((id): id is string => typeof id === "string") : [],
-            } : {}),
+
         };
     }
     return record.trust === "service" ? { kind: "loopback", trust: "service" } : { kind: "loopback" };
@@ -82,7 +79,7 @@ export function takeBrowserSignInFromLocation(): string | null {
     history.replaceState(null, "", location.pathname + location.search);
     return m ? m[1] : null;
 }
-export const BROWSER_SIGN_IN_FAILED = "This sign-in link has expired or was already used. On My Cloud, choose “Use in your browser” again.";
+export const BROWSER_SIGN_IN_FAILED = "This sign-in link has expired or was already used. Request a new link from the server operator.";
 export function defaultDeviceLabel(userAgent: string = navigator.userAgent): string {
     const browser = /Edg\//.test(userAgent) ? "Edge" : /OPR\//.test(userAgent) ? "Opera" : /Chrome\//.test(userAgent) ? "Chrome" : /Firefox\//.test(userAgent) ? "Firefox" : /Safari\//.test(userAgent) ? "Safari" : "Browser";
     const os = /iPhone/.test(userAgent) ? "iPhone" : /iPad/.test(userAgent) ? "iPad" : /Android/.test(userAgent) ? "Android" : /Mac OS X/.test(userAgent) ? "Mac" : /Windows/.test(userAgent) ? "Windows" : /Linux/.test(userAgent) ? "Linux" : "";
@@ -146,13 +143,7 @@ export function signInWithBrowserGrant(credential: string, attemptId: string, fe
 }> {
     return pairWithCode({ code: credential, label: defaultDeviceLabel(), attemptId, browser: true }, fetchImpl);
 }
-export function cloudOwnerOf(session: unknown): string | null {
-    const record = Object(session) as {
-        cloudHome?: unknown;
-        owner?: unknown;
-    };
-    return record.cloudHome === true && typeof record.owner === "string" && record.owner ? record.owner : null;
-}
+
 export function reasonWorthShowing(reason: string | undefined): string | null {
     if (!reason)
         return null;

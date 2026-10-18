@@ -7,7 +7,6 @@ import type { NotificationLogEntry } from "../../shared/notification";
 import { reduceNotificationFeed, type NotificationFeedAction } from "./notification-feed";
 import { bumpThreadUpdatedAt, mergeTaskStamps, rewindThreadUpdatedAt } from "./thread-stamps";
 import { botOpensTo, openBot, openNotificationTarget, visibleNotificationThread } from "./thread-navigation";
-export { awayFromMainThread, botOpensTo, openBot, openBotThread, openNotificationTarget, openThread, visibleNotificationThread, type ThreadTarget } from "./thread-navigation";
 import type { TurnDigest } from "../../shared/digest";
 import type { ToolScope } from "../../shared/tool-scope";
 import type { ModelVariantOption, RuntimeEvent } from "../../shared/runtime-events";
@@ -43,6 +42,8 @@ import { t } from "@/lib/i18n";
 import { createBotPatchQueue, type BotUpdatePatch } from "./bot-patch-queue";
 import { useChatErrorClear } from "./chat-error";
 import { openLiveEvents, publishLiveFrame, publishMissedFrames } from "@/lib/live-events";
+import type { BrowserEngineSummary, BrowserProfile, ConfigStatus, ManagedPolicySummary } from "./config-status";
+export { awayFromMainThread, botOpensTo, openBot, openBotThread, openNotificationTarget, openThread, visibleNotificationThread, type ThreadTarget } from "./thread-navigation";
 const MAX_ROUTINE_RUNS = 2000;
 const ACTIVE_ROUTINE_RUN_STATUSES = new Set<RoutineRun["status"]>(["queued", "running", "waiting"]);
 function trimRoutineRuns(runs: readonly RoutineRun[]): RoutineRun[] {
@@ -476,10 +477,9 @@ export function visibleMessages(bot: Pick<Bot, "messages" | "activeLeafId">): Me
     }
     return path.reverse();
 }
-import type { BrowserEngineSummary, BrowserProfile, ConfigStatus, ManagedPolicySummary } from "./config-status";
 export type { BrowserEngineSummary, BrowserProfile, ConfigStatus, ManagedPolicySummary };
 // A section left out here is wiped from state.config whenever a config frame lands.
-export type ConfigStatusFrame = Pick<ConfigStatus, "xai" | "mistral" | "cerebras" | "groq" | "meta" | "anthropic" | "openai" | "openrouter" | "openaiCompat" | "composio" | "box" | "vps" | "rooms" | "mcp" | "threads" | "automaticRecovery" | "localVm" | "opencodeGo" | "tts" | "decider" | "imageGen" | "live" | "profile" | "language" | "features" | "onboarding" | "browserEngine" | "browserProfiles" | "managedPolicy" | "cloudHome">;
+export type ConfigStatusFrame = Pick<ConfigStatus, "xai" | "mistral" | "cerebras" | "groq" | "meta" | "anthropic" | "openai" | "openrouter" | "openaiCompat" | "composio" | "box" | "vps" | "rooms" | "mcp" | "threads" | "automaticRecovery" | "localVm" | "opencodeGo" | "tts" | "decider" | "imageGen" | "live" | "profile" | "language" | "features" | "onboarding" | "browserEngine" | "browserProfiles" | "managedPolicy">;
 export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
     return {
         xai: frame.xai,
@@ -511,7 +511,7 @@ export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
         browserEngine: frame.browserEngine,
         browserProfiles: frame.browserProfiles,
         managedPolicy: frame.managedPolicy,
-        ...(frame.cloudHome ? { cloudHome: true } : {}),
+
     };
 }
 export interface EngineInstall {

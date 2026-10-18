@@ -3,24 +3,21 @@ import { validateBotCwd } from "../bot-cwd.ts";
 import type { VisibleSet } from "../bot-visibility.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { GroupDefaultResponder, GroupRecord, Store } from "../store.ts";
-import type { ThreadStarters } from "../thread-starters.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
 export interface GroupRouteDeps {
   store: Pick<Store, "bot" | "group" | "messagesFor" | "patchGroup">;
-  cloudHome: boolean;
+
   /** A member may only put bots they can see in a room. */
   visibleFor(auth: RequestAuth): VisibleSet;
-  actorKey(auth: RequestAuth & { kind: "session" }): string;
-  threadStarters: Pick<ThreadStarters, "set">;
   createChannel(value: unknown): GroupRecord;
   publicGroupState(record: GroupRecord): WireGroup;
   checkedGroupResponder(value: unknown, memberIds: string[]): GroupDefaultResponder | null;
 }
 
 export function createGroupRoutes(deps: GroupRouteDeps): RouteHandler {
-  const { store, actorKey, threadStarters, createChannel, publicGroupState, checkedGroupResponder } = deps;
-  const CLOUD_HOME = deps.cloudHome;
+  const { store, createChannel, publicGroupState, checkedGroupResponder } = deps;
+
   return async ({ req, res, path, method, auth, json, readBody }) => {
     let m: RegExpMatchArray | null = null;
     const visible = deps.visibleFor(auth);
@@ -29,8 +26,7 @@ export function createGroupRoutes(deps: GroupRouteDeps): RouteHandler {
       const hiddenMember = Array.isArray(body?.memberIds) ? body.memberIds.find((id: unknown) => typeof id === "string" && store.bot(id) && !visible.bot(id)) : undefined;
       if (hiddenMember) return json(res, 400, { error: `unknown channel member: ${String(hiddenMember)}` });
       const group = createChannel(body);
-      // On a Cloud home whoever opens a room names it (cloudThreadRefusal).
-      if (CLOUD_HOME && auth.kind === "session") threadStarters.set(group.threadId, actorKey(auth));
+
       return json(res, 201, { group: { ...publicGroupState(group), messages: [] } });
     }
     m = path.match(/^\/api\/groups\/([\w-]+)\/setup$/);

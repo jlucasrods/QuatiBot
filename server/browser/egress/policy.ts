@@ -9,8 +9,8 @@ import { BlockList, isIP } from "node:net";
 import { networkInterfaces } from "node:os";
 import { z } from "zod";
 
-/** `desktop`: the app on someone's computer. `server`: self-hosted (Docker, npm). `cloud`: a Quati Cloud home. */
-export type EgressHost = "desktop" | "server" | "cloud";
+/** `desktop`: the app on someone's computer. `server`: self-hosted (Docker, npm). */
+export type EgressHost = "desktop" | "server";
 
 export type AddressClass = "public" | "loopback" | "this-machine" | "private" | "link-local" | "metadata" | "reserved";
 
@@ -43,7 +43,6 @@ const RESERVED = subnets([
   ["::", 96], ["64:ff9b:1::", 48], ["2001::", 32], ["ff00::", 8],
 ]);
 const LINK_LOCAL = subnets([["169.254.0.0", 16], ["fe80::", 10]]);
-// fc00::/7 holds Fly's private 6PN network (fdaa::/16), which links a Cloud home to other customers' machines.
 const PRIVATE = subnets([["10.0.0.0", 8], ["100.64.0.0", 10], ["172.16.0.0", 12], ["192.168.0.0", 16], ["fc00::", 7]]);
 // AWS (IPv4 and IPv6), Azure, GCP and Oracle answer on 169.254.169.254; Alibaba on 100.100.100.200.
 const METADATA = new BlockList();
@@ -108,7 +107,7 @@ export function namesThisMachine(host: string): boolean {
 export const browserEgressConfigSchema = z.object({
   /** Self-hosted servers only: local-network or this-computer destinations bots' browsers may reach, as
    * `10.0.0.5`, `192.168.1.0/24`, `10.0.0.5:8080`, `fd12::/48` or `[fd12::1]:443`. QuatiBot's own ports,
-   * cloud metadata and link-local addresses stay closed. Quati Cloud ignores it. */
+   * cloud metadata and link-local addresses stay closed. */
   allow: z.array(z.string().trim().max(64).refine((entry) => parseAllowEntry(entry) !== null, {
     message: "must be an IP address or CIDR range, with an optional :port",
   })).max(64).optional(),

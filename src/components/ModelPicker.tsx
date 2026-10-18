@@ -15,7 +15,6 @@ import { cn } from "@/lib/cn";
 import { useMenuMotion } from "./MenuMotion";
 import { repeatedModelLabels, SimpleModelPane } from "./SimpleModelPane";
 import { useAdvancedMode } from "@/lib/interface-mode";
-import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
 import { friendlyEffort, simpleEffortLevels } from "@/lib/model-friendly";
 import { t } from "@/lib/i18n";
 import { COMPACT_SQUARE } from "@/lib/compact-chip";
@@ -325,10 +324,6 @@ export function ModelPicker({ bot, threadId, className, contained = false, label
     const [probingLocal, setProbingLocal] = useState<string | null>(null);
     const [scope, setScope] = useState<"bot" | "thread">("thread");
     const advanced = useAdvancedMode();
-    const ownerOrAdmin = useOwnerOrAdmin();
-    // Cloud guests change only their own conversation's model, never the shared bot's default; thread-only until
-    // authority loads.
-    const simpleUpdatesBotDefault = !state.config?.cloudHome || ownerOrAdmin === true;
     const [fullView, setFullView] = useState(false);
     const [pendingSwitch, setPendingSwitch] = useState<{
         botId: string;
@@ -512,7 +507,7 @@ export function ModelPicker({ bot, threadId, className, contained = false, label
         if (bot.busy || instance.policy)
             return;
         const nextSelection = modelSelectionForPick(selection, instance, model);
-        const updateBotDefault = !threadId || (simpleView ? simpleUpdatesBotDefault : scope === "bot");
+        const updateBotDefault = !threadId || simpleView || scope === "bot";
         const targets = updateBotDefault ? [currentTaskBot(profile, threadId ?? bot.threadId), profile] : [bot];
         if (targets.some((target) => modelSwitchNeedsAsk(approvalModeFor(target), state.instances.find((candidate) => candidate.instanceId === target.modelSelection.instanceId)?.driverKind, instance.driverKind))) {
             setPendingSwitch({ botId: bot.id, threadId: threadId ?? bot.threadId,
@@ -589,7 +584,7 @@ export function ModelPicker({ bot, threadId, className, contained = false, label
         levels: simpleEffortLevels(activeLevels, selection.effort),
         current: selection.effort,
         onPick: (level: EffortLevel) => dispatch({ type: "setModel", botId: bot.id, threadId,
-            ...(threadId && simpleUpdatesBotDefault ? { updateBotDefault: true } : {}), selection: { ...selection, effort: level } }),
+            ...(threadId ? { updateBotDefault: true } : {}), selection: { ...selection, effort: level } }),
     } : null;
     const botModelId = follows !== undefined && profile.modelSelection.instanceId === railInstance?.instanceId
         ? profile.modelSelection.model : undefined;
@@ -658,7 +653,7 @@ export function ModelPicker({ bot, threadId, className, contained = false, label
                         if (railInstance)
                             lookForLocalIn(railInstance);
                     },
-                } : null} onRefresh={refreshModels} refreshing={refreshing} search={simpleSearch ? (<ModelSearch value={query} local={simpleOfficial.length === 0} onChange={setQuery} onEscape={() => (query ? setQuery("") : setOpen(false))}/>) : undefined} currentModelId={currentModel} botModelId={botModelId} onPick={(model) => railInstance && pick(railInstance, model)} variantsRow={active?.capabilities?.modelVariants ? (<ModelVariantRow compact wide bot={bot} threadId={threadId} updateBotDefault={Boolean(threadId) && simpleUpdatesBotDefault} label={<span className="shrink-0 text-[12px] font-medium text-ink-secondary">{t("model.simple.reasoning")}</span>}/>) : undefined} effort={simpleEffort} onManage={() => {
+                } : null} onRefresh={refreshModels} refreshing={refreshing} search={simpleSearch ? (<ModelSearch value={query} local={simpleOfficial.length === 0} onChange={setQuery} onEscape={() => (query ? setQuery("") : setOpen(false))}/>) : undefined} currentModelId={currentModel} botModelId={botModelId} onPick={(model) => railInstance && pick(railInstance, model)} variantsRow={active?.capabilities?.modelVariants ? (<ModelVariantRow compact wide bot={bot} threadId={threadId} updateBotDefault={Boolean(threadId)} label={<span className="shrink-0 text-[12px] font-medium text-ink-secondary">{t("model.simple.reasoning")}</span>}/>) : undefined} effort={simpleEffort} onManage={() => {
                     setOpen(false);
                     dispatch({ type: "toggleAppSettings", open: true, section: "engines" });
                 }}/>) : (<>

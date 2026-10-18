@@ -64,7 +64,7 @@ function room(options: { threadId?: string; shared?: { messages: Map<string, Mes
   const dispatch = (botId: string, overrides: Partial<RoomDispatchInput> = {}): Turn => {
     serial += 1;
     const input: RoomDispatchInput = {
-      threadId, botId, claimId: `claim-${serial}`, instance: claude, guestConfined: false, reset: false, hooks: true,
+      threadId, botId, claimId: `claim-${serial}`, instance: claude, reset: false, hooks: true,
       config: ["You are a bot in the room.", "/work", { instanceId: "claude", model: "opus" }],
       window: transcript.window(threadId, "Jordan", undefined, botId), tail: tailFor(botId), wrap: wrapWith(),
       ...overrides,
@@ -212,7 +212,6 @@ describe("room sessions: turns that are not managed", () => {
       { name: "setting off", mode: "legacy", arrange: (r) => { r.state.enabled = false; } },
       { name: "an engine that does not promise strict resume", mode: "legacy", input: { instance: engine("claude", "claudeAgent", false) } },
       { name: "a strict-resume engine that is not covered", mode: "legacy", input: { instance: engine("codex", "codex", true) } },
-      { name: "a guest-confined turn", mode: "legacy", input: { guestConfined: true } },
       { name: "a turn without the engine-hook channel", mode: "legacy", input: { hooks: false } },
       { name: "a member's first managed turn", mode: "start" },
     ];
@@ -257,19 +256,19 @@ describe("room sessions: turns that are not managed", () => {
     }
   });
 
-  it("drops a member's record when one of its turns is not managed, and never records a guest-confined turn", () => {
+  it("drops a member's record when one of its turns has no hook channel", () => {
     const r = room();
     r.say("Cut the intro.");
     r.run("editor", "S1");
     r.say("Trim the middle.");
     // Its record is usable here (the other tests resume at this point), and a
-    // confined turn must neither use it nor leave it for a later turn.
-    const confined = r.dispatch("editor", { guestConfined: true });
+    // unmanaged turn must neither use it nor leave it for a later turn.
+    const confined = r.dispatch("editor", { hooks: false });
     expect(confined.result).toEqual({ mode: "legacy", text: r.full(confined), send: {} });
-    r.finish(confined, "S-guest", { reply: "Confined answer." });
+    r.finish(confined, "S-unmanaged", { reply: "Confined answer." });
     r.say("Tighten the outro.");
     const after = r.dispatch("editor");
-    // neither a delta against S1 nor one against the confined turn's session
+    // neither a delta against S1 nor one against the unmanaged turn's session
     expect(after.result).toEqual({ mode: "start", text: r.full(after), send: {} });
   });
 
@@ -657,7 +656,7 @@ describe("room sessions: several members", () => {
     r.say("Editor, cut the intro.");
     r.run("editor", "E1");
     r.say("Writer, name it.");
-    r.run("writer", "W1", {}, { guestConfined: true });
+    r.run("writer", "W1", {}, { hooks: false });
     r.say("Editor, use that.");
     expect(r.dispatch("editor").result.mode).toBe("start");
   });
@@ -1034,7 +1033,7 @@ describe("room sessions: a measured context that went down", () => {
     expect(lost.dispatch("editor", reading(10_000)).result.send.resumeCursor).toBe("S9");
 
     const confined = two(90_000);
-    confined.finish(confined.dispatch("editor", { ...reading(100_000), guestConfined: true }), "S-guest", { reply: "Confined." });
+    confined.finish(confined.dispatch("editor", { ...reading(100_000), hooks: false }), "S-unmanaged", { reply: "Confined." });
     confined.say("Back to normal.");
     confined.finish(confined.dispatch("editor", reading(100_000)), "S1", { reply: "Here." });
     confined.say("And again.");
@@ -1042,12 +1041,12 @@ describe("room sessions: a measured context that went down", () => {
   });
 
   it("keeps what it knew of a session across a turn it did not manage, without trusting that turn's reading", () => {
-    // S1 was last seen at 90,000. A guest's turn then runs somewhere the
+    // S1 was last seen at 90,000. An unmanaged turn then runs somewhere the
     // module does not follow and leaves its own small reading behind.
     const r = two(90_000);
-    r.finish(r.dispatch("editor", { ...reading(90_000), guestConfined: true }), "S-guest", { reply: "Confined." });
+    r.finish(r.dispatch("editor", { ...reading(90_000), hooks: false }), "S-unmanaged", { reply: "Confined." });
     r.say("Back to normal.");
-    // That reading is the guest session's: it says nothing about S1, and is
+    // That reading is the unmanaged session's: it says nothing about S1, and is
     // not taken for S1's new size either.
     const back = r.dispatch("editor", reading(5_000));
     expect(back.result.mode).toBe("start");

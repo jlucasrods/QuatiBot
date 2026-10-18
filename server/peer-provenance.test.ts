@@ -175,12 +175,6 @@ describe("requestWorkOrigin: settled once, when a request is admitted", () => {
     expect(requestWorkOrigin({ trigger, line: person })).toEqual(OUTSIDE);
     expect(requestWorkOrigin({ trigger, handed: user, continued: user, line: person })).toEqual(OUTSIDE);
   });
-
-  it("never makes a Cloud guest's turn the owner's request", () => {
-    expect(requestWorkOrigin({ guest: true, line: person })).toEqual(OUTSIDE);
-    expect(requestWorkOrigin({ guest: true, handed: user, continued: user })).toEqual(OUTSIDE);
-    expect(requestWorkOrigin({ guest: false, line: person })).toEqual(user);
-  });
 });
 
 describe("reports coming back", () => {

@@ -15,9 +15,7 @@ export interface PlaceSeat {
     role: "admin" | "user";
     mode: "simple" | "advanced";
 }
-export function serverKind(config: Pick<ConfigStatus, "cloudHome"> | null | undefined, platform: DesktopCapabilities["host"]["platform"]): ServerKind {
-    if (config?.cloudHome)
-        return "my-cloud";
+export function serverKind(platform: DesktopCapabilities["host"]["platform"]): ServerKind {
     return platform === "darwin" ? "mac" : platform === "win32" ? "pc" : "linux";
 }
 function engineFacts(instance: InstanceInfo | undefined, model: string | undefined): PlaceFacts["engine"] {
@@ -63,22 +61,21 @@ export function placeViewFor(facts: PlaceFacts): PlaceView {
     return placeView(facts, { translate: placeTranslate, locale: activeLocale() });
 }
 export function placeRowViewFor(row: PlaceRow, seat: PlaceSeat, worksOnLabel?: string): PlaceView {
-    const read = row.state === "cc-needs-key" && seat.plan && seat.server !== "my-cloud" ? { ...row, state: "cc-on-my-cloud" as const } : row;
-    return placeRowView(read, { server: seat.server, role: seat.role, mode: seat.mode, worksOnLabel, translate: placeTranslate, locale: activeLocale() });
+    return placeRowView(row, { server: seat.server, role: seat.role, mode: seat.mode, worksOnLabel, translate: placeTranslate, locale: activeLocale() });
 }
 export function placeBlocked(view: PlaceView): boolean {
-    return view.state === "cc-cannot" || view.state === "cc-on-my-cloud" || view.state === "browser-off" || view.state === "browser-cannot"
+    return view.state === "cc-cannot" || view.state === "browser-off" || view.state === "browser-cannot"
         || view.state === "vm-cannot" || view.state === "local-unavailable";
 }
 export function placeHasIssue(view: PlaceView): boolean {
     return placeBlocked(view) || view.state === "cc-tools-off" || view.state === "cc-sign-in" || view.state === "cc-needs-key"
         || view.state === "cc-unavailable";
 }
-export function usePlaceSeat(config: Pick<ConfigStatus, "cloudHome"> | null | undefined, platform: DesktopCapabilities["host"]["platform"]): PlaceSeat {
+export function usePlaceSeat(platform: DesktopCapabilities["host"]["platform"]): PlaceSeat {
     const plan = false;
     const ownerOrAdmin = useOwnerOrAdmin();
     const advanced = useAdvancedMode();
-    return { server: serverKind(config, platform), plan, role: ownerOrAdmin === false ? "user" : "admin", mode: advanced ? "advanced" : "simple" };
+    return { server: serverKind(platform), plan, role: ownerOrAdmin === false ? "user" : "admin", mode: advanced ? "advanced" : "simple" };
 }
 export function openPlaceAction(id: PlaceActionId, target: {
     botId: string;

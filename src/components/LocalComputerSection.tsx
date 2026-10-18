@@ -6,7 +6,6 @@ import { AlertTriangle, Check, Circle, Cloud, ExternalLink, Loader2, Moon, Refre
 import { Card, CommandLine } from "./SettingsPrimitives";
 import { Select } from "./Select";
 import { cn } from "@/lib/cn";
-import { useStore } from "@/state/store";
 type Action = "pull" | "run" | "start" | "stop" | "remove" | "recreate";
 interface Status {
     platform: string;
@@ -632,7 +631,7 @@ export function LocalVmIdleTimeoutSetting({ minutes, disabled, onSave, }: {
     </div>);
 }
 export function LocalComputerSection() {
-    const cloudHome = useStore().state.config?.cloudHome === true;
+
     const [status, setStatus] = useState<Status | null>(null);
     const [loading, setLoading] = useState(true);
     const [pending, setPending] = useState<Action | null>(null);
@@ -719,8 +718,7 @@ export function LocalComputerSection() {
         setVpsError(null);
     }, []);
     useEffect(() => {
-        if (cloudHome)
-            return;
+
         let active = true;
         let timer: number | undefined;
         let controller: AbortController | undefined;
@@ -749,7 +747,7 @@ export function LocalComputerSection() {
             if (timer !== undefined)
                 window.clearTimeout(timer);
         };
-    }, [cloudHome, refresh, refreshKey]);
+    }, [refresh, refreshKey]);
     useEffect(() => {
         if (status?.mode !== "per-bot") {
             setInventory([]);
@@ -1045,7 +1043,7 @@ export function LocalComputerSection() {
       <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">{announcement}</p>
       <CloudComputersCard instances={cloudInventory} configured={cloudConfigured} loading={cloudLoading} pending={cloudPending} error={cloudError} unavailableReason={cloudUnavailableReason} onRefresh={() => setCloudRefreshKey((key) => key + 1)} onSleep={(instance) => void actOnCloudComputer("sleep", instance)} onDelete={(instance) => void actOnCloudComputer("delete", instance)}/>
 
-      <VpsComputersCard instances={vpsInventory} configured={vpsConfigured} sshAlias={vpsSshAlias} loading={vpsLoading} removingName={vpsRemovingName} error={vpsError} unavailableReason={vpsUnavailableReason} onRefresh={() => setVpsRefreshKey((key) => key + 1)} onRemove={(instance) => void removeVpsComputer(instance)}/>{!cloudHome && <>
+      <VpsComputersCard instances={vpsInventory} configured={vpsConfigured} sshAlias={vpsSshAlias} loading={vpsLoading} removingName={vpsRemovingName} error={vpsError} unavailableReason={vpsUnavailableReason} onRefresh={() => setVpsRefreshKey((key) => key + 1)} onRemove={(instance) => void removeVpsComputer(instance)}/>{<>
       <Card title={t("vm.main.title")} subtitle={perBot
                 ? t("vm.main.perBotSubtitle", { host })
                 : t("vm.main.sharedSubtitle", { host })}>

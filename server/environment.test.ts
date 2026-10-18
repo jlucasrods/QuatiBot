@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { environmentDescriptor, loadEnvironmentId, serverVersion } from "./environment.ts";
+import { waitForExit } from "./testing/cleanup.ts";
+import { freePortBlock } from "./testing/ports.ts";
 
 const dirs: string[] = [];
 
@@ -64,6 +67,28 @@ afterEach(() => {
 });
 
 describe("environment identity", () => {
+  it.each([
+    { key: "QUATI_CLOUD_BOOTSTRAP_SECRET", value: "fixture-private-bootstrap" },
+    { key: "QUATI_CLOUD_ROLE", value: "" },
+  ])("refuses retired service configuration at startup: $key", async ({ key, value }) => {
+    const home = mkdtempSync(join(tmpdir(), "quati-retired-service-"));
+    dirs.push(home);
+    mkdirSync(join(home, "tmp"));
+    const port = await freePortBlock([0, 1]);
+    const child = spawn(process.execPath, [join(import.meta.dirname, "index.ts")], {
+      env: { ...verificationServerEnvironment(process.env, home, port), [key]: value },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    child.stdout.on("data", chunk => { output += chunk; });
+    child.stderr.on("data", chunk => { output += chunk; });
+    await waitForExit(child, 10_000);
+
+    expect(child.exitCode).toBe(1);
+    expect(output).toContain(`CloudHome is not supported. Remove ${key}`);
+    if (value) expect(output).not.toContain(value);
+  }, 15_000);
+
   it("creates the id once, owner-only, and keeps it across restarts", () => {
     const dir = mkdtempSync(join(tmpdir(), "quati-env-"));
     dirs.push(dir);
@@ -125,9 +150,8 @@ describe("environment identity", () => {
       capabilities: { remoteSessions: true, selfUpdate: "desktop-managed", emailSignIn: false, jobs: true },
     });
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false }).capabilities.selfUpdate).toBe("operator");
-    expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false, cloudHome: true }).capabilities)
-      .toEqual({ remoteSessions: true, cloudHome: true, selfUpdate: "operator", emailSignIn: false, jobs: true });
-    expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false, cloudHome: false }).capabilities).not.toHaveProperty("cloudHome");
+    expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false }).capabilities)
+      .toEqual({ remoteSessions: true,  selfUpdate: "operator", emailSignIn: false, jobs: true });
   });
 
   it("falls back to the checkout's package.json version, then to unknown", () => {

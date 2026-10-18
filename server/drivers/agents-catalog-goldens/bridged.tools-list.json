@@ -145,12 +145,10 @@
             "type": "string",
             "enum": [
               "auto",
-              "cloud",
               "vm",
-              "local",
               "browser"
             ],
-            "description": "auto = suitable configured computer, cloud = the bot's cloud computer or self-hosted VPS, vm = isolated Local VM, local = user's own desktop, browser = built-in browser. Omit to list."
+            "description": "auto = an available isolated VM or built-in browser, vm = isolated Local VM, browser = built-in browser. Omit to list. Never controls the user's desktop."
           }
         }
       }
@@ -211,9 +209,6 @@
           "credential_id": {
             "type": "string",
             "enum": [
-              "xaiApiKey",
-              "boxToken",
-              "opencodeGoApiKey",
               "ttsKey",
               "fishAudioKey",
               "openaiImageApiKey"
@@ -332,7 +327,7 @@
     },
     {
       "name": "find_tool",
-      "description": "Find an QuatiBot tool that is not in your tool list. Say what you want to do in a few words, or give the tool's name. Each match comes back with its description and exact input schema; run one with use_tool. A tool in your tool list is called directly, not found here. Tools reached this way: list_shared_computers, shared_computer, assignment_status, raise_escalation, list_threads, close_thread, start_thread, vm_exec, show_widget, update_widget, create_bot, list_team_setup, propose_team_setup, propose_bot_deletion, create_room, manage_room, retry_thread, memory_log, session_search, session_read, list_routines, propose_routine, propose_routine_action, propose_profile, propose_model, propose_team_memory, skills_list, skill_manage, add_mcp_server.",
+      "description": "Find an QuatiBot tool that is not in your tool list. Say what you want to do in a few words, or give the tool's name. Each match comes back with its description and exact input schema; run one with use_tool. A tool in your tool list is called directly, not found here. Tools reached this way: assignment_status, raise_escalation, record_screen, list_threads, close_thread, start_thread, vm_exec, show_widget, update_widget, create_bot, list_team_setup, propose_team_setup, propose_bot_deletion, create_room, manage_room, retry_thread, memory_log, session_search, session_read, list_routines, propose_routine, propose_routine_action, propose_profile, propose_model, propose_team_memory, skills_list, skill_manage.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,

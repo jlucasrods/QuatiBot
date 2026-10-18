@@ -30,15 +30,14 @@ export function workOrigin(line: RequestLine | undefined): WorkOrigin {
   return request ? { kind: "user", request } : OUTSIDE;
 }
 
-/** A routine's or webhook's run, or a Cloud guest's turn, is never the user's; a continuation passes no line, since a stored line cannot prove who wrote it. */
-export function requestWorkOrigin({ trigger, guest, handed, continued, line }: {
+/** A routine's or webhook's run is never the user's; a continuation passes no line, since a stored line cannot prove who wrote it. */
+export function requestWorkOrigin({ trigger, handed, continued, line }: {
   trigger?: RoutineRunTrigger;
-  guest?: boolean;
   handed?: WorkOrigin;
   continued?: WorkOrigin;
   line?: RequestLine;
 }): WorkOrigin {
-  if (trigger || guest) return OUTSIDE;
+  if (trigger) return OUTSIDE;
   return handed ?? continued ?? workOrigin(line);
 }
 

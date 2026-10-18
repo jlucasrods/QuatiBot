@@ -63,7 +63,7 @@ export interface OverviewFacts {
   skills: Array<{ name: string; description: string; enabled: boolean }>;
   engine: { agentsMcp?: boolean; composioMcp?: boolean; browserMcp?: boolean; computerMcp?: boolean } | null;
   browserEnabled?: boolean;
-  cloudHome?: boolean;
+
   connectedApps: { configured: boolean; authoritative: boolean; services: string[] };
   sectionPeers: number;
   timeZone: string;
@@ -189,8 +189,8 @@ export function grantsSummary(connectorTools: BotRecord["connectorTools"]): BotO
     .sort((a, b) => (a.slug < b.slug ? -1 : 1));
 }
 
-function computerReach(computer: BotRecord["computer"], cloudHome = false): string | null {
-  const unavailable = cloudHome ? ", which isn't available on My Cloud" : "";
+function computerReach(computer: BotRecord["computer"]): string | null {
+  const unavailable = "";
   switch (computer) {
     case "cloud":
       return "Computer preference: cloud computer.";
@@ -209,7 +209,7 @@ function computerReach(computer: BotRecord["computer"], cloudHome = false): stri
 
 function reachesLines(facts: OverviewFacts): string[] {
   const lines: string[] = [];
-  const computer = computerReach(facts.bot.computer, facts.cloudHome);
+  const computer = computerReach(facts.bot.computer);
   if (computer) lines.push(computer);
   lines.push(facts.bot.cwd ? `Works in ${facts.bot.cwd}.` : "Works in its private workspace.");
   const apps = facts.connectedApps;

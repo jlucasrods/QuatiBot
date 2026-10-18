@@ -57,8 +57,7 @@ export function serviceAllowed(method: string, path: string): boolean {
 export function resolveLoopbackTrust(input: {
   env?: NodeJS.ProcessEnv;
   desktopManaged: boolean;
-  /** A Cloud home's network traffic arrives through its edge proxy, so bare loopback is a bot's shell: always `service`. */
-  cloudHome?: boolean;
+
   /** This server runs from TypeScript source rather than a build. */
   fromSource?: boolean;
 }): { trust: LoopbackTrust; reason: string; warning?: string; localBrowsers: boolean } {
@@ -71,9 +70,7 @@ export function resolveLoopbackTrust(input: {
 function loopbackTrust(input: Parameters<typeof resolveLoopbackTrust>[0]): { trust: LoopbackTrust; reason: string; warning?: string } {
   const raw = (input.env ?? process.env).QUATI_LOOPBACK_TRUST;
   const requested = raw?.trim().toLowerCase();
-  if (input.cloudHome) {
-    return { trust: "service", reason: "QUATI Cloud home", ...(raw !== undefined && requested !== "service" ? { warning: "QUATI_LOOPBACK_TRUST is ignored on an QUATI Cloud home: a local request is always a service" } : {}) };
-  }
+
   if (input.desktopManaged) {
     return { trust: "owner", reason: "desktop app", ...(raw !== undefined ? { warning: "QUATI_LOOPBACK_TRUST is ignored in the desktop app" } : {}) };
   }
@@ -365,7 +362,6 @@ export interface ResolveOptions {
 
 const CLI_OWNER_HEADER = "x-quatibot-cli-owner";
 const CLI_OWNER_ROUTE = /^\/api\/auth\/pairing$/;
-
 
 function secureTokenMatch(actual: string | undefined, expected: string): boolean {
   if (!actual || !expected) return false;

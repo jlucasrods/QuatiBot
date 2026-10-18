@@ -107,8 +107,6 @@ export interface RoutineRequestUndo {
   appliedUpdatedAt?: number;
   /** The routine before an update or a delete. */
   before?: RoutineRequestSnapshot;
-  /** On a Cloud home: the routine was the owner's before the change. */
-  ownersBefore?: boolean;
 }
 
 export interface RoutineRequestCardData {

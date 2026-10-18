@@ -125,7 +125,7 @@ describe("Settings in Simple mode", () => {
 
   it("drops Account when nothing on it is shown", () => {
     vi.stubGlobal("window", {});
-    fixture.config = { ...fixture.config, cloudHome: true };
+    fixture.config = { ...fixture.config };
     expect(pages(render())).toEqual(["general", "appearance", "ai", "computers"]);
   });
 

@@ -6,14 +6,13 @@ import { CalendarClock, Box, Check, Sparkles, Globe, Hand, Loader2, Maximize2, M
 import { api, currentTaskBot, useStore, type Bot, type ConfigStatus } from "@/state/store";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { ComputerFilesPane } from "./ComputerFilesPane";
-import { effectivePlace, isComputerPlace, placeLabelKey, placeOffered } from "@/lib/place";
+import { effectivePlace, isComputerPlace, placeLabelKey } from "@/lib/place";
 import { cn } from "@/lib/cn";
 import { usePageVisible } from "@/lib/page-visible";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { RoutinesSection } from "./bot-settings/RoutinesSection";
 import { routineRunLabel, routineRunTone } from "@/lib/routine-display";
 import { BrowserPanel } from "./BrowserPanel";
-const DataPanel = lazy(() => import("./data/DataPanel").then((module) => ({ default: module.DataPanel })));
 import { browserAvailable, browserUnavailableReason, builtInBrowserEnabled } from "@/lib/feature-flags";
 import { parseComputerHelp, transitionComputerControlLease, type ComputerControlAction } from "@/lib/computer-control";
 import { SignInBanner } from "./SignInRequestCard";
@@ -24,6 +23,7 @@ import { openPlaceAction, placeBlocked, placeFacts, placeHasIssue, placeViewFor,
 import { type PlaceActionId, type PlaceFacts, type PlaceView } from "../../shared/place-view";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
+const DataPanel = lazy(() => import("./data/DataPanel").then((module) => ({ default: module.DataPanel })));
 class LocalizedPanelError extends Error {
     constructor(readonly key: LocaleKey, readonly problem?: string | null, readonly fallbackKey?: LocaleKey) {
         super(key);
@@ -159,9 +159,9 @@ export function ComputerPanel({ bot: profileBot }: {
     const { capabilities, ready: capabilitiesReady } = useDesktopCapabilities();
     const isLinux = capabilities.host.platform === "linux";
     const providerSupportsLocal = instanceSupportsLocalComputer(state.instances, bot);
-    const localSelectable = placeOffered("local", state.config) && localComputerSelectable({ capabilities, providerSupportsLocal });
+    const localSelectable = localComputerSelectable({ capabilities, providerSupportsLocal });
     const localDisabledReason = localComputerDisabledReason({ capabilities, providerSupportsLocal });
-    const placeSeat = usePlaceSeat(state.config, capabilities.host.platform);
+    const placeSeat = usePlaceSeat(capabilities.host.platform);
     const [phase, setPhase] = useState<Phase>("checking");
     const [persistedComputerSelection, setPersistedComputerSelection] = useState<{
         botId: string;
@@ -712,7 +712,7 @@ export function ComputerPanel({ bot: profileBot }: {
         ["vm", "vm.dest.vm", "computer.dest.vmDesc", Box],
         ["browser", "vm.dest.browser", "computer.dest.browserDesc", Globe],
         ["off", "vm.dest.off", "computer.dest.offDesc", Power],
-    ] as const).filter(([mode]) => mode === null || mode === "off" || placeOffered(mode, state.config)).map(([mode, labelKey, descriptionKey, Icon]) => {
+    ] as const).filter(([mode]) => mode === null || mode === "off" || true).map(([mode, labelKey, descriptionKey, Icon]) => {
         const selected = mode === null ? !profileBot.computer : profileBot.computer === mode;
         const managedKind = mode === "vm" ? "localVm" : null;
         const managedBy = managedPolicy && managedKind && !managedPolicy.computers[managedKind] ? t("policy.managedBy", { organization: managedPolicy.organizationName }) : undefined;
@@ -819,12 +819,11 @@ export function ComputerPanel({ bot: profileBot }: {
         </div>) : panelView === "files" ? (<div {...tabPanelProps("files")} className={cn("flex min-h-0 flex-1 flex-col", TAB_PANEL_FOCUS)}>
           <ComputerFilesPane bot={bot}/>
         </div>) : panelView === "android" && androidConnected ? (<div {...tabPanelProps("android")} className={cn("flex-1 overflow-y-auto px-4 pt-2", TAB_PANEL_FOCUS)}>
-          {null}
+
         </div>) : (<div {...tabPanelProps("computer")} className={cn("flex-1 overflow-y-auto px-5 pb-5", TAB_PANEL_FOCUS)}>
           <div className="mb-1.5 mt-2 flex items-center justify-between text-[13px] text-ink-secondary">
             <span>{t("computer.screenOf", { name: bot.name })}</span>
 
-            {false}
             {phase === "vm" && <span className="text-[11px]">{t("vm.dest.vm")}</span>}
 
         </div>
@@ -839,7 +838,6 @@ export function ComputerPanel({ bot: profileBot }: {
               {phase === "checking" || phase === "vm" || false ? (<Loader2 size={18} className="animate-spin"/>) : phase === "off" ? (<Power size={22}/>) : (<Monitor size={22}/>)}
               <span className="text-[12px]">{phase === "vm" ? t("computer.phase.checking") : emptyState[phase]}</span>
 
-              {false}
               {phase === "browser" && browserEnabled && (<button onClick={() => selectPanelView("browser")} className="mt-1 rounded-lg bg-control px-3 py-1.5 text-[12px] text-ink hover:bg-raised-hover">
                   {t("computer.openBrowserTab")}
                 </button>)}
@@ -908,14 +906,14 @@ export function ComputerPanel({ bot: profileBot }: {
           </div>)}
 
         {(bot.computer !== undefined || computerStatusCurrent) && <>
-          {null}
-          {null}</>}
+
+          </>}
 
         {advanced ? <>
           <div className="mt-4 rounded-xl bg-card p-4">
             <div className="text-[15px] font-medium text-ink">{t("computer.worksOn")}</div>
             <p className="mt-1 text-[12px] leading-5 text-ink-secondary">
-              {t(state.config?.cloudHome ? "computer.worksOnHintCloudHome" : "computer.worksOnHint")}
+              {t("computer.worksOnHint")}
             </p>
           <div role="group" aria-label={t("computer.destinationAria")} className="mt-3 grid auto-rows-fr grid-cols-2 gap-2">
             {placeOptions.map(({ mode, labelKey, descriptionKey, Icon, selected, managedBy, disabled, unavailableTitle, issue, view }) => (<button key={mode ?? "auto"} disabled={disabled} title={unavailableTitle} onClick={() => selectPlace(mode)} type="button" aria-pressed={selected} className={cn("min-w-0 rounded-lg border px-2.5 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-card", selected
@@ -981,6 +979,6 @@ export function ComputerPanel({ bot: profileBot }: {
       </div>)}
 
     </aside>
-    {null}
+
     </>);
 }

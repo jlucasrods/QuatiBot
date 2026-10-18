@@ -28,26 +28,20 @@ function profiles(): Record<string, Profile> {
   const all: Record<string, Profile> = {};
   for (const chief of [true, false]) {
     for (const skills of [false, true]) {
-      for (const shared of [false, true]) {
         for (const voice of [false, true]) {
-          const name = [skills && "skills", shared && "shared", voice && "voice", !chief && "non-chief"]
+          const name = [skills && "skills", voice && "voice", !chief && "non-chief"]
             .filter(Boolean).join("+") || "default";
           all[name] = {
             env: {
               QUATI_SKILL_AUTHORING_ENABLED: flag(skills),
-              QUATI_SHARED_COMPUTERS_ENABLED: flag(shared),
               QUATI_VOICE_NOTES: flag(voice),
               QUATI_CHIEF_OF_STAFF: flag(chief),
             },
           };
         }
-      }
     }
   }
-  for (const name of ["skills+shared+voice", "skills+shared+voice+non-chief"]) {
-    all[`${name}+cloud-home`] = { env: { ...all[name]!.env, QUATI_CLOUD_HOME: "1" } };
-  }
-  all["skills+shared+voice+escalations"] = { env: { ...all["skills+shared+voice"]!.env, QUATI_ESCALATIONS: "1" } };
+  all["skills+voice+escalations"] = { env: { ...all["skills+voice"]!.env, QUATI_ESCALATIONS: "1" } };
   all["default+legacy-switches"] = {
     env: { ...all.default!.env, QUATI_ROOM_TURN: "1", QUATI_OWN_THREAD_CREATION: "1", QUATI_EXTERNAL_RUNTIME: "1" },
   };
@@ -60,30 +54,20 @@ const CHIEF_TARGET_TOOLS = ["propose_profile", "propose_model"];
 const CHIEF_PROFILE_TARGET = " A Chief of Staff may pass for_bot_id (from list_bots) for a requested change to another bot in its section.";
 const TEAMWORK_TOOLS = ["list_room_targets", "coordinate_bots", "assignment_status", "list_bots", "list_rooms", "list_threads", "close_thread", "start_thread", "post_to_room"];
 /** The fullest profile, checked in whole; every other one is pinned by tool names, bytes and sha256. */
-const FULL = "skills+shared+voice+escalations";
+const FULL = "skills+voice+escalations";
 
 /** Bytes when the budget was last set; a profile may move at most 2% either way (lower it to lock in a win). */
 const BUDGET_BASELINE: Record<string, number> = {
-  "default": 54535,
-  "voice": 55276,
-  "shared": 56280,
-  "shared+voice": 57021,
-  "skills": 57738,
-  "skills+voice": 58479,
-  "skills+shared": 59578,
-  "skills+shared+voice": 60319,
-  "non-chief": 44885,
-  "voice+non-chief": 45626,
-  "shared+non-chief": 46630,
-  "shared+voice+non-chief": 47371,
-  "skills+non-chief": 48088,
-  "skills+voice+non-chief": 48829,
-  "skills+shared+non-chief": 49833,
-  "skills+shared+voice+non-chief": 50574,
-  "skills+shared+voice+cloud-home": 59374,
-  "skills+shared+voice+non-chief+cloud-home": 49629,
-  "default+legacy-switches": 54535,
-  "skills+shared+voice+escalations": 60245,
+  "default": 52634,
+  "voice": 53375,
+  "skills": 55533,
+  "skills+voice": 56274,
+  "non-chief": 42984,
+  "voice+non-chief": 43725,
+  "skills+non-chief": 45883,
+  "skills+voice+non-chief": 46624,
+  "default+legacy-switches": 52634,
+  "skills+voice+escalations": 57134,
 };
 
 const RPC_PREFIX = '{"jsonrpc":"2.0","id":1,"result":';
@@ -173,7 +157,6 @@ describe("agents proxy tools/list golden", () => {
     const full = new Map(toolsOf(wires[FULL]!).map((tool) => [tool.name, JSON.stringify(tool)]));
     for (const [name, profile] of Object.entries(PROFILES)) {
       for (const tool of toolsOf(wires[name]!)) {
-        if (profile.env.QUATI_CLOUD_HOME === "1" && tool.name === "select_computer") continue;
         if (profile.env.QUATI_CHIEF_OF_STAFF === "0" && CHIEF_TARGET_TOOLS.includes(tool.name)) continue;
         expect(JSON.stringify(tool), `${name}: ${tool.name}`).toBe(full.get(tool.name));
       }
@@ -199,7 +182,7 @@ describe("agents proxy tools/list golden", () => {
 
   it("mounts raise_escalation only where chief escalations are on", () => {
     const names = (wire: string) => toolsOf(wire).map((tool) => tool.name);
-    expect(names(wires[FULL]!).filter((tool) => tool !== "raise_escalation")).toEqual(names(wires["skills+shared+voice"]!));
+    expect(names(wires[FULL]!).filter((tool) => tool !== "raise_escalation")).toEqual(names(wires["skills+voice"]!));
     for (const [name, profile] of Object.entries(PROFILES)) {
       expect(names(wires[name]!).includes("raise_escalation"), name).toBe(profile.env.QUATI_ESCALATIONS === "1");
     }
@@ -214,27 +197,10 @@ describe("agents proxy tools/list golden", () => {
     expect(profile).not.toHaveProperty("ownThreadCreation");
   });
 
-  it("shows a Cloud home's bots no Local VM and no this computer, and every other server both", () => {
-    type SelectTool = Tool & { inputSchema: { properties: { surface: { enum: string[]; description: string } } } };
-    const select = (wire: string) => toolsOf(wire).find((tool) => tool.name === "select_computer") as SelectTool;
-    const cloudHome = Object.keys(PROFILES).filter((name) => name.endsWith("+cloud-home"));
-    expect(cloudHome).toHaveLength(2);
-    for (const name of cloudHome) {
-      const desktop = wires[name.slice(0, -"+cloud-home".length)]!;
-      const names = toolsOf(wires[name]!).map((tool) => tool.name);
-      expect(names).toEqual(toolsOf(desktop).map((tool) => tool.name).filter((tool) => tool !== "vm_exec"));
-      expect(select(desktop).inputSchema.properties.surface.enum).toEqual(["auto", "cloud", "vm", "local", "browser"]);
-      expect(toolsOf(desktop).map((tool) => tool.name)).toContain("vm_exec");
-      const surface = select(wires[name]!).inputSchema.properties.surface;
-      expect(surface.enum).toEqual(["auto", "cloud", "browser"]);
-      expect(surface.description).not.toMatch(/\b(?:vm|local) =/);
-    }
-  });
-
   it("shows only a Chief of Staff the Chief-only tools, and for_bot_id on another bot's profile or model", () => {
     type SchemaTool = Tool & { description: string; inputSchema: { properties: Record<string, unknown> } };
     const nonChief = Object.keys(PROFILES).filter((name) => PROFILES[name]!.env.QUATI_CHIEF_OF_STAFF === "0");
-    expect(nonChief).toHaveLength(9);
+    expect(nonChief).toHaveLength(4);
     for (const name of nonChief) {
       const chiefTools = toolsOf(wires[name === "non-chief" ? "default" : name.replace("+non-chief", "")]!) as SchemaTool[];
       const tools = new Map((toolsOf(wires[name]!) as SchemaTool[]).map((tool) => [tool.name, tool]));
@@ -309,7 +275,7 @@ describe("agents proxy tools/list from the packaged bundle", () => {
 
 describe("agents proxy tools/list wire size", () => {
   it("prints per-tool and total UTF-8 bytes", () => {
-    const shown = [FULL, "skills+shared+voice+non-chief"];
+    const shown = [FULL, "skills+voice+non-chief"];
     const perTool = new Map<string, Record<string, number>>();
     for (const name of shown) {
       for (const tool of toolsOf(wires[name]!)) {

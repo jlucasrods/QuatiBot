@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, Copy, ExternalLink, TerminalSquare } from "lucide-react";
-import { type EngineInstall, type InstanceInfo, useStore } from "@/state/store";
+import { type EngineInstall, type InstanceInfo } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { copyText } from "@/lib/copy-text";
@@ -25,7 +25,7 @@ export function CommandRow({ command, actionLabel, compact = false, allowTermina
     allowTerminal?: boolean;
 }) {
     const [copied, setCopied] = useState(false);
-    const canOpen = allowTerminal && Boolean(undefined) && true;
+    const canOpen = allowTerminal && false;
     const copy = async () => {
         setCopied(await copyText(command) === "copied");
     };
@@ -52,14 +52,13 @@ export function EngineSetup({ instance, className, unframed = false, description
     unframed?: boolean;
     description?: string;
 }) {
-    const { state } = useStore();
-    return (<div className={cn(!unframed && "rounded-xl border border-hairline/40 bg-control/30 p-3", className)}>
+      return (<div className={cn(!unframed && "rounded-xl border border-hairline/40 bg-control/30 p-3", className)}>
       <div className="text-sm font-semibold text-ink">OpenCode V2</div>
       <p className="mt-1 text-xs leading-relaxed text-ink-secondary">
         {description ?? "Install OpenCode V2 and configure providers on the computer running QuatiBot. Models and credentials are managed by OpenCode, not here."}
       </p>
       {instance.snapshot.reason && <p role="alert" className="mt-2 text-xs text-danger">{instance.snapshot.reason}</p>}
-      <CommandRow command="opencode auth login" actionLabel={t("engineSetup.openSignIn")} allowTerminal={state.config?.cloudHome !== true}/>
+      <CommandRow command="opencode auth login" actionLabel={t("engineSetup.openSignIn")} allowTerminal={true}/>
       <div className="mt-3"><RefreshEngines /></div>
       <a href="https://opencode.ai/v2/docs/" target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-accent hover:underline"><ExternalLink size={12}/>{t("engineSetup.viewGuide")}</a>
     </div>);

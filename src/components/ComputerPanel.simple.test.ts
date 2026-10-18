@@ -21,7 +21,6 @@ const fixture = vi.hoisted(() => {
         own: 0,
         seed: {} as Record<string, unknown>,
         config: {} as FeatureFlagConfig & {
-            cloudHome?: boolean;
             box?: {
                 configured: boolean;
             };

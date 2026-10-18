@@ -93,13 +93,12 @@ async function fixture() {
     store,
     routines: () => null,
     desktopManaged: true,
-    cloudHome: false,
+
     DirectSendRefused,
     acceptDirectSend: accept,
     directSendRefusal: (botId: string, thread: string) => (store.taskByThread(botId, thread) ? null : { status: 409, body: { error: "the bot switched tasks before it could receive the message" } }),
     usageTriggerFor: () => ({ kind: "user" }),
     messageSender: () => undefined,
-    cloudGuestSendRefusal: () => null,
     resolveReplyTarget: replyTarget,
     requestedTaskBot: (botId: string, rawThreadId: unknown) => store.projectBotForTask(botId, String(rawThreadId))!,
     startTurn,
@@ -107,7 +106,6 @@ async function fixture() {
     botAtThreadCapacity: () => false,
     parksBehindCoordination: () => false,
     activeGroupTurnForBot: () => null,
-    cloudThreadRefusal: () => null,
     turnSelection: () => undefined,
     registry: { get: () => ({ instanceId: "claude", driverKind: "claudeAgent" }) },
   } as unknown as BotMessageRouteDeps;

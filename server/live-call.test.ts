@@ -14,7 +14,6 @@ import {
   liveSessionsUrl,
   MAX_SDP_BYTES,
 } from "./live-call.ts";
-import { CLOUD_HOME_PLACE } from "./system-prompt.ts";
 
 const OFFER = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n";
 const BOT = { name: "Ada", title: "Tech Lead", description: "Leads the engineering team." };
@@ -32,7 +31,7 @@ describe("createLiveSession", () => {
       bot: BOT,
       history: [{ role: "user", text: "Check the release notes" }, { role: "assistant", text: "Done: two fixes." }],
       voice: "cedar",
-      cloudHome: false,
+
       fetchImpl,
     });
     expect(result).toEqual({ sessionId: "live_123", sdp: "v=0 answer" });
@@ -55,19 +54,9 @@ describe("createLiveSession", () => {
     expect(String(init?.body)).not.toContain("sk-live-secret");
   });
 
-  it("tells the voice where it runs: the user's own computer, or their My Cloud", async () => {
-    const fetchImpl = okFetch();
-    await createLiveSession({ key: "k", sdp: OFFER, bot: BOT, history: [], cloudHome: true, fetchImpl });
-    await createLiveSession({ key: "k", sdp: OFFER, bot: BOT, history: [], cloudHome: false, fetchImpl });
-    const [cloud, computer] = fetchImpl.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).session.instructions as string);
-    expect(cloud).toContain("runs on the user's My Cloud, their always-on QuatiBot in the cloud, not on their own computer.");
-    expect(computer).toContain("runs in QuatiBot on the user's own computer.");
-    expect(computer).not.toContain("My Cloud");
-  });
-
   it("falls back to the default voice and omits empty history", async () => {
     const fetchImpl = okFetch();
-    await createLiveSession({ key: "k", sdp: OFFER, bot: BOT, history: [], cloudHome: false, voice: "not a voice!", fetchImpl });
+    await createLiveSession({ key: "k", sdp: OFFER, bot: BOT, history: [],  voice: "not a voice!", fetchImpl });
     const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
     expect(body.session.audio.output.voice).toBe(DEFAULT_LIVE_VOICE);
     expect(body.session).not.toHaveProperty("input");
@@ -75,22 +64,22 @@ describe("createLiveSession", () => {
 
   it("passes an unlisted but well-formed voice name through for OpenAI to judge", async () => {
     const fetchImpl = okFetch();
-    await createLiveSession({ key: "k", sdp: OFFER, bot: BOT, history: [], cloudHome: false, voice: " Sol ", fetchImpl });
+    await createLiveSession({ key: "k", sdp: OFFER, bot: BOT, history: [],  voice: " Sol ", fetchImpl });
     expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body)).session.audio.output.voice).toBe("sol");
   });
 
   it("refuses without a key or with a bad offer before calling OpenAI", async () => {
     const fetchImpl = okFetch();
-    await expect(createLiveSession({ key: " ", sdp: OFFER, bot: BOT, history: [], cloudHome: false, fetchImpl })).rejects.toMatchObject({ status: 409 });
-    await expect(createLiveSession({ key: "k", sdp: " ", bot: BOT, history: [], cloudHome: false, fetchImpl })).rejects.toMatchObject({ status: 400 });
-    await expect(createLiveSession({ key: "k", sdp: "x".repeat(MAX_SDP_BYTES + 1), bot: BOT, history: [], cloudHome: false, fetchImpl })).rejects.toMatchObject({ status: 400 });
+    await expect(createLiveSession({ key: " ", sdp: OFFER, bot: BOT, history: [],  fetchImpl })).rejects.toMatchObject({ status: 409 });
+    await expect(createLiveSession({ key: "k", sdp: " ", bot: BOT, history: [],  fetchImpl })).rejects.toMatchObject({ status: 400 });
+    await expect(createLiveSession({ key: "k", sdp: "x".repeat(MAX_SDP_BYTES + 1), bot: BOT, history: [],  fetchImpl })).rejects.toMatchObject({ status: 400 });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("turns OpenAI refusals into plain messages without echoing the body", async () => {
     const refuse = (status: number) => vi.fn(async () => new Response(JSON.stringify({ error: { message: "sk-live-secret is invalid" } }), { status }));
     for (const [status, text, returned] of [[400, "rejected the call settings", 502], [401, "rejected the API key", 502], [403, "no access to GPT-Live", 502], [429, "limiting Live sessions", 429], [500, "had a problem", 502]] as const) {
-      const error = await createLiveSession({ key: "sk-live-secret", sdp: OFFER, bot: BOT, history: [], cloudHome: false, fetchImpl: refuse(status) }).catch((e) => e);
+      const error = await createLiveSession({ key: "sk-live-secret", sdp: OFFER, bot: BOT, history: [],  fetchImpl: refuse(status) }).catch((e) => e);
       expect(error).toBeInstanceOf(LiveSessionError);
       expect(error.status).toBe(returned);
       expect(error.message).toContain(text);
@@ -100,9 +89,9 @@ describe("createLiveSession", () => {
 
   it("reports network failures and malformed answers", async () => {
     const offline = vi.fn(async () => { throw new TypeError("fetch failed"); });
-    await expect(createLiveSession({ key: "k", sdp: OFFER, bot: BOT, history: [], cloudHome: false, fetchImpl: offline })).rejects.toMatchObject({ status: 502, message: expect.stringContaining("Could not reach OpenAI") });
+    await expect(createLiveSession({ key: "k", sdp: OFFER, bot: BOT, history: [],  fetchImpl: offline })).rejects.toMatchObject({ status: 502, message: expect.stringContaining("Could not reach OpenAI") });
     const odd = vi.fn(async () => new Response(JSON.stringify({ session: {} }), { status: 201 }));
-    await expect(createLiveSession({ key: "k", sdp: OFFER, bot: BOT, history: [], cloudHome: false, fetchImpl: odd })).rejects.toMatchObject({ status: 502, message: expect.stringContaining("unexpected answer") });
+    await expect(createLiveSession({ key: "k", sdp: OFFER, bot: BOT, history: [],  fetchImpl: odd })).rejects.toMatchObject({ status: 502, message: expect.stringContaining("unexpected answer") });
   });
 });
 
@@ -146,19 +135,8 @@ describe("live startup context", () => {
     expect(text).toContain("Never answer it yourself.");
   });
 
-  it("on a Cloud, says the voice runs on the user's My Cloud, not their own computer", () => {
-    const text = liveInstructions({ name: "Rigel", title: "QA" }, { cloudHome: true });
-    expect(text.split("\n")[0]).toBe(`You are Rigel, QA, an AI agent that runs on ${CLOUD_HOME_PLACE}.`);
-    expect(text.split("\n")[0]).toBe("You are Rigel, QA, an AI agent that runs on the user's My Cloud, their always-on QuatiBot in the cloud, not on their own computer.");
-    expect(text).not.toContain("QUATI");
-    expect(liveInstructions({ name: "Rigel" }, { cloudHome: false }).split("\n")[0]).toBe("You are Rigel, an AI agent that runs in QuatiBot on the user's own computer.");
-  });
-
   it("says the bot changes things where it runs", () => {
-    const backend = (cloudHome: boolean) => liveInstructions({ name: "Rigel" }, { cloudHome }).split("\n").find((line) => line.startsWith("- Rigel:"));
-    expect(backend(true)).toContain("It researches, writes, changes things on My Cloud, and answers questions");
-    expect(backend(false)).toContain("It researches, writes, changes things on the computer, and answers questions");
-    expect(liveInstructions({ name: "Rigel" }, { cloudHome: true })).not.toMatch(/\bthe computer\b/);
+    expect(liveInstructions({ name: "Rigel" })).toContain("It researches, writes, changes things on the computer, and answers questions");
   });
 
   it("tells the voice to answer 'is it still working?' from the status notes, not by delegating", () => {
@@ -201,7 +179,7 @@ describe("live call summary line", () => {
 describe("session config for the untrusted client", () => {
   it("lets the client data channel send only session.close and receive captions", async () => {
     const fetchImpl = okFetch();
-    await createLiveSession({ key: "sk-test", sdp: "v=0\r\n", bot: { name: "Ada" } as never, history: [], cloudHome: false, fetchImpl });
+    await createLiveSession({ key: "sk-test", sdp: "v=0\r\n", bot: { name: "Ada" } as never, history: [],  fetchImpl });
     const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
     expect(body.session.client).toEqual({
       data_channel: {

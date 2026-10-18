@@ -8,7 +8,7 @@ import { WIDGET_TOOL_DEFINITIONS } from "./agents-widget-tools.ts";
 export interface CatalogProfile {
   skillAuthoring: boolean;
   voiceNotes: boolean;
-  cloudHome: boolean;
+
   memoryEnabled?: boolean;
   /** The section's Chief of Staff; the server refuses Chief-only tools to every other bot. */
   chief: boolean;
@@ -23,7 +23,7 @@ export function catalogProfileFromEnv(env: NodeJS.ProcessEnv): CatalogProfile {
   return {
     skillAuthoring: env.QUATI_SKILL_AUTHORING_ENABLED === "1",
     voiceNotes: env.QUATI_VOICE_NOTES === "1",
-    cloudHome: env.QUATI_CLOUD_HOME === "1",
+
     memoryEnabled: env.QUATI_MEMORY_ENABLED !== "0",
     chief: env.QUATI_CHIEF_OF_STAFF === "1",
     botId: env.QUATI_BOT_ID ?? "",
@@ -815,22 +815,7 @@ const CHIEF_ONLY_TOOL_NAMES = new Set([
 const CHIEF_TARGET_TOOL_NAMES = new Set(["propose_profile", "propose_model"]);
 const WATCHER_TOOL_NAMES = new Set(["create_options_card"]);
 
-const LOCAL_VM_TOOL_NAMES = new Set(["vm_exec"]);
-const CLOUD_HOME_SURFACE = {
-  type: "string", enum: ["auto", "cloud", "browser"],
-  description: "auto = suitable configured computer, cloud = the bot's cloud computer, browser = built-in browser. Omit to list. This server runs in the cloud: the user's own computer and a Local VM are not places here.",
-};
-
 export function availableTools(profile: CatalogProfile) {
-  const tools = catalogTools(profile);
-  return profile.cloudHome
-    ? tools.filter(tool => !LOCAL_VM_TOOL_NAMES.has(tool.name)).map(tool => tool.name === "select_computer"
-      ? { ...tool, inputSchema: { ...tool.inputSchema, properties: { surface: CLOUD_HOME_SURFACE } } }
-      : tool)
-    : tools;
-}
-
-function catalogTools(profile: CatalogProfile) {
   const BOT_SCOPED_TOOLS = TOOL_DEFINITIONS.filter((tool) =>
     (profile.botId === WATCHER_OPTIONS_CARD_BOT_ID || !WATCHER_TOOL_NAMES.has(tool.name)) &&
     (profile.memoryEnabled !== false || (tool.name !== "memory_update" && tool.name !== "memory_log")) &&

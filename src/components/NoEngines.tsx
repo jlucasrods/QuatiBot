@@ -50,8 +50,8 @@ export function NoEngines() {
                 {api.length > 0 && true && (<button type="button" data-no-engines-api-keys onClick={() => dispatch({ type: "toggleAppSettings", open: true, section: "connections" })} className="flex items-center gap-3 rounded-xl border border-hairline/40 bg-card p-3.5 text-left hover:bg-control/40">
                     <KeyRound size={16} className="shrink-0 text-ink-secondary"/>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[14px] font-medium text-ink">{t("cloudSignIn.apiKey")}</span>
-                      <span className="block text-[12px] text-ink-secondary">{t("cloudSignIn.apiKeyHint")}</span>
+                      <span className="block text-[14px] font-medium text-ink">{t("engines.apiKey")}</span>
+                      <span className="block text-[12px] text-ink-secondary">{t("engines.apiKeyHint")}</span>
                     </span>
                     <ArrowUpRight size={14} className="shrink-0 text-ink-secondary"/>
                   </button>)}

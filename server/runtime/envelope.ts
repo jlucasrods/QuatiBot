@@ -19,7 +19,6 @@ const OUTSIDE_SOURCE: Record<OriginSource, string> = {
   webhook: "a webhook",
   relay: "a relayed message",
   external_runtime: "an external runtime",
-  guest: "a Cloud guest",
   peer: "another bot",
   api: "the local API",
 };

@@ -121,7 +121,7 @@ export function SimpleBotPanel({ bot, derived, headerClassName, onClose, onAllSe
     const skills = useManagedSkills(bot);
     const { capabilities } = useDesktopCapabilities();
     const platform = capabilities.host?.platform ?? "other";
-    const placeSeat = usePlaceSeat(state.config, platform);
+    const placeSeat = usePlaceSeat(platform);
     const { patch, approvalMode, engine, trustedModesAvailable } = derived;
     // Antigravity's old Auto still executes as Ask: show that without changing the saved mode or granting Full.
     const displayedApprovalMode = engine?.driverKind === "antigravityAgent" && approvalMode === "auto" ? "ask" : approvalMode;

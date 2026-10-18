@@ -17,7 +17,6 @@ describe("QuatiBot's own listeners", () => {
     for (const port of [8080, 2019, 8820, 8821]) expect(desktop.has(port), String(port)).toBe(false);
     const server = staticOwnPorts("server", { QUATI_PORT: "9100", QUATI_WEBHOOK_PORT: "9101" });
     for (const port of [8080, 2019, 8810, 9100, 9101]) expect(server.has(port), String(port)).toBe(true);
-    expect(staticOwnPorts("cloud", {}).has(2019)).toBe(true);
   });
 
   it("includes every port this process listens on, the moment it listens", async () => {
@@ -96,9 +95,6 @@ describe("one gate per browser session", () => {
   it("applies the admin allow-list only on a self-hosted server", () => {
     const allow = { allow: ["10.0.0.0/8"] };
     expect(egress(allow).rules().allowed("10.1.2.3", 80)).toBe(true);
-    const cloud = new BrowserEgress();
-    cloud.configure({ host: "cloud", config: () => allow, listeners: new OwnListeners("cloud", { env: {}, ...noScans }), ownership });
-    expect(cloud.rules().allowed("10.1.2.3", 80)).toBe(false);
     expect(egress({ localNetwork: false }).rules().localNetwork).toBe(false);
     expect(egress().rules().localNetwork).toBe(true);
   });

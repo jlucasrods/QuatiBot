@@ -1,5 +1,4 @@
 // The OpenAI key never leaves the harness: the renderer only ever holds the SDP answer and its media connection.
-import { CLOUD_HOME_PLACE } from "./system-prompt.ts";
 import type { Message } from "./store.ts";
 
 export const LIVE_MODEL = "gpt-live-1";
@@ -65,12 +64,12 @@ export class LiveSessionError extends Error {
   }
 }
 
-export function liveInstructions(bot: LiveBot, { cloudHome = false }: { cloudHome?: boolean } = {}): string {
+export function liveInstructions(bot: LiveBot): string {
   const name = oneLine(bot.name) || "the agent";
   const title = oneLine(bot.title ?? "");
   const description = oneLine(bot.description ?? "").slice(0, 400);
-  const where = cloudHome ? `runs on ${CLOUD_HOME_PLACE}` : "runs in QuatiBot on the user's own computer";
-  const changes = cloudHome ? "My Cloud" : "the computer";
+  const where = "runs in QuatiBot on the user's own computer";
+  const changes = "the computer";
   return [
     `You are ${name}${title ? `, ${title}` : ""}, an AI agent that ${where}.${description ? ` ${description}` : ""}`,
     `To the user you are one assistant, ${name}, and you speak in the first person. Your work — looking things up, using your tools, files and memory, researching, deciding, and answering anything that needs facts this conversation does not hold — happens when you delegate. Delegating is how you think and act; it is not someone else.`,
@@ -128,7 +127,7 @@ export interface CreateLiveSessionInput {
   sdp: string;
   bot: LiveBot;
   history: LiveHistoryMessage[];
-  cloudHome: boolean;
+
   voice?: string;
   fetchImpl?: typeof fetch;
   url?: string;
@@ -146,7 +145,7 @@ export async function createLiveSession(input: CreateLiveSessionInput): Promise<
   const body = {
     session: {
       model: LIVE_MODEL,
-      instructions: liveInstructions(input.bot, { cloudHome: input.cloudHome }),
+      instructions: liveInstructions(input.bot),
       delegation: { type: "client" },
       audio: { output: { voice: liveVoice(input.voice) } },
       client: { data_channel: LIVE_DATA_CHANNEL },

@@ -48,7 +48,7 @@ export interface BotMessageRouteDeps {
   directTurnDispatchClaims: { get(threadId: string): { threadId: string } | undefined };
   groupSpeakers: ReadonlyMap<string, { botId: string }>;
   desktopManaged: boolean;
-  cloudHome: boolean;
+
   DirectSendRefused: abstract new (...args: never[]) => { readonly status: number; readonly body: Record<string, unknown> };
   acceptDirectSend(
     input: {
@@ -64,9 +64,7 @@ export interface BotMessageRouteDeps {
   }): Promise<Message>;
   usageTriggerFor(auth: RequestAuth): UsageTrigger;
   messageSender(auth: RequestAuth): ResolvedSender | undefined;
-  cloudGuestSendRefusal(auth: RequestAuth, threadId: string): string | null;
-  cloudThreadRefusal(auth: RequestAuth, threadId: string): string | null;
-  cloudOwnerSession(auth: RequestAuth): boolean;
+
   cardAnswerRefusal(auth: RequestAuth, threadId: string, requestId: string, behavior: string): string | null;
   commandRememberRefusal(auth: RequestAuth, threadId: string, requestId: string, behavior: string): string | null;
   requestBehavior(value: unknown): Behavior | null;
@@ -85,7 +83,7 @@ export interface BotMessageRouteDeps {
   answeringCardAs(auth: RequestAuth, threadId: string, requestId: string, work: () => Promise<unknown>): Promise<void>;
   resolveAndSendTrust(res: ServerResponse, threadId: string, requestId: string, behavior: Behavior): boolean;
   resolveAndSendTeamSetup(res: ServerResponse, args: { botId: string; threadId: string; requestId: string; behavior: string }, ownerReview: boolean): Promise<boolean>;
-  resolveAndSendRoutine(res: ServerResponse, args: CardAnswer, ownersAnswer?: boolean): boolean;
+  resolveAndSendRoutine(res: ServerResponse, args: CardAnswer): boolean;
   resolveAndSendProfile(res: ServerResponse, args: CardAnswer): boolean;
   resolveAndSendModel(res: ServerResponse, args: CardAnswer): boolean;
   resolveSkillRequest(args: CardAnswer & { behavior: Behavior; reviewedSha256?: string }): SkillResolution;
@@ -122,9 +120,9 @@ const guardedSendSchema = z.object({
 export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler {
   const {
     store, registry, handoffs, directTurnDispatchClaims, groupSpeakers,
-    desktopManaged: DESKTOP_MANAGED, cloudHome: CLOUD_HOME, DirectSendRefused,
-    acceptDirectSend, directSendRefusal, startTurn, usageTriggerFor, messageSender, cloudGuestSendRefusal, cloudThreadRefusal,
-    cloudOwnerSession, cardAnswerRefusal, commandRememberRefusal, requestBehavior, requestedTaskBot, botForThread, threadBusy,
+    desktopManaged: DESKTOP_MANAGED,  DirectSendRefused,
+    acceptDirectSend, directSendRefusal, startTurn, usageTriggerFor, messageSender,
+     cardAnswerRefusal, commandRememberRefusal, requestBehavior, requestedTaskBot, botForThread, threadBusy,
     botAtThreadCapacity, parksBehindCoordination, activeGroupTurnForBot, runningTurnInstance, engineSteersImages, resolveReplyTarget,
     turnSelection, clearUnattended, drainQueuedSends, answeringCardAs, resolveAndSendTrust, resolveAndSendTeamSetup,
     resolveAndSendRoutine, resolveAndSendProfile, resolveAndSendModel, resolveSkillRequest, sendSkillResolution, answerRequest,
@@ -164,8 +162,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
         return json(res, 400, { error: "threadId must be a task id" });
       }
       const threadId = body.threadId ?? bot.threadId;
-      const notYours = cloudGuestSendRefusal(auth, threadId);
-      if (notYours) return json(res, 403, { error: notYours });
       const onBehalfOf = guardedBody?.data?.onBehalfOf;
       const trigger: UsageTrigger = onBehalfOf
         ? { kind: "user", ...(onBehalfOf.email ? { email: onBehalfOf.email } : {}), ...(onBehalfOf.name ? { label: onBehalfOf.name } : {}) }
@@ -321,8 +317,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
       const body = await readBody(req);
       requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body?.threadId);
-      const notYours = cloudThreadRefusal(auth, bot.threadId);
-      if (notYours) return json(res, 403, { error: notYours });
       await startTurn(bot.id, "Summarize conversation context", {
         threadId: bot.threadId, compactOnly: true, cardContinuation: true, trigger: usageTriggerFor(auth),
       });
@@ -335,8 +329,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
       const body = await readBody(req);
       requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body.threadId);
-      const notYours = cloudThreadRefusal(auth, bot.threadId);
-      if (notYours) return json(res, 403, { error: notYours });
       const text = String(body.text ?? "").trim();
       if (!text) return json(res, 400, { error: "text required" });
       const threadMessages = store.messagesFor(bot.threadId);
@@ -363,8 +355,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
       }
       const replyTo = source.replyToId ? resolveReplyTarget(bot.threadId, source.replyToId) : undefined;
       const dataContext = parseDataContext(body.dataContext) ?? (text === source.text ? source.dataContext : undefined);
-      const message = await startTurn(bot.id, text, { threadId: bot.threadId, editedMessageId: messageId, replyTo, sendId, trigger: usageTriggerFor(auth), dataContext,
-        ...(CLOUD_HOME ? { sender: messageSender(auth) } : {}) });
+      const message = await startTurn(bot.id, text, { threadId: bot.threadId, editedMessageId: messageId, replyTo, sendId, trigger: usageTriggerFor(auth), dataContext });
       return json(res, 202, { ok: true, message });
     }
 
@@ -373,8 +364,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
       const body = await readBody(req);
       requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body.threadId);
-      const notYours = cloudThreadRefusal(auth, bot.threadId);
-      if (notYours) return json(res, 403, { error: notYours });
       if (threadBusy(bot.id, bot.threadId)) return json(res, 409, { error: "the thread is working — stop it before switching versions" });
       const leaf = store.setActiveLeaf(bot.threadId, String(body.messageId ?? ""));
       if (!leaf) return json(res, 404, { error: "no such message" });
@@ -406,7 +395,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
           threadId: bot.threadId,
           requestId: String(body.requestId),
           behavior,
-        }, auth.kind === "session" && cloudOwnerSession(auth))) return;
+        })) return;
         if (resolveAndSendProfile(res, {
           botId: bot.id,
           botName: bot.name,
@@ -496,7 +485,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
             threadId,
             requestId,
             behavior,
-          }, auth.kind === "session" && cloudOwnerSession(auth))) return;
+          })) return;
         }
         const setupCard = store.messagesFor(threadId).find((message) => message.card?.requestId === requestId && message.card.teamSetupRequest);
         if (setupCard) {

@@ -9,7 +9,7 @@ import { mergeTopicText } from "./memory-topics.ts";
 import { applyMoves, MAX_MOVES, organizeCandidates, organizePrompt, parseMoves } from "./memory-organize.ts";
 import { recordMemoryChange } from "./memory-journal.ts";
 import { applyTidy, contradictionCandidates, contradictionPrompt, parseContradictions, planChanges, planTidy, type Contradiction } from "./memory-tidy.ts";
-import { appendMemoryArchive, ARCHIVE_TOPIC, ensureWorkspace, listMemoryTopics, memoryDate, memoryEntry, memoryTopicIndex, readMemoryText, updateMemory, workspaceDir, writeMemoryFile, writeMemoryTopic } from "./workspace.ts";
+import { appendMemoryArchive, ARCHIVE_TOPIC, ensureWorkspace, listMemoryTopics, memoryDate, memoryEntry, memoryTopicIndex, updateMemory, workspaceDir, writeMemoryFile, writeMemoryTopic } from "./workspace.ts";
 
 export const CAPTURE_MAX_TURNS = 6;
 export const MODEL_TIMEOUT_MS = 60_000;
@@ -171,7 +171,7 @@ function dropPending(botId: string): void {
 
 function readRaw(botId: string, relative: string): string | null {
   try {
-    return readMemoryText(join(workspaceDir(botId), relative));
+    return readFileSync(join(workspaceDir(botId), relative), "utf8");
   } catch {
     return null;
   }

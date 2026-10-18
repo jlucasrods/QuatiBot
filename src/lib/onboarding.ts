@@ -18,7 +18,6 @@ export const EMPTY_ONBOARDING: OnboardingStatus = {
 export interface WelcomeViewer {
   hosted: boolean;
   canSave: boolean;
-  cloudHome?: boolean;
 }
 
 export const LOCAL_VIEWER: WelcomeViewer = { hosted: false, canSave: true };
@@ -32,19 +31,18 @@ export function spotlightsQuiet(viewer: WelcomeViewer | null): boolean {
 }
 
 export function welcomeViewer(session: unknown): WelcomeViewer {
-  const record = session && typeof session === "object" ? (session as { hosted?: unknown; scopes?: unknown; cloudHome?: unknown }) : {};
+  const record = session && typeof session === "object" ? (session as { hosted?: unknown; scopes?: unknown }) : {};
   return {
     hosted: record.hosted === true,
     canSave: Array.isArray(record.scopes) ? record.scopes.includes("admin") : true,
-    ...(record.cloudHome === true ? { cloudHome: true } : {}),
   };
 }
 
 export function welcomeDue(
   config: { onboarding?: OnboardingStatus } | null | undefined,
-  options: { remoteClient: boolean; legacyDone: boolean; hosted?: boolean; canSave?: boolean; cloudHome?: boolean },
+  options: { remoteClient: boolean; legacyDone: boolean; hosted?: boolean; canSave?: boolean },
 ): boolean {
-  if (options.remoteClient || options.cloudHome) return false;
+  if (options.remoteClient) return false;
   if (options.canSave === false) return false;
   if (options.hosted && options.canSave !== true) return false;
   if (!config) return false;
@@ -69,7 +67,6 @@ export function hintSeenPatch(
   if (hintSeen(record, id)) return null;
   return { onboarding: { hintsSeen: [...(record?.hintsSeen ?? []), id] } };
 }
-
 
 export type BeatId = "hello" | "reel" | "engines" | "permissions" | "bot";
 
@@ -118,7 +115,6 @@ export function flowDotsShown(beat: BeatId): boolean {
   return beat !== "reel";
 }
 
-
 export const DEFAULT_ADMIN_ORIGIN = "https://admin.quatibot.invalid";
 
 export function organisationSignIn<Bridge>(
@@ -149,7 +145,6 @@ export function engineSummary<Instance extends SummaryInstance>(
   const company = options.company ? instances.filter((instance) => instance.managed && ready(instance)).length : 0;
   return { ready: personal, setup, company, allReady: company > 0 || (personal.length > 0 && setup.length === 0) };
 }
-
 
 export function reducedMotion(): boolean {
   if (typeof document !== "undefined" && document.documentElement.dataset.reducedMotion === "true") return true;

@@ -42,24 +42,18 @@ function profiles(): Record<string, Record<string, string>> {
   const all: Record<string, Record<string, string>> = {};
   for (const chief of [true, false]) {
     for (const skills of [false, true]) {
-      for (const shared of [false, true]) {
         for (const voice of [false, true]) {
-          const name = [skills && "skills", shared && "shared", voice && "voice", !chief && "non-chief"]
+          const name = [skills && "skills", voice && "voice", !chief && "non-chief"]
             .filter(Boolean).join("+") || "default";
           all[name] = {
             QUATI_SKILL_AUTHORING_ENABLED: flag(skills),
-            QUATI_SHARED_COMPUTERS_ENABLED: flag(shared),
             QUATI_VOICE_NOTES: flag(voice),
             QUATI_CHIEF_OF_STAFF: flag(chief),
           };
         }
-      }
     }
   }
-  for (const name of ["skills+shared+voice", "skills+shared+voice+non-chief"]) {
-    all[`${name}+cloud-home`] = { ...all[name]!, QUATI_CLOUD_HOME: "1" };
-  }
-  all["skills+shared+voice+escalations"] = { ...all["skills+shared+voice"]!, QUATI_ESCALATIONS: "1" };
+  all["skills+voice+escalations"] = { ...all["skills+voice"]!, QUATI_ESCALATIONS: "1" };
   all["default+legacy-switches"] = { ...all.default!, QUATI_ROOM_TURN: "1", QUATI_OWN_THREAD_CREATION: "1", QUATI_EXTERNAL_RUNTIME: "1" };
   return all;
 }
@@ -68,33 +62,23 @@ const PROFILES = profiles();
 /** Refused by the server to every bot that is not a Chief of Staff. */
 const CHIEF_ONLY_TOOLS = ["create_bot", "list_team_setup", "propose_team_setup", "propose_bot_deletion", "create_room", "manage_room", "retry_thread"];
 /** The profile that mounts the most: its bridged list is checked in whole. */
-const FULL = "skills+shared+voice+escalations";
+const FULL = "skills+voice+escalations";
 
 /** Bytes of each bridged list when its budget was last set. A list may not
  * exceed this by more than 2%, and may not undercut it by more than 2%
  * either: lock a saving in by lowering the number. A Chief's list is longer
  * than another bot's only by the Chief-only names in find_tool's description. */
 const BUDGET_BASELINE: Record<string, number> = {
-  "default": 14613,
-  "voice": 15354,
-  "shared": 14653,
-  "shared+voice": 15394,
-  "skills": 14640,
-  "skills+voice": 15381,
-  "skills+shared": 14680,
-  "skills+shared+voice": 15421,
-  "non-chief": 14502,
-  "voice+non-chief": 15243,
-  "shared+non-chief": 14542,
-  "shared+voice+non-chief": 15283,
-  "skills+non-chief": 14529,
-  "skills+voice+non-chief": 15270,
-  "skills+shared+non-chief": 14569,
-  "skills+shared+voice+non-chief": 15310,
-  "skills+shared+voice+cloud-home": 15419,
-  "skills+shared+voice+non-chief+cloud-home": 15308,
-  "skills+shared+voice+escalations": 15667,
-  "default+legacy-switches": 14613,
+  "default": 14726,
+  "voice": 15467,
+  "skills": 14753,
+  "skills+voice": 15494,
+  "non-chief": 14615,
+  "voice+non-chief": 15356,
+  "skills+non-chief": 14642,
+  "skills+voice+non-chief": 15383,
+  "skills+voice+escalations": 15512,
+  "default+legacy-switches": 14726,
 };
 
 type RpcAnswer = { id: number; result?: { tools?: unknown[]; content?: Array<{ text: string }>; isError?: boolean }; error?: { code: number; message: string } };
@@ -252,7 +236,7 @@ describe("agents proxy tools/list golden with the tool bridge on", () => {
     }
     // So a bot that is not a Chief is not told the Chief-only tools exist.
     const nonChief = Object.keys(PROFILES).filter((name) => PROFILES[name]!.QUATI_CHIEF_OF_STAFF === "0");
-    expect(nonChief).toHaveLength(9);
+    expect(nonChief).toHaveLength(4);
     for (const name of nonChief) {
       for (const tool of CHIEF_ONLY_TOOLS) expect(wires[name], `${name}: ${tool}`).not.toContain(tool);
       const chiefTwin = name === "non-chief" ? "default" : name.replace("+non-chief", "");

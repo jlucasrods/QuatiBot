@@ -309,7 +309,7 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
     const selectedRoom = rooms.find((group) => group.id === groupId);
     const roomMembers = activeRoomMembers(selectedRoom, state.bots);
     const isRoomGoal = kind === "routine" && routineTarget === "room-goal";
-    const cloudHome = state.config?.cloudHome === true;
+
     const at = fromLocalDateAndTime(date, startTime, existingRoutine || existingCall ? initialAt : undefined);
     const endAt = at + durationMinutes * 60000;
     const selectedBots = botIds.flatMap((id) => bots.find((bot) => bot.id === id) ?? []);
@@ -683,11 +683,11 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
               {isRoomGoal ? <Target size={18} className="mt-2.5 shrink-0 text-ink-secondary"/> : runOn === "cloud" ? <Cloud size={18} className="mt-2.5 shrink-0 text-ink-secondary"/> : <Laptop size={18} className="mt-2.5 shrink-0 text-ink-secondary"/>}
               <div className="min-w-0 flex-1">
                 {isRoomGoal ? (<div className="rounded-xl border border-accent/35 bg-accent/[0.07] p-3">
-                    <div className="text-[12.5px] font-medium text-ink">{cloudHome ? "Runs on My Cloud" : "Runs on this computer"}</div>
+                    <div className="text-[12.5px] font-medium text-ink">{"Runs on this computer"}</div>
                     <div className="mt-1 text-[11px] leading-relaxed text-ink-secondary">QuatiBot keeps the group and its member hand-offs together for the full goal.</div>
                   </div>) : <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => setRunOn("quati")} className={cn("rounded-xl border p-3 text-left", runOn === "quati" ? "border-accent/60 bg-accent/10" : "border-hairline/50 bg-inset hover:bg-raised")}><div className="text-[12.5px] font-medium text-ink">Bot’s current setup</div><div className="mt-1 text-[11px] text-ink-secondary">Keeps its model and configured computer, including a self-hosted VPS.</div></button>
-                  <button type="button" disabled={!cloudReady || attachments.length > 0} onClick={() => setRunOn("cloud")} className={cn("rounded-xl border p-3 text-left disabled:cursor-not-allowed disabled:opacity-45", runOn === "cloud" ? "border-accent/60 bg-accent/10" : "border-hairline/50 bg-inset hover:bg-raised")}><div className="text-[12.5px] font-medium text-ink">{t("routines.runsOn.boat")}</div><div className="mt-1 text-[11px] text-ink-secondary">{t(cloudHome ? "routines.runsOn.boatHintCloudHome" : "routines.runsOn.boatHint")}</div></button>
+                  <button type="button" disabled={!cloudReady || attachments.length > 0} onClick={() => setRunOn("cloud")} className={cn("rounded-xl border p-3 text-left disabled:cursor-not-allowed disabled:opacity-45", runOn === "cloud" ? "border-accent/60 bg-accent/10" : "border-hairline/50 bg-inset hover:bg-raised")}><div className="text-[12.5px] font-medium text-ink">{t("routines.runsOn.boat")}</div><div className="mt-1 text-[11px] text-ink-secondary">{t("routines.runsOn.boatHint")}</div></button>
                 </div>}
               </div>
             </div>);
@@ -804,7 +804,6 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
 
           {error && <div className="ml-10 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2.5 text-[12.5px] text-danger"><CircleAlert size={15} className="mt-0.5 shrink-0"/>{error}</div>}
         </div>
-
 
         <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-hairline/40 bg-panel/95 px-5 py-3.5 backdrop-blur">
           <button onClick={onClose} className="rounded-lg px-4 py-2 text-[12.5px] text-ink-secondary hover:bg-raised hover:text-ink">Cancel</button>
@@ -1288,7 +1287,7 @@ export function EventDetails({ item, bots, onClose, onEdit, onCallChanged, onOpe
             .slice(0, 3)
         : [];
     const runOn = run?.runOn ?? routine?.runOn;
-    const runsOn = routineRunsOn({ roomGoal: isRoomGoal, runOn, computer: primary?.computer, cloudHome: state.config?.cloudHome === true });
+    const runsOn = routineRunsOn({ roomGoal: isRoomGoal, runOn, computer: primary?.computer });
     const resultsOwner = resultsThreadId
         ? [...state.bots, ...state.groups].find((owner) => owner.threadId === resultsThreadId || owner.tasks?.some((task) => task.threadId === resultsThreadId))
         : undefined;
@@ -1482,7 +1481,7 @@ export function RoutinesPage({ onBack, onOpenRoom }: {
     const [webhookCreateRequest, setWebhookCreateRequest] = useState(0);
     const [error, setError] = useState("");
     const visibleBots = state.bots.filter((bot) => !bot.hidden);
-    const webhooksAvailable = advanced && true;
+    const webhooksAvailable = advanced;
     const shownSection = section === "webhooks" && !webhooksAvailable ? "calendar" : section;
     const viewDays = layout === "day" ? 1 : 7;
     const rangeStart = viewDays === 7 ? startOfWeek(anchor) : startOfDay(anchor);

@@ -21,7 +21,6 @@ export interface MemoryFileInfo {
 }
 
 export interface MemoryOverview {
-  lendingReview?: LendingReview;
   botId: string;
   workspacePath: string;
   index: MemoryCapacity;
@@ -131,15 +130,6 @@ export function fetchUpkeepStatus(botId: string): Promise<UpkeepStatus> {
   return api(`/api/bots/${botId}/memory/upkeep`);
 }
 
-export interface LendingReview {
-  token: string;
-  changed: string[];
-}
-
-export function markMemoryReviewed(botId: string, token: string): Promise<{ ok: true; lendingReview: false }> {
-  return api(`/api/bots/${botId}/memory/reviewed`, { method: "POST", body: JSON.stringify({ token }) });
-}
-
 export function tidyMemoryNow(botId: string): Promise<{ report: TidyReport; overview: MemoryOverview }> {
   return api(`/api/bots/${botId}/memory/tidy`, { method: "POST" });
 }
@@ -159,7 +149,6 @@ export type MemoryOpenTarget = "obsidian" | "folder";
 export function openMemoryLocation(botId: string, target: MemoryOpenTarget): Promise<{ ok: boolean; workspacePath: string }> {
   return api(`/api/bots/${botId}/memory/open`, { method: "POST", body: JSON.stringify({ target }) });
 }
-
 
 export function formatBytes(bytes: number): string {
   return bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 102.4) / 10} KB`;

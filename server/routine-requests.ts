@@ -254,7 +254,6 @@ const storedUndoSchema = z.object({
   schedule: storedScheduleSchema.optional(),
   appliedUpdatedAt: z.number().int().nonnegative().optional(),
   before: storedSnapshotSchema.optional(),
-  ownersBefore: z.boolean().optional(),
 }).strict();
 const routineRequestCardDataSchema = z.object({
   version: z.literal(1),
@@ -382,7 +381,6 @@ export type UndoRoutineRequestResult =
       action: RoutineRequestOperation["action"];
       routineId: string;
       restoredId?: string;
-      ownersBefore?: boolean;
     };
 
 export class RoutineRequestError extends Error {
@@ -1383,7 +1381,6 @@ export class RoutineRequestService {
       action: operation.action,
       routineId,
       ...(restoredId ? { restoredId } : {}),
-      ...(undo?.ownersBefore !== undefined ? { ownersBefore: undo.ownersBefore } : {}),
     };
   }
 

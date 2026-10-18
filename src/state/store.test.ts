@@ -1969,10 +1969,6 @@ describe("live config frames", () => {
         expect(configStatusFromFrame({ ...baseFrame, automaticRecovery }).automaticRecovery).toEqual(automaticRecovery);
         expect(configStatusFromFrame({ ...baseFrame, automaticRecovery: { enabled: false } }).automaticRecovery).toEqual({ enabled: false });
     });
-    it("keeps an QUATI Cloud home's flag through live config refreshes, and adds none elsewhere", () => {
-        expect(configStatusFromFrame({ ...baseFrame, cloudHome: true }).cloudHome).toBe(true);
-        expect(configStatusFromFrame(baseFrame)).not.toHaveProperty("cloudHome");
-    });
     it("keeps saved provider key status after a config SSE frame lands after a save's own response", () => {
         const saved = reducer(initialState, {
             type: "configStatus",

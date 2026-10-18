@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { ATTACHMENTS_DIR } from "../../attachments.ts";
-import { cloudHomeConfigured } from "../../cloud-home.ts";
+
 import { DATA_DIR, OPENCODE_PROVIDER_ENV } from "../../config.ts";
 import type { ModelCatalog, ProviderErrorCode } from "../../contracts.ts";
 import { killCliTree, spawnCli } from "../../procs.ts";
@@ -164,13 +164,7 @@ export function resetOpenCodeModelCache(): void {
   discoveryFolder = null;
 }
 
-export function openCodeProviderKeysAllowed(state: { cloudHome: boolean; sharedSignIn: boolean }): boolean {
-  return !state.cloudHome && !state.sharedSignIn;
-}
-
-let providerKeysAllowed = () => openCodeProviderKeysAllowed({
-  cloudHome: cloudHomeConfigured(), sharedSignIn: false,
-});
+let providerKeysAllowed = () => true;
 
 export function setOpenCodeProviderKeyPolicy(allowed: () => boolean): void {
   providerKeysAllowed = allowed;

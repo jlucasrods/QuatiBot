@@ -558,8 +558,6 @@ describe("Group Local VM ownership on the real isolated server", () => {
       const available = await (await call("GET")).json() as any;
       expect(available.canSelect).toBe(true);
       expect(available.options.map((option: any) => option.surface)).toEqual(["cloud", "vm", "local", "browser"]);
-      expect(before.mcpConfig.mcpServers.agents.env.QUATI_CLOUD_HOME).toBe("0");
-      expect(before.systemPrompt).not.toContain("You run on the user's QUATI Cloud");
       expect(available.options).toContainEqual(expect.objectContaining({ surface: "vm", available: true }));
       expect(available.options).toContainEqual(expect.objectContaining({ surface: "cloud", ready: false, canCreate: true }));
       expect(await (await call("POST", { surface: "auto" })).json()).toMatchObject({ status: "pending", surface: "vm" });

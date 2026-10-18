@@ -177,7 +177,6 @@ export class SessionRegistry {
   private readonly options: SessionStoreOptions;
   private readonly openMarker: string;
   private closed = false;
-  private adminOnly: string | null = null;
 
   // No parameter properties: Node's strip-only TypeScript mode only erases types.
   constructor(options: SessionStoreOptions) {
@@ -266,26 +265,12 @@ export class SessionRegistry {
     for (const listener of this.onRevoked) listener(sessionId);
   }
 
-  /** From now on nothing without admin scope is opened, redeemed, issued or accepted; the caller revokes stored sessions. */
-  requireAdmin(refusal: string): void {
-    this.adminOnly = refusal;
-  }
-
-  private personal(scopes: readonly Scope[]): boolean {
-    return this.adminOnly !== null && !scopes.includes("admin");
-  }
-
-  private refusePersonal(scopes: readonly Scope[]): void {
-    if (this.personal(scopes)) throw Object.assign(new Error(this.adminOnly!), { status: 403, code: "cloud_personal" });
-  }
-
   openPairing(input: { scopes?: Scope[]; label?: string; ttlMs?: number; browser?: boolean; owner?: string } = {}): { id: string; code: string; credential: string; expiresAt: number } {
     this.prune();
     const now = this.now();
     const code = generatePairingCode();
     const credential = generatePairingCredential();
     const scopes = input.scopes?.length ? [...new Set(input.scopes)] : [...SCOPES];
-    this.refusePersonal(scopes);
     const pairing: PairingCode = {
       id: randomUUID(),
       codeHash: sha256(code),
@@ -373,7 +358,6 @@ export class SessionRegistry {
     }
     const [pairing] = this.pairings.splice(index, 1);
     this.failures.delete(input.source);
-    if (this.personal(pairing.scopes)) return { ok: false, status: 403, error: this.adminOnly! };
     const token = `quati_sess_${randomBytes(32).toString("base64url")}`;
     const record: SessionRecord = {
       id: randomUUID(),
@@ -394,7 +378,6 @@ export class SessionRegistry {
   }
 
   issue(input: { label: string; scopes: Scope[]; userId?: string; email?: string }): { token: string; session: PublicSession } {
-    this.refusePersonal(input.scopes);
     this.prune();
     const now = this.now();
     const token = `quati_sess_${randomBytes(32).toString("base64url")}`;
@@ -466,7 +449,7 @@ export class SessionRegistry {
     const hash = sha256(token);
     const now = this.now();
     const record = this.sessions.find((s) => sameDigest(s.tokenHash, hash));
-    if (!record || record.expiresAt <= now || this.personal(record.scopes)) return null;
+    if (!record || record.expiresAt <= now) return null;
     const lastWrite = this.lastSeenWrites.get(record.id) ?? 0;
     if (now - lastWrite >= LAST_SEEN_WRITE_INTERVAL_MS) {
       record.lastSeenAt = now;
@@ -494,7 +477,7 @@ export class SessionRegistry {
 
   isLive(sessionId: string): boolean {
     this.prune();
-    return this.sessions.some((s) => s.id === sessionId && !this.personal(s.scopes));
+    return this.sessions.some((s) => s.id === sessionId);
   }
 
   list(): PublicSession[] {
@@ -529,6 +512,6 @@ export class SessionRegistry {
     this.tickets.delete(hash);
     const now = this.now();
     const record = this.sessions.find((s) => s.id === entry.sessionId);
-    return record && record.expiresAt > now && !this.personal(record.scopes) ? record : null;
+    return record && record.expiresAt > now ? record : null;
   }
 }

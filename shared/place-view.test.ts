@@ -14,7 +14,7 @@ const PARAMS: PlaceParams = {
 };
 
 const facts = (patch: Partial<PlaceFacts> = {}): PlaceFacts => ({
-  place: "cloud", server: "my-cloud", bot: "Scout", boat: "included", role: "admin", toolsAllowComputer: true, browserOn: true,
+  place: "cloud", server: "linux", bot: "Scout", boat: "included", role: "admin", toolsAllowComputer: true, browserOn: true,
   engine: { name: "Claude", model: "Claude Fable 5", computer: true, browser: true, signedIn: true },
   ...patch,
 });
@@ -23,7 +23,7 @@ describe("U1: one line and at most one action for every state", () => {
   it("words every state whole, for an Admin and for a User", () => {
     for (const state of PLACE_STATES) {
       for (const role of ["admin", "user"] as const) {
-        const view = placeViewOf(state, PARAMS, { role, server: "my-cloud" });
+        const view = placeViewOf(state, PARAMS, { role, server: "linux" });
         expect(view.short.trim(), state).not.toBe("");
         expect(view.line.trim(), state).not.toBe("");
         // one message: no second paragraph, no placeholder left unfilled
@@ -36,8 +36,8 @@ describe("U1: one line and at most one action for every state", () => {
 
   it("gives a User no action that changes a setting, and says who can", () => {
     for (const state of PLACE_STATES) {
-      const admin = placeViewOf(state, PARAMS, { role: "admin", server: "my-cloud" });
-      const user = placeViewOf(state, PARAMS, { role: "user", server: "my-cloud" });
+      const admin = placeViewOf(state, PARAMS, { role: "admin", server: "linux" });
+      const user = placeViewOf(state, PARAMS, { role: "user", server: "linux" });
       if (!admin.action || admin.action.id === "try-again" || admin.action.id === "watch" || admin.action.id === "clear-pin" || admin.action.id === "open-computer-panel") {
         expect(user, state).toEqual(admin);
         continue;
@@ -63,7 +63,7 @@ describe("U1: one line and at most one action for every state", () => {
   it("keeps jargon out of what subscribers read", () => {
     const boatAllowed = new Set<PlaceState>(["cc-needs-key", "cc-provider"]);
     for (const state of PLACE_STATES) {
-      const view = placeViewOf(state, { ...PARAMS, words: "x" }, { role: "admin", server: "my-cloud" });
+      const view = placeViewOf(state, { ...PARAMS, words: "x" }, { role: "admin", server: "linux" });
       const words = `${view.short} ${view.line} ${view.action?.label ?? ""}`;
       if (!boatAllowed.has(state)) expect(words, state).not.toMatch(/Boat/);
       expect(words, state).not.toMatch(/\bbox\b|QUATI|Hosted desktop|Cloud box|Works on to Auto|\btools?\b/i);
@@ -76,7 +76,7 @@ describe("U1: one line and at most one action for every state", () => {
   });
 
   it("uses the plan's state table copy", () => {
-    const admin = { role: "admin" as const, server: "my-cloud" as const };
+    const admin = { role: "admin" as const, server: "linux" as const };
     expect(placeViewOf("cc-no-hours", { hours: 50, month: "November" }, admin)).toMatchObject({
       short: "No hours left", line: "This month's 50 cloud computer hours are used up. They come back on 1 November.",
       action: { id: "see-plan", label: "See your plan" },
@@ -90,9 +90,6 @@ describe("U1: one line and at most one action for every state", () => {
     expect(placeViewOf("cc-no-hours", {}, admin).line).toBe("This month's cloud computer hours are used up.");
     expect(placeViewOf("cc-unavailable", {}, admin)).toMatchObject({
       short: "Not available now", line: "Cloud computers can't start right now. It isn't anything you did.", action: { id: "try-again" },
-    });
-    expect(placeViewOf("cc-on-my-cloud", {}, { role: "admin", server: "mac" })).toMatchObject({
-      line: "Cloud computers from your plan work for bots on My Cloud for now.", action: { id: "open-my-cloud", label: "Open My Cloud" },
     });
     expect(placeViewOf("auto", {}, { role: "admin", server: "mac" }).line)
       .toBe("Uses the built-in browser, a private desktop on this computer, or this computer's screen, whichever the task needs.");
@@ -108,7 +105,6 @@ describe("placeState", () => {
     expect(placeState(facts({ engine: { name: "Claude", computer: true, browser: true, signedIn: false } }))).toEqual({
       state: "cc-sign-in", params: { bot: "Scout", engine: "Claude" },
     });
-    expect(placeState(facts({ server: "mac", boat: "none", plan: true })).state).toBe("cc-on-my-cloud");
     expect(placeState(facts({ server: "pc", boat: "none" })).state).toBe("cc-needs-key");
     expect(placeState(facts({ server: "mac", boat: "own-key" })).state).toBe("cc-new");
     expect(placeState(facts({ computer: "starting" })).state).toBe("cc-starting");
@@ -134,11 +130,11 @@ describe("placeState", () => {
   });
 
   it("words the Auto line for where this server runs", () => {
-    expect(placeView(facts({ place: "auto" })).line).toMatch(/starts its cloud computer by itself/);
+    expect(placeView(facts({ place: "auto" })).line).toMatch(/built-in browser, or a running Local VM/);
     expect(placeView(facts({ place: "auto", server: "pc" })).line).not.toMatch(/Local VM/);
     expect(placeView(facts({ place: "auto", server: "linux" })).line).toMatch(/Local VM/);
     expect(placeView(facts({ engine: { name: "Claude", computer: true, browser: true, signedIn: false } })).line)
-      .toBe("Sign in to Claude on My Cloud first. Scout uses it on the cloud computer too.");
+      .toBe("Sign in to Claude first. Scout uses it on the cloud computer too.");
   });
 });
 

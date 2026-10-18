@@ -89,7 +89,6 @@ describe("live call media", () => {
 
   it.each([
     ["the Mac app's own page", "desktop", { available: true, engine: "apple-speech", onDevice: true }],
-    ["My Cloud in the desktop app", "desktop", { reasonCode: "remote-server" }],
     ["the Windows app", "desktop", { reasonCode: "unsupported-platform" }],
     ["a web browser", "web", { reasonCode: "desktop-app-required" }],
   ] as const)("from %s, starts a %s call", async (_where, client, dictation) => {

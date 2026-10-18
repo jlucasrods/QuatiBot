@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CALL_MODE_KEY, CALL_MODES, callModeHint, effectiveCallMode, liveDisclosure, parseCallMode } from "./call-mode";
+import { CALL_MODE_KEY, CALL_MODES, callModeHint, effectiveCallMode, parseCallMode } from "./call-mode";
 import { t } from "./i18n";
-import { localeChoices, locales } from "@/locales";
 
 describe("call mode", () => {
   afterEach(() => {
@@ -21,21 +20,6 @@ describe("call mode", () => {
     const live = callModeHint("live");
     expect(live).toContain("A Live call sends your voice to OpenAI, along with the chat's recent messages, the bot's answers and the details of any approval it asks for. The OpenAI key stays on your computer.");
     expect(callModeHint("turns")).toBe("You talk, then the bot answers in its own voice. Listening stays on this computer.");
-  });
-
-  it("says the OpenAI key stays on the Cloud when the chat is on the person's Cloud", () => {
-    const live = callModeHint("live", { cloudHome: true });
-    expect(live).toContain("A Live call sends your voice to OpenAI, along with the chat's recent messages, the bot's answers and the details of any approval it asks for. The OpenAI key stays on My Cloud.");
-    expect(live).not.toContain("your computer");
-    expect(liveDisclosure({ cloudHome: true })).toBe(t("call.live.disclosureCloud"));
-    expect(liveDisclosure({ cloudHome: false })).toBe(t("call.live.disclosure"));
-  });
-
-  it("writes both disclosures in the same language in every pack", () => {
-    for (const { code } of localeChoices) {
-      const pack = locales[code];
-      expect(Object.hasOwn(pack, "call.live.disclosureCloud"), code).toBe(Object.hasOwn(pack, "call.live.disclosure"));
-    }
   });
 
   it("makes the call Live wherever taking turns can't run, and keeps the choice where it can", () => {

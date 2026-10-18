@@ -4,7 +4,7 @@ import type { ApprovalMode } from "../../shared/approval-mode.ts";
 /** Where the work ultimately started. Immutable down the whole tree. */
 export type OriginKind = "person" | "routine" | "outside";
 /** The concrete source behind an outside origin. */
-export type OriginSource = "chat" | "routine" | "webhook" | "relay" | "external_runtime" | "guest" | "peer" | "api";
+export type OriginSource = "chat" | "routine" | "webhook" | "relay" | "external_runtime" | "peer" | "api";
 
 export interface Origin {
   kind: OriginKind;

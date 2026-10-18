@@ -31,7 +31,6 @@ function setup(engine: "chrome" | "agent-browser" | undefined) {
     activeInternalGenerationByThread: new Map([[turn.threadId, turn.generation]]),
     mintInternalCapability: (capability) => { minted.push(capability); return "capability-token"; },
     DESKTOP_MANAGED: true,
-    CLOUD_HOME: null,
     PORT: 4100,
   });
   hosts.push(host);

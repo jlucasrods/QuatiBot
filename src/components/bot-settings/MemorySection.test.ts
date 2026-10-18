@@ -6,7 +6,7 @@ import type { MemoryCapacity, MemoryFileInfo, MemoryJournalRow } from "@/lib/mem
 vi.mock("../DesktopCapabilities", () => ({
     useDesktopCapabilities: () => ({ capabilities: { host: { homeDir: undefined, platform: "other" } } }),
 }));
-const { ConflictNotice, LendingReviewNotice, MemoryFileRows, MemoryGauge, MemoryJournalList, MemoryUpkeepCard } = await import("./MemorySection");
+const { ConflictNotice, MemoryFileRows, MemoryGauge, MemoryJournalList, MemoryUpkeepCard } = await import("./MemorySection");
 // renderToStaticMarkup HTML-escapes quotes and apostrophes; decode before comparing against plain-text fixtures.
 function render(element: Parameters<typeof renderToStaticMarkup>[0]): string {
     return renderToStaticMarkup(element).replace(/&#x27;/g, "'").replace(/&quot;/g, '"');
@@ -167,33 +167,5 @@ describe("MemoryUpkeepCard", () => {
         expect(can).not.toContain("can't make the quick background model call");
         const off = render(createElement(MemoryUpkeepCard, { enabled: true, status: { enabled: true, modelSteps: false }, tidying: false, onToggle: noop, onTidy: noop, rooms: { ...rooms, enabled: false } }));
         expect(off).toContain(line);
-    });
-});
-describe("LendingReviewNotice", () => {
-    const changed = ["MEMORY.md", "/srv/projects/site/CLAUDE.md"];
-    it("says plainly why the bot cannot use the Mac, names what changed, and marks it reviewed in one click", () => {
-        const onReviewed = vi.fn();
-        const markup = render(createElement(LendingReviewNotice, { changed, stale: false, busy: false, onReviewed }));
-        expect(markup).toContain("This bot's memory was changed in a conversation you didn't write, so it can't use your computer.");
-        expect(markup).toContain("Changed:");
-        for (const file of changed)
-            expect(markup).toContain(`>${file}<`);
-        expect(markup).toContain(">Mark reviewed<");
-        const tree = LendingReviewNotice({ changed, stale: false, busy: false, onReviewed }) as {
-            props: {
-                children: Array<{
-                    type: string;
-                    props: {
-                        onClick?: () => void;
-                    };
-                }>;
-            };
-        };
-        tree.props.children.find((child) => child.type === "button")!.props.onClick!();
-        expect(onReviewed).toHaveBeenCalledOnce();
-    });
-    it("says so when the memory changed again after the owner looked", () => {
-        const markup = render(createElement(LendingReviewNotice, { changed, stale: true, busy: false, onReviewed: vi.fn() }));
-        expect(markup).toContain("The memory changed again after you looked");
     });
 });

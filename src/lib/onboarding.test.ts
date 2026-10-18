@@ -74,8 +74,8 @@ describe("welcomeViewer", () => {
     expect(welcomeViewer({})).toEqual(LOCAL_VIEWER);
     expect(welcomeViewer(null)).toEqual(LOCAL_VIEWER);
     expect(welcomeViewer({ scopes: ["admin"], hosted: "yes" })).toEqual({ hosted: false, canSave: true });
-    expect(welcomeViewer({ kind: "session", scopes: ["admin", "client"], cloudHome: true })).toEqual({ hosted: false, canSave: true, cloudHome: true });
-    expect(welcomeViewer({ kind: "session", scopes: ["admin", "client"], cloudHome: "yes" })).toEqual({ hosted: false, canSave: true });
+    expect(welcomeViewer({ kind: "session", scopes: ["admin", "client"] })).toEqual({ hosted: false, canSave: true });
+    expect(welcomeViewer({ kind: "session", scopes: ["admin", "client"] })).toEqual({ hosted: false, canSave: true });
   });
 
   it("calls only a hosted session without admin scope a hosted member", () => {

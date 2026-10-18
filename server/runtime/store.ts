@@ -24,7 +24,7 @@ const assignmentSchema = z.object({
   depth: z.number().int().nonnegative(),
   origin: z.object({
     kind: z.enum(["person", "routine", "outside"]),
-    source: z.enum(["chat", "routine", "webhook", "relay", "external_runtime", "guest", "peer", "api"]),
+    source: z.enum(["chat", "routine", "webhook", "relay", "external_runtime", "peer", "api"]),
     ref: z.string().optional(),
     quote: z.string().optional(),
     onBehalfOf: z.string().optional(),

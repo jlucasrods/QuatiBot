@@ -24,7 +24,9 @@ import {
 } from "./memory-journal.ts";
 import { MEMORY_INDEX, hashMemoryText, readMemoryDoc } from "./memory-store.ts";
 import { WORKSPACES_DIR, appendMemoryLog, ensureWorkspace, memoryLogPath, workspaceDir } from "./workspace.ts";
-import * as workspace from "./workspace.ts";
+import * as fs from "node:fs";
+
+vi.mock("node:fs", { spy: true });
 
 let counter = 0;
 const freshBot = () => `journal-bot-${process.pid}-${counter++}`;
@@ -304,7 +306,7 @@ describe("turn boundary", () => {
     mkdirSync(logDir, { recursive: true });
     writeFileSync(topic, "stable note\n");
     writeFileSync(join(logDir, "2026-09-10.md"), "- stable line\n");
-    const read = vi.spyOn(workspace, "readMemoryText");
+    const read = vi.spyOn(fs, "readFileSync");
     try {
       beginMemoryTurn(bot, "t1");
       expect(read).toHaveBeenCalled();
@@ -332,7 +334,7 @@ describe("turn boundary", () => {
     beginMemoryTurn(bot, "t1");
     expect(endMemoryTurn("t1")).toEqual([]);
     writeFileSync(topic, "first and second\n");
-    const read = vi.spyOn(workspace, "readMemoryText").mockImplementation(() => {
+    const read = vi.spyOn(fs, "readFileSync").mockImplementation(() => {
       throw Object.assign(new Error("denied"), { code: "EACCES" });
     });
     try {

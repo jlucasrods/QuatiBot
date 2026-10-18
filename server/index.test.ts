@@ -5585,7 +5585,6 @@ describe("harness HTTP API", () => {
     }
   });
 
-
   it("imports a team as a project: one room, on a folder", async () => {
     const seed = await api("POST", "/api/bots", { name: "Planner", title: "Lead", description: "Plans", color: "purple" });
     const exported = await api("POST", "/api/teams/export", { name: "Client XY" });
@@ -12099,8 +12098,6 @@ describe("bot memory API", () => {
       });
       expect(before.body.sections.map((s: { id: string }) => s.id)).not.toContain("soul");
       expect(before.body.sections.map((s: { id: string }) => s.id)).toContain("memory");
-      expect(before.body.sections.map((s: { id: string }) => s.id)).not.toContain("cloud-home");
-      expect((await api("GET", "/api/config")).body).not.toHaveProperty("cloudHome");
       expect(before.body.totalBytes).toBe(
         before.body.sections.reduce((n: number, s: { bytes: number }) => n + s.bytes, 0),
       );

@@ -10,12 +10,8 @@ export const CALL_MODES: ReadonlyArray<{ id: CallMode; label: LocaleKey }> = [
   { id: "live", label: "call.mode.live" },
 ];
 
-export function liveDisclosure({ cloudHome = false }: { cloudHome?: boolean } = {}): string {
-  return t(cloudHome ? "call.live.disclosureCloud" : "call.live.disclosure");
-}
-
-export function callModeHint(mode: CallMode, where: { cloudHome?: boolean } = {}): string {
-  return mode === "live" ? `${t("call.mode.liveHint")} ${liveDisclosure(where)}` : t("call.mode.turnsHint");
+export function callModeHint(mode: CallMode): string {
+  return mode === "live" ? `${t("call.mode.liveHint")} ${t("call.live.disclosure")}` : t("call.mode.turnsHint");
 }
 
 export function effectiveCallMode(stored: CallMode, { turnsHere, canLive }: { turnsHere: boolean; canLive: boolean }): CallMode {

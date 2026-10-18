@@ -176,7 +176,6 @@ it("offers the working engine once, and on the person's answer switches this con
 it.each([
   { name: "Not now", behavior: "answer", message: "Not now", outcome: "answered" },
   { name: "typed words that name no offered engine", behavior: "answer", message: "use whichever is fastest", outcome: "answered" },
-  // Decline-only service trust (hosted, Cloud home, QUATI_LOOPBACK_TRUST=service): a decline naming an engine chooses nothing.
   { name: "a decline that carries the offered engine's label", behavior: "deny", message: BACKUP, outcome: "rejected" },
   { name: "an allow that carries the offered engine's label", behavior: "allow", message: BACKUP, outcome: "rejected" },
 ])("changes nothing on $name", async ({ behavior, message, outcome }) => {

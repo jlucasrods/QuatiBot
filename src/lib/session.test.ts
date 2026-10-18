@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { BROWSER_SIGN_IN_FAILED, cloudOwnerOf, isConnected, isOwnerOrAdmin, previewBrowserSignIn, readSessionState, reasonWorthShowing, SERVICE_TRUST_REASON, signInWithBrowserGrant, takeBrowserSignInFromLocation, takePairingCodeFromLocation, } from "./session";
+import { BROWSER_SIGN_IN_FAILED, isConnected, isOwnerOrAdmin, previewBrowserSignIn, readSessionState, reasonWorthShowing, SERVICE_TRUST_REASON, signInWithBrowserGrant, takeBrowserSignInFromLocation, takePairingCodeFromLocation } from "./session";
 describe("what the pair page says about why it was shown", () => {
     it("stays quiet for the ordinary no-session case and repeats anything else", () => {
         expect(reasonWorthShowing("forbidden: this request came through a proxy (pair this device to use the server remotely)")).toBeNull();
@@ -63,12 +63,6 @@ describe("the QUATI Cloud page's \"Use in your browser\" link", () => {
         const spent = (async () => new Response(JSON.stringify({ error: "pairing code is wrong or has expired" }), { status: 401 })) as unknown as typeof fetch;
         expect(await signInWithBrowserGrant(credential, "attempt-page-0002", spent)).toEqual({ ok: false, error: "pairing code is wrong or has expired" });
         expect(reasonWorthShowing(BROWSER_SIGN_IN_FAILED)).toBe(BROWSER_SIGN_IN_FAILED);
-    });
-    it("names the Cloud's owner afterwards only for a browser sign-in's session on a Cloud home", () => {
-        expect(cloudOwnerOf({ kind: "session", cloudHome: true, owner: "ada@example.test" })).toBe("ada@example.test");
-        for (const session of [{ kind: "session", owner: "ada@example.test" }, { kind: "session", cloudHome: true }, { kind: "loopback" },
-            { cloudHome: true, owner: 7 }, { cloudHome: "yes", owner: "ada@example.test" }, null, undefined])
-            expect(cloudOwnerOf(session)).toBeNull();
     });
 });
 describe("who the served UI is on its own machine", () => {

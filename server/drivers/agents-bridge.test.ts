@@ -25,13 +25,12 @@ import {
 } from "./agents-bridge.ts";
 
 const flag = (on: boolean) => (on ? "1" : "0");
-const profile = (options: { chief?: boolean; skills?: boolean; shared?: boolean; voice?: boolean; cloudHome?: boolean; memory?: boolean; botId?: string } = {}): CatalogProfile =>
+const profile = (options: { chief?: boolean; skills?: boolean; voice?: boolean; memory?: boolean; botId?: string } = {}): CatalogProfile =>
   catalogProfileFromEnv({
     QUATI_BOT_ID: options.botId ?? "bot-bridge",
     QUATI_CHIEF_OF_STAFF: flag(options.chief ?? false),
     QUATI_SKILL_AUTHORING_ENABLED: flag(options.skills ?? false),
     QUATI_VOICE_NOTES: flag(options.voice ?? false),
-    QUATI_CLOUD_HOME: flag(options.cloudHome ?? false),
     QUATI_MEMORY_ENABLED: flag(options.memory ?? true),
   });
 
@@ -39,8 +38,8 @@ const profile = (options: { chief?: boolean; skills?: boolean; shared?: boolean;
  * matrix does, plus the two the matrix leaves out: memory off and Watcher. */
 function everyProfile(): Array<{ name: string; profile: CatalogProfile }> {
   const all: Array<{ name: string; profile: CatalogProfile }> = [];
-  for (const chief of [true, false]) for (const skills of [false, true]) for (const shared of [false, true]) for (const voice of [false, true]) for (const cloudHome of [false, true]) {
-    all.push({ name: JSON.stringify({ chief, skills, shared, voice, cloudHome }), profile: profile({ chief, skills, shared, voice, cloudHome }) });
+  for (const chief of [true, false]) for (const skills of [false, true]) for (const voice of [false, true]) {
+    all.push({ name: JSON.stringify({ chief, skills, voice }), profile: profile({ chief, skills, voice }) });
   }
   all.push({ name: "memory off", profile: profile({ memory: false }) });
   all.push({ name: "watcher", profile: profile({ botId: WATCHER_OPTIONS_CARD_BOT_ID }) });
@@ -49,7 +48,7 @@ function everyProfile(): Array<{ name: string; profile: CatalogProfile }> {
 
 const bridgeFor = (options: Parameters<typeof profile>[0] = {}) => createToolBridge(availableTools(profile(options)) as BridgeTool[]);
 const names = (tools: readonly { name: string }[]) => tools.map((tool) => tool.name);
-const FULL_CHIEF = { chief: true, skills: true, shared: true, voice: true } as const;
+const FULL_CHIEF = { chief: true, skills: true, voice: true } as const;
 const CHIEF_ONLY = ["create_bot", "list_team_setup", "propose_team_setup", "propose_bot_deletion", "create_room", "manage_room", "retry_thread"];
 
 type Match = { name: string; description: string; inputSchema: Record<string, unknown> };
@@ -123,7 +122,7 @@ describe("what a bridged turn is listed", () => {
     expect(names(bridgeFor().listed)).not.toContain("create_options_card");
     expect(names(bridgeFor({ memory: false }).listed)).not.toContain("memory_update");
     // A role and the other features change only what sits behind use_tool.
-    for (const options of [{ chief: true }, { skills: true }, { shared: true }, { cloudHome: true }]) {
+    for (const options of [{ chief: true }, { skills: true }, {}]) {
       expect(names(bridgeFor(options).listed), JSON.stringify(options)).toEqual(names(bridgeFor().listed));
     }
   });
@@ -325,8 +324,6 @@ describe("find_tool", () => {
       const matches = answer.isError ? [] : (JSON.parse(answer.text) as FindPayload).matches;
       for (const match of matches) expect(allowed.has(match.name), `${query} → ${match.name}`).toBe(true);
     }
-    // and a Cloud home, which has no Local VM, cannot find its shell
-    expect(names((await found(bridgeFor({ cloudHome: true }), "run a shell command in the VM")).matches)).not.toContain("vm_exec");
     expect(names((await found(bridgeFor(), "run a shell command in the VM")).matches)).toContain("vm_exec");
   });
 

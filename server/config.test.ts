@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JsonValue } from "./schema.ts";
 
-import { cacheUntilConfigChanges,
+import {
+  cacheUntilConfigChanges,
   changedInstanceIds,
   customMcpServers,
   engineLaunches,
@@ -54,6 +55,21 @@ const reloaded = (patch: object, cfg: AppConfig = {}) =>
   changedInstanceIds(engineLaunches(instanceConfigs(cfg), {}), engineLaunches(instanceConfigs({ ...cfg, ...patch } as AppConfig), {}));
 
 describe("configuration boundaries", () => {
+  it.each([
+    "QUATI_CLOUD_ROLE", "QUATI_CLOUD_MACHINE_ID", "QUATI_CLOUD_ADMIN_URL", "QUATI_CLOUD_BOOTSTRAP_SECRET",
+    "QUATI_CLOUD_SECRETS_FD", "QUATI_CLOUD_HOME", "QUATI_CLOUD_VOICE_TOKEN", "QUATI_CLOUD_DECIDER_URL",
+    "QUATI_HOSTED_MODEL_URL", "QUATI_HOSTED_MODEL_TOKEN", "QUATI_HOSTED_MODELS",
+  ].flatMap(key => ["", "fixture-retired-secret"].map(value => ({ key, value }))))("rejects removed Cloud authority before local pairing: $key", ({ key, value }) => {
+    const previous = process.env[key];
+    process.env[key] = value;
+    try {
+      expect(() => loadConfig()).toThrow(new Error(`CloudHome is not supported. Remove ${key} before starting a server with local pairing.`));
+    } finally {
+      if (previous === undefined) delete process.env[key];
+      else process.env[key] = previous;
+    }
+  });
+
   it.each(["QUATI_ADMIN_URL", "QUATI_ADMIN_WORKSPACE", "QUATI_ADMIN_MEMBERSHIP"])("rejects external portal authority before loading local configuration: %s", (key) => {
     const previous = process.env[key];
     process.env[key] = "";
@@ -585,10 +601,7 @@ describe("configuration boundaries", () => {
     expect(parseConfigPatch({ features: { browser: false } })).toEqual({ features: { browser: false } });
     expect(builtInBrowserEnabled({ features: { browser: false } })).toBe(false);
     expect(builtInBrowserEnabled({ features: { browser: true } })).toBe(true);
-    const cloudHome = { QUATI_CLOUD_ROLE: "home", QUATI_CLOUD_MACHINE_ID: "3f9c2a4e-8b1d-4c6e-9a7f-2d5e8c1b0a93" };
     expect(builtInBrowserEnabled({}, { QUATI_PUBLIC_URL: "https://selfhosted.example.test" })).toBe(true);
-    expect(builtInBrowserEnabled({}, cloudHome)).toBe(true);
-    expect(builtInBrowserEnabled({ features: { browser: false } }, cloudHome)).toBe(false);
     expect(parseConfigPatch({ browserProfiles: [{ id: "work", name: " Work " }] })).toEqual({
       browserProfiles: [{ id: "work", name: "Work" }],
     });
@@ -1069,40 +1082,6 @@ describe("credential env preference", () => {
     expect(loadConfig().tts?.voice).toBeUndefined();
     writeFileSync(join(DATA_DIR, "config.json"), JSON.stringify({ tts: { provider: "elevenlabs" } }));
     expect(loadConfig().tts?.voice).toBe("preset-voice");
-  });
-
-  it("never takes Cloud Pro's included tokens for the person's own keys, in config or an engine's environment", () => {
-    const included = {
-      QUATI_CLOUD_BOAT_URL: "https://cloud.example.test/api/cloud/services/boat/api/box/v1",
-      QUATI_CLOUD_BOAT_TOKEN: "box_omb_included-relay-token",
-      QUATI_CLOUD_VOICE_URL: "https://cloud.example.test/api/cloud/services/voice/v1",
-      QUATI_CLOUD_VOICE_TOKEN: "quati_voice_included-relay-token",
-      QUATI_CLOUD_DECIDER_URL: "https://cloud.example.test/api/cloud/services/decider",
-      QUATI_CLOUD_DECIDER_TOKEN: "quati_decide_included-relay-token",
-    };
-    for (const [name, value] of Object.entries(included)) vi.stubEnv(name, value);
-    try {
-      const cfg = loadConfig();
-      expect(cfg.box?.token).toBeUndefined();
-      expect(cfg.tts?.key).toBeUndefined();
-      expect(cfg.decider?.key).toBeUndefined();
-      for (const entry of Object.values(instanceConfigs(cfg))) {
-        for (const value of Object.values(entry.environment ?? {})) expect(Object.values(included)).not.toContain(value);
-      }
-      saveConfig({ tts: { voice: "chosen" }, box: { token: "" }, decider: { enabled: true, jobs: { roomRouting: true } } });
-      const disk = readFileSync(join(DATA_DIR, "config.json"), "utf8");
-      const runtime = JSON.stringify([loadConfig(), instanceConfigs(loadConfig()), persistableInstanceConfigs(loadConfig())]);
-      for (const token of [included.QUATI_CLOUD_BOAT_TOKEN, included.QUATI_CLOUD_VOICE_TOKEN, included.QUATI_CLOUD_DECIDER_TOKEN]) {
-        expect(disk).not.toContain(token);
-        expect(runtime).not.toContain(token);
-      }
-      process.env.BOX_TOKEN = "box_own";
-      process.env.QUATI_TTS_KEY = "sk-own";
-      expect(loadConfig()).toMatchObject({ box: { token: "" }, tts: { key: "sk-own" } });
-      expect(JSON.stringify(instanceConfigs(loadConfig()))).not.toContain("box_own");
-    } finally {
-      vi.unstubAllEnvs();
-    }
   });
 
   it("saves and removes the verified domain without replacing existing settings", () => {

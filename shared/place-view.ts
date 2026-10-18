@@ -11,7 +11,7 @@ export const PLACE_STATES = [
   "auto", "auto-team",
   "cc-cannot", "cc-tools-off", "cc-sign-in", "cc-new", "cc-starting", "cc-waking", "cc-on", "cc-asleep",
   "cc-no-hours", "cc-at-once", "cc-unavailable", "cc-ended", "cc-no-start", "cc-clearing", "cc-provider",
-  "cc-on-my-cloud", "cc-needs-key", "vps",
+  "cc-needs-key", "vps",
   "browser", "browser-off", "browser-cannot",
   "local", "local-unavailable", "vm", "vm-cannot", "place-failed",
   "off",
@@ -27,7 +27,7 @@ export type PlaceSource = "works-on" | "pin" | "auto-pin" | "routine" | "room";
  * stored row, one sentence a phone can read. */
 export const PLACE_ACTIONS = [
   "choose-model", "open-tools", "sign-in", "start", "wake", "watch", "see-plan", "manage-computers",
-  "try-again", "open-my-cloud", "add-boat-key", "turn-on-browser", "open-team-map", "open-vm-settings",
+  "try-again", "add-boat-key", "turn-on-browser", "open-team-map", "open-vm-settings",
   "clear-pin", "change-routine", "open-computer-panel",
 ] as const;
 export type PlaceActionId = (typeof PLACE_ACTIONS)[number];
@@ -71,7 +71,7 @@ export interface PlaceView {
 }
 
 /** Where this server runs, as the Auto line describes it. */
-export type ServerKind = "my-cloud" | "mac" | "pc" | "linux";
+export type ServerKind = "mac" | "pc" | "linux";
 
 /** The facts a place's state is read from. */
 export interface PlaceFacts {
@@ -114,7 +114,6 @@ export interface PlaceFacts {
 /** The English catalog, mirrored by en.json. */
 export const PLACE_EN = {
   "place.view.auto.short": "Chooses for you",
-  "place.view.auto.lineMyCloud": "Uses the built-in browser. In a chat, it starts its cloud computer by itself when a task needs desktop apps.",
   "place.view.auto.lineDesktop": "Uses the built-in browser, a private desktop on this computer, or this computer's screen, whichever the task needs.",
   "place.view.auto.lineLinux": "Uses the built-in browser, or a running Local VM when a task needs a desktop.",
   "place.view.autoTeam.short": "Shared",
@@ -125,7 +124,6 @@ export const PLACE_EN = {
   "place.view.ccToolsOff.line": "What {bot} can use doesn't include a computer.",
   "place.view.ccSignIn.short": "Sign in first",
   "place.view.ccSignIn.line": "Sign in to {engine} first. {bot} uses it on the cloud computer too.",
-  "place.view.ccSignIn.lineMyCloud": "Sign in to {engine} on My Cloud first. {bot} uses it on the cloud computer too.",
   "place.view.ccNew.short": "Ready",
   "place.view.ccNew.line": "{bot} gets its own cloud computer the first time a task needs one. The first start takes about a minute.",
   "place.view.ccStarting.short": "Starting…",
@@ -153,8 +151,6 @@ export const PLACE_EN = {
   "place.view.ccClearing.line": "{bot}'s previous cloud computer is still being removed.",
   "place.view.ccProvider.short": "Couldn't start",
   "place.view.ccProvider.line": "Your Boat account couldn't start {bot}'s cloud computer: {words}",
-  "place.view.ccOnMyCloud.short": "On My Cloud",
-  "place.view.ccOnMyCloud.line": "Cloud computers from your plan work for bots on My Cloud for now.",
   "place.view.ccNeedsKey.short": "Needs a Boat key",
   "place.view.ccNeedsKey.line": "A cloud computer here needs your own Boat key, a paid service.",
   "place.view.vps.short": "Your server",
@@ -186,7 +182,6 @@ export const PLACE_EN = {
   "place.action.seePlan": "See your plan",
   "place.action.manageComputers": "Manage cloud computers",
   "place.action.tryAgain": "Try again",
-  "place.action.openMyCloud": "Open My Cloud",
   "place.action.addBoatKey": "Add Boat key",
   "place.action.turnOnBrowser": "Turn on the browser",
   "place.action.openTeamMap": "Open Team map",
@@ -213,7 +208,6 @@ export const PLACE_WORDS: Record<PlaceActionId, string> = {
   "see-plan": "See your plan on the Plan page.",
   "manage-computers": "Manage your cloud computers in Settings → Local VM.",
   "try-again": "Try again.",
-  "open-my-cloud": "Open My Cloud from the menu at the top of the sidebar.",
   "add-boat-key": "Add a Boat key in Settings → API keys.",
   "turn-on-browser": "Turn on the built-in browser in the Computer panel.",
   "open-team-map": "Open Team map to manage it.",
@@ -252,7 +246,6 @@ const STATE: Record<PlaceState, { key: string; action: PlaceActionId | null }> =
   "cc-no-start": { key: "ccNoStart", action: "try-again" },
   "cc-clearing": { key: "ccClearing", action: "try-again" },
   "cc-provider": { key: "ccProvider", action: "try-again" },
-  "cc-on-my-cloud": { key: "ccOnMyCloud", action: "open-my-cloud" },
   "cc-needs-key": { key: "ccNeedsKey", action: "add-boat-key" },
   vps: { key: "vps", action: null },
   browser: { key: "browser", action: null },
@@ -273,7 +266,7 @@ const PASSING: ReadonlySet<PlaceState> = new Set(["cc-unavailable", "cc-no-start
 /** Actions that change a setting, a sign-in or the plan: a User can't take
  * them, so the line ends "Ask an Admin to change it." instead. */
 const ADMIN_ONLY: ReadonlySet<PlaceActionId> = new Set([
-  "choose-model", "open-tools", "sign-in", "see-plan", "manage-computers", "open-my-cloud",
+  "choose-model", "open-tools", "sign-in", "see-plan", "manage-computers",
   "add-boat-key", "turn-on-browser", "open-team-map", "open-vm-settings", "change-routine",
 ]);
 /** Starting or waking a computer early: a User's own message does it, so
@@ -290,7 +283,6 @@ const ACTION_KEY: Record<PlaceActionId, PlaceKey> = {
   "see-plan": "place.action.seePlan",
   "manage-computers": "place.action.manageComputers",
   "try-again": "place.action.tryAgain",
-  "open-my-cloud": "place.action.openMyCloud",
   "add-boat-key": "place.action.addBoatKey",
   "turn-on-browser": "place.action.turnOnBrowser",
   "open-team-map": "place.action.openTeamMap",
@@ -329,9 +321,7 @@ export function placeState(facts: PlaceFacts): { state: PlaceState; params: Plac
   if (vps) return { state: "vps", params: { bot } };
   if (facts.refusal) return { state: facts.refusal.state, params: { bot, ...facts.refusal.params } };
   if (facts.boat === "none") {
-    // My Cloud always has the plan's computers while the plan is active.
-    if (facts.server === "my-cloud") return { state: "cc-unavailable", params: { bot } };
-    return { state: facts.plan ? "cc-on-my-cloud" : "cc-needs-key", params: { bot } };
+    return { state: "cc-needs-key", params: { bot } };
   }
   switch (facts.computer) {
     case "starting": return { state: "cc-starting", params: { bot } };
@@ -358,9 +348,8 @@ function sourceAction(source: PlaceSource, state: PlaceState): PlaceActionId | n
 function lineKey(state: PlaceState, params: PlaceParams, server?: ServerKind): PlaceKey {
   const segment = STATE[state].key;
   if (state === "auto") {
-    return server === "my-cloud" ? "place.view.auto.lineMyCloud" : server === "linux" ? "place.view.auto.lineLinux" : "place.view.auto.lineDesktop";
+    return server === "linux" ? "place.view.auto.lineLinux" : "place.view.auto.lineDesktop";
   }
-  if (state === "cc-sign-in" && server === "my-cloud") return "place.view.ccSignIn.lineMyCloud";
   // A refusal read from a code alone has no numbers or names to give.
   if (state === "cc-no-hours" && (params.hours === undefined || !params.month)) return "place.view.ccNoHours.lineUnknown";
   if (state === "cc-at-once") {

@@ -3,6 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_ONBOARDING, LOCAL_VIEWER, WELCOME_VERSION, type WelcomeViewer } from "@/lib/onboarding";
 import { setLocale } from "@/lib/i18n";
+import { SharedWorkspaceHint } from "./SharedWorkspaceHint";
+import { useWelcomeViewer, WelcomeGate } from "./WelcomeGate";
+import { WelcomeFlow } from "./WelcomeFlow";
 
 const fixture = vi.hoisted(() => ({ values: [] as unknown[], index: 0, effects: [] as EffectCallback[] }));
 vi.mock("react", async (original) => ({
@@ -24,9 +27,6 @@ vi.mock("@/state/store", () => ({ api: store.api, useStore: () => ({ state: stor
 // The gate's job is choosing; the flow itself has its own recipe.
 vi.mock("./WelcomeFlow", () => ({ WelcomeFlow: () => null }));
 vi.mock("@/components/Avatar", () => ({ QuatiAvatar: () => null }));
-import { SharedWorkspaceHint } from "./SharedWorkspaceHint";
-import { useWelcomeViewer, WelcomeGate } from "./WelcomeGate";
-import { WelcomeFlow } from "./WelcomeFlow";
 
 type Node = ReactElement<Record<string, unknown> & { onClick?: () => void; onClose?: () => void; onOpenOrganisation?: () => void; children?: ReactNode }>;
 function render(component: () => ReactNode) {
@@ -86,13 +86,6 @@ describe("who gets the welcome flow", () => {
     const { tree } = gate({ hosted: true, canSave: true });
     expect(tree?.type).toBe(WelcomeFlow);
     expect(tree?.props.hosted).toBe(true);
-  });
-
-  it("leaves an QUATI Cloud home's first run to its engine sign-in", () => {
-    vi.stubGlobal("window", REMOTE_PAGE);
-    expect(gate({ hosted: false, canSave: true, cloudHome: true }).tree).toBeNull();
-    store.state = { ...store.state, welcomeOpen: true };
-    expect(gate({ hosted: false, canSave: true, cloudHome: true }).tree?.type).toBe(WelcomeFlow);
   });
 
   it("gives a hosted member a note instead, and nothing that writes the workspace config", async () => {

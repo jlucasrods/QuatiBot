@@ -1,5 +1,5 @@
 // Per-bot workspaces (~/.quatibot/workspaces/<botId>/) that double as file-based memory.
-import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { writeFileAtomic } from "./atomic.ts";
@@ -53,42 +53,6 @@ export function workspaceDir(botId: string): string {
   return join(WORKSPACES_DIR, botId);
 }
 
-/** On a Cloud home memory is read only from regular files, never through a link. */
-let regularMemoryFilesOnly = false;
-export function readMemoryOnlyFromRegularFiles(): void {
-  regularMemoryFilesOnly = true;
-}
-
-export function readMemoryText(path: string): string {
-  if (!regularMemoryFilesOnly) return readFileSync(path, "utf8");
-  // O_NOFOLLOW refuses a link at open; Windows has none (and follows links), so the entry is checked first too.
-  if (!lstatSync(path).isFile()) throw Object.assign(new Error(`not a regular file: ${path}`), { code: "EINVAL" });
-  const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-  try {
-    if (!fstatSync(fd).isFile()) throw Object.assign(new Error(`not a regular file: ${path}`), { code: "EINVAL" });
-    return readFileSync(fd, "utf8");
-  } finally {
-    closeSync(fd);
-  }
-}
-
-function memoryFolderEntries(dir: string): string[] {
-  if (regularMemoryFilesOnly && !lstatSync(dir).isDirectory()) return [];
-  return readdirSync(dir);
-}
-
-function regularFile(path: string): boolean {
-  try {
-    return lstatSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function memoryEntryStat(path: string) {
-  return regularMemoryFilesOnly ? lstatSync(path) : statSync(path);
-}
-
 export function workspaceLocationsPrompt(botId: string, cwd: string | undefined, botCwd?: string, opts: { attachFile?: boolean } = {}): string {
   return "\n\nFile locations for this bot (absolute paths): " + JSON.stringify({
     currentWorkingFolder: cwd ?? "Provider default; inspect the working directory before using relative paths",
@@ -115,7 +79,7 @@ export function memoryOverBudget(text: string): boolean {
 export function loadMemory(botId: string, opts: { now?: Date } = {}): { text: string; truncated: boolean; lines: number; bytes: number; expired: number } | null {
   let raw: string;
   try {
-    raw = readMemoryText(join(workspaceDir(botId), "MEMORY.md"));
+    raw = readFileSync(join(workspaceDir(botId), "MEMORY.md"), "utf8");
   } catch {
     return null;
   }
@@ -142,7 +106,7 @@ export const MEMORY_FILE_MAX_BYTES = 256 * 1024;
 export function readMemoryFile(botId: string) {
   let raw: string;
   try {
-    raw = readMemoryText(join(workspaceDir(botId), "MEMORY.md"));
+    raw = readFileSync(join(workspaceDir(botId), "MEMORY.md"), "utf8");
   } catch {
     return { text: "", truncated: false };
   }
@@ -162,7 +126,7 @@ function indexWrittenMemoryFile(botId: string, relativePath: string): void {
   try {
     const path = join(workspaceDir(botId), relativePath);
     const stat = statSync(path);
-    indexMemoryFile(botId, relativePath, searchableMemoryText(relativePath, readMemoryText(path)), { mtimeMs: stat.mtimeMs, bytes: stat.size });
+    indexMemoryFile(botId, relativePath, searchableMemoryText(relativePath, readFileSync(path, "utf8")), { mtimeMs: stat.mtimeMs, bytes: stat.size });
   } catch {
   }
 }
@@ -176,7 +140,7 @@ export function memoryFilesOnDisk(botId: string): Array<{ path: string; mtimeMs:
   ];
   return names.flatMap((relativePath) => {
     try {
-      const stat = memoryEntryStat(join(dir, relativePath));
+      const stat = statSync(join(dir, relativePath));
       return stat.isFile() ? [{ path: relativePath, mtimeMs: stat.mtimeMs, bytes: stat.size }] : [];
     } catch {
       return [];
@@ -202,7 +166,7 @@ export function syncMemoryIndex(botId: string): void {
     indexed.delete(file.path);
     if (!dateChanged && known && known.bytes === file.bytes && known.mtimeMs === Math.trunc(file.mtimeMs)) continue;
     try {
-      const text = readMemoryText(join(workspaceDir(botId), file.path));
+      const text = readFileSync(join(workspaceDir(botId), file.path), "utf8");
       indexMemoryFile(botId, file.path, searchableMemoryText(file.path, text), file);
     } catch {
     }
@@ -300,7 +264,7 @@ export function updateMemory(botId: string, update: MemoryUpdate, opts: MemoryUp
   const text = update.text === undefined ? undefined : redactSecretsInText(update.text);
   const dir = ensureWorkspace(botId);
   // Not readMemoryFile's fallback: a failed read must never become an overwrite of old notes.
-  const raw = readMemoryText(join(dir, "MEMORY.md"));
+  const raw = readFileSync(join(dir, "MEMORY.md"), "utf8");
   const current = raw === MEMORY_SEED ? "" : raw;
   const today = memoryDate(opts.now);
   const appendEntry = (base: string, entry: string) => `${base}${base && !base.endsWith("\n") ? "\n" : ""}${entry}\n`;
@@ -380,7 +344,7 @@ function makeRoom(text: string, today: string, keep: string | undefined): { text
 export function appendMemoryArchive(botId: string, lines: readonly string[]): void {
   let head = "";
   try {
-    head = readMemoryText(join(workspaceDir(botId), "memory", ARCHIVE_TOPIC));
+    head = readFileSync(join(workspaceDir(botId), "memory", ARCHIVE_TOPIC), "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
@@ -412,7 +376,7 @@ export function appendMemoryLog(botId: string, text: string, opts: MemoryUpdateO
   const path = join(dir, relativePath.slice(`memory/${MEMORY_LOG_DIR}/`.length));
   let current = "";
   try {
-    current = readMemoryText(path);
+    current = readFileSync(path, "utf8");
   } catch {
   }
   writeFileAtomic(path, `${current}${current && !current.endsWith("\n") ? "\n" : ""}${line}\n`, { mode: 0o600 });
@@ -431,7 +395,7 @@ export function writeMemoryLog(botId: string, name: string, text: string): void 
 export function listMemoryLogs(botId: string): string[] {
   try {
     const dir = join(workspaceDir(botId), "memory", MEMORY_LOG_DIR);
-    return memoryFolderEntries(dir).filter((name) => LOG_FILE_NAME.test(name) && (!regularMemoryFilesOnly || regularFile(join(dir, name)))).sort();
+    return readdirSync(dir).filter((name) => LOG_FILE_NAME.test(name)).sort();
   } catch {
     return [];
   }
@@ -440,7 +404,7 @@ export function listMemoryLogs(botId: string): string[] {
 export function readMemoryLog(botId: string, name: string): string | null {
   if (!LOG_FILE_NAME.test(name)) return null;
   try {
-    return readMemoryText(join(workspaceDir(botId), "memory", MEMORY_LOG_DIR, name));
+    return readFileSync(join(workspaceDir(botId), "memory", MEMORY_LOG_DIR, name), "utf8");
   } catch {
     return null;
   }
@@ -456,7 +420,7 @@ export function isMemoryTopicName(name: string): boolean {
 export function listMemoryTopics(botId: string): Array<{ name: string; bytes: number }> {
   let entries: string[];
   try {
-    entries = memoryFolderEntries(join(workspaceDir(botId), "memory"));
+    entries = readdirSync(join(workspaceDir(botId), "memory"));
   } catch {
     return [];
   }
@@ -464,7 +428,7 @@ export function listMemoryTopics(botId: string): Array<{ name: string; bytes: nu
     .filter(isMemoryTopicName)
     .flatMap((name) => {
       try {
-        const stat = memoryEntryStat(join(workspaceDir(botId), "memory", name));
+        const stat = statSync(join(workspaceDir(botId), "memory", name));
         return stat.isFile() ? [{ name, bytes: stat.size }] : [];
       } catch {
         return [];
@@ -483,7 +447,7 @@ export function writeMemoryTopic(botId: string, name: string, text: string): voi
 export function readMemoryTopic(botId: string, name: string): string | null {
   if (!isMemoryTopicName(name)) return null;
   try {
-    return readMemoryText(join(workspaceDir(botId), "memory", name));
+    return readFileSync(join(workspaceDir(botId), "memory", name), "utf8");
   } catch {
     return null;
   }
@@ -511,20 +475,15 @@ export function memoryTopicIndex(botId: string): string {
   return renderTopicIndex(listMemoryTopics(botId).map((topic) => ({ name: topic.name, header: parseTopicHeader(readTopicHead(join(dir, topic.name))) })));
 }
 
-const NOTES_IN_RESULT =
-  " Notes cannot be saved from this conversation: on this Cloud only a conversation that only its owner writes in may change memory, and another bot or person wrote here." +
-  " Do not call memory_update or memory_log or edit memory files. Put any fact worth keeping in your reply; for work another bot handed you, in your result to that bot.";
 
-/** Memory is a prompt-injection persistence vector once a bot copies untrusted text into it.
- * `writesRefused`: this turn's notes would be refused, so it is told where facts go instead. */
-export function memorySystemPrompt(botId: string, opts: { managedWrites?: boolean; fileTools?: boolean; enabled?: boolean; writesRefused?: boolean } = {}): string {
+export function memorySystemPrompt(botId: string, opts: { managedWrites?: boolean; fileTools?: boolean; enabled?: boolean } = {}): string {
   if (opts.enabled === false) return "";
   const memory = loadMemory(botId);
   const memoryFile = join(workspaceDir(botId), "MEMORY.md");
   const topicDir = join(workspaceDir(botId), "memory");
-  if (opts.writesRefused || (opts.fileTools === false && !opts.managedWrites)) {
-    const lead = opts.writesRefused ? NOTES_IN_RESULT : " Your saved memory is supplied as context; this turn has no memory editing tools.";
-    if (!memory) return opts.writesRefused ? lead : "";
+  if (opts.fileTools === false && !opts.managedWrites) {
+    const lead = " Your saved memory is supplied as context; this turn has no memory editing tools.";
+    if (!memory) return "";
     return `${lead}\n\nYour memory (MEMORY.md):\n${memory.text}${memory.truncated ? " [Only the initial memory excerpt is visible.]" : ""}${topicIndexBlock(botId, opts.fileTools !== false)}`;
   }
   const writeGuidance = opts.managedWrites

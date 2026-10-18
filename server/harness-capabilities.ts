@@ -10,7 +10,7 @@ export interface DriverCapabilities {
 const ENVELOPE: CatalogProfile = {
   skillAuthoring: true,
   voiceNotes: true,
-  cloudHome: false,
+
   chief: true,
   botId: "",
 };

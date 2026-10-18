@@ -174,9 +174,9 @@ describe.skipIf(!chrome)("S6: a hostile page in a bot's browser", () => {
     expect(candidates.filter((candidate) => / typ (host|srflx|prflx) /.test(candidate)), "WebRTC gathers no candidates").toEqual([]);
   }, hostTimeout(240_000));
 
-  it("cannot reach the local network or cloud metadata on Quati Cloud, while the bot's own dev server loads", async () => {
+  it("cannot reach the local network or cloud metadata on a self-hosted server, while the bot's own dev server loads", async () => {
     const targets = [`http://127.0.0.1:${quatiPort}/`, "http://[fdaa::3]:4280/", "http://10.0.0.1/", "http://169.254.169.254/latest/meta-data/", "http://[fd00:ec2::254]/"];
-    const { results, refusals } = await underHost("cloud", targets);
+    const { results, refusals } = await underHost("server", targets);
     expect(hits).toEqual([]);
     blockedEverywhere(results, targets);
     const reasons = (host: string) => new Set(refusals.filter((refusal) => refusal.host === host).map((refusal) => refusal.reason));
@@ -190,7 +190,7 @@ describe.skipIf(!chrome)("S6: a hostile page in a bot's browser", () => {
   it("tells the bot what its page tried in its next browser result, and loads public pages unchanged", async () => {
     const online = await fetch("https://example.com/", { signal: AbortSignal.timeout(5_000) }).then((response) => response.ok, () => false);
     const egress = new BrowserEgress();
-    egress.configure({ host: "cloud", config: () => ({}), listeners: new OwnListeners("cloud", { env: {}, streamPorts: () => [], devToolsPorts: () => [] }), ownership: siteOwnership() });
+    egress.configure({ host: "server", config: () => ({}), listeners: new OwnListeners("server", { env: {}, streamPorts: () => [], devToolsPorts: () => [] }), ownership: siteOwnership() });
     const browser = await launchPipeChrome(chrome!, gateChromeFlags(await egress.open("s6-notice")));
     try {
       const page = await browser.page();

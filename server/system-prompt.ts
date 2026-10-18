@@ -111,8 +111,6 @@ export function computerPrompt(kind: ComputerPromptKind | null): string {
   return COMPUTER_PARAGRAPH[kind] + SIGN_IN_PROMPT;
 }
 
-export const CLOUD_HOME_PLACE = "the user's My Cloud, their always-on QuatiBot in the cloud, not on their own computer";
-
 export function customMcpPrompt(names: string[]): string {
   if (names.length === 0) return "";
   const list = names.map((name) => `"${name}"`).join(", ");

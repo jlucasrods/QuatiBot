@@ -22,12 +22,11 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise((done) => server.close(done))));
 });
 
-async function serve(store: Store, options: { busy?: Set<string>; owner?: boolean } = {}): Promise<string> {
+async function serve(store: Store, options: { busy?: Set<string> } = {}): Promise<string> {
   const routes = [createThreadModelRoutes({
     bot: (id) => store.bot(id),
     busy: (_botId, threadId) => options.busy?.has(threadId) ?? false,
     follow: (botId, threadIds) => store.followBotModel(botId, threadIds),
-    mayChangeModel: () => options.owner !== false,
     reply: (botId) => ({ id: botId, tasks: store.tasks(botId).map((task) => ({ threadId: task.threadId, modelSelection: task.modelSelection })) }),
   })];
   const server = createServer(async (req, res) => {
@@ -103,14 +102,12 @@ describe("Switch them too", () => {
     expect(store.taskByThread(other.id, othersThread)?.modelSelection).toEqual(codex);
   });
 
-  it("answers 404 for an unknown bot, 400 for a malformed body, and 403 for someone who may not change the model", async () => {
+  it("answers 404 for an unknown bot and 400 for a malformed body", async () => {
     const { store, bot } = fixture();
     const base = await serve(store);
     expect((await post(base, "nobody")).status).toBe(404);
     expect((await post(base, bot.id, { threadIds: "all" })).status).toBe(400);
     expect((await post(base, bot.id, { everything: true })).status).toBe(400);
-    const guest = await serve(store, { owner: false });
-    expect((await post(guest, bot.id)).status).toBe(403);
     expect((await fetch(`${base}/api/bots/${bot.id}/threads/follow-model`)).status).toBe(404);
   });
 });

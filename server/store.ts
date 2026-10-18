@@ -2069,16 +2069,10 @@ export class Store {
     return true;
   }
 
-  pinTaskCwd(botId: string, threadId: string, fallbackCwd?: string, opts: { none?: boolean; privateOnly?: boolean } = {}): string | null {
+  pinTaskCwd(botId: string, threadId: string, fallbackCwd?: string, opts: { none?: boolean } = {}): string | null {
     const bot = this.bot(botId);
     const task = bot ? this.taskByThread(botId, threadId) : undefined;
     if (!bot || !task) return null;
-    if (opts.privateOnly && task.cwd === undefined) {
-      task.cwd = fallbackCwd ?? null;
-      this.saveBots();
-      this.emit({ type: "bot", botId });
-      return task.cwd;
-    }
     if (opts.none) {
       if (task.cwd !== null) {
         task.cwd = null;

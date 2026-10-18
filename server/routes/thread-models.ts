@@ -1,7 +1,6 @@
 // POST /api/bots/:id/threads/follow-model, body {} for every thread with its own model, or { threadIds } for exactly
 // those. A thread with a turn running keeps its model until it settles; the reply counts it.
 import type { ModelSelection } from "../contracts.ts";
-import type { RequestAuth } from "../request-auth.ts";
 import { sameModelSelection } from "../../shared/thread-model.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
@@ -16,18 +15,15 @@ export interface ThreadModelRouteDeps {
   } | null | undefined;
   busy(botId: string, threadId: string): boolean;
   follow(botId: string, threadIds: string[]): string[];
-  /** On a Cloud home, only its owner. */
-  mayChangeModel(auth: RequestAuth): boolean;
   reply(botId: string): unknown;
 }
 
 export function createThreadModelRoutes(deps: ThreadModelRouteDeps): RouteHandler {
-  return async ({ req, res, path, method, auth, json, readBody }) => {
+  return async ({ req, res, path, method, json, readBody }) => {
     const m = path.match(/^\/api\/bots\/([\w-]+)\/threads\/follow-model$/);
     if (!m || method !== "POST") return PASS;
     const bot = deps.bot(m[1]!);
     if (!bot) return json(res, 404, { error: "no such bot" });
-    if (!deps.mayChangeModel(auth)) return json(res, 403, { error: "On this Cloud only its owner can change a bot's model." });
     const body = await readBody(req);
     if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((key) => key !== "threadIds")) {
       return json(res, 400, { error: "send {} or { threadIds }" });

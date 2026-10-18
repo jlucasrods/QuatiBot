@@ -93,10 +93,6 @@ export interface SendTurnInput {
   approvalMode?: ApprovalMode;
   /** Fresh owner selection, independent of execution approval and resume state. */
   toolScope?: ToolScope;
-  /** A guest turn: no shell or command execution, no reads outside its folder. Sent only to drivers whose guestTurns is "confined". */
-  guestConfined?: boolean;
-  /** Why this turn is confined, in the owner's words, for a refusal to end with. */
-  confinedWhy?: string;
   /** Images for this user turn only; kept out of replay transcripts. */
   images?: TurnImageInput[];
   model?: string;
@@ -220,8 +216,6 @@ export interface ProviderAdapter {
     strictResume?: boolean;
     /** sendTurn can register the harness's hook helper with the engine (integrations.hooks). */
     hooks?: boolean;
-    /** "confined": sendTurn honours `guestConfined`; absent, a guest turn is refused. */
-    guestTurns?: "confined";
     /** "meter": `contextTokens` / `contextWindow` are the engine's own report, shown on the context meter but never used to time compaction. */
     contextReading?: "meter";
   };
