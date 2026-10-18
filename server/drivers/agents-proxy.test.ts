@@ -317,7 +317,7 @@ beforeAll(async () => {
       req.on("end", () => {
         lastCredentialBody = JSON.parse(data);
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ messageId: "msg-key", label: "OpenCode API key" }));
+        res.end(JSON.stringify({ messageId: "msg-key", label: "ElevenLabs API key" }));
       });
       return;
     }
@@ -458,7 +458,6 @@ beforeAll(async () => {
       QUATI_COMMS_TOKEN: TOKEN,
       QUATI_TURN_DEPTH: "0",
       QUATI_SKILL_AUTHORING_ENABLED: "1",
-      QUATI_SHARED_COMPUTERS_ENABLED: "1",
       // A Chief's turn, so the Chief-only team tools are mounted too.
       QUATI_CHIEF_OF_STAFF: "1",
     },
@@ -619,14 +618,13 @@ describe("agents-proxy MCP surface", () => {
     const list = await rpc("tools/list");
     expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual([
       "tool_result_read",
-      "list_shared_computers",
-      "shared_computer",
       "list_room_targets",
       "coordinate_bots",
       "assignment_status",
       "list_bots",
       "list_rooms",
       "select_computer",
+      "record_screen",
       "list_threads",
       "close_thread",
       "start_thread",
@@ -657,7 +655,6 @@ describe("agents-proxy MCP surface", () => {
       "propose_team_memory",
       "skills_list",
       "skill_manage",
-      "add_mcp_server",
     ]);
     const tool = (name: string) => list.result.tools.find((entry: { name: string }) => entry.name === name);
     const coordinate = tool("coordinate_bots");
@@ -693,7 +690,7 @@ describe("agents-proxy MCP surface", () => {
     const list = await rpc("tools/list");
     const tool = list.result.tools.find((entry: { name: string }) => entry.name === "select_computer");
     expect(tool.inputSchema).toMatchObject({ type: "object", additionalProperties: false,
-      properties: { surface: { type: "string", enum: ["auto", "cloud", "vm", "local", "browser"] } } });
+      properties: { surface: { type: "string", enum: ["auto", "vm", "browser"] } } });
     expect(tool.inputSchema.required ?? []).not.toContain("surface");
     expect(tool.description).toContain("end this turn immediately");
     expect(tool.description).toContain("with a configured provider it can start or provision one when needed");
@@ -701,7 +698,7 @@ describe("agents-proxy MCP surface", () => {
     expect(tool.annotations?.readOnlyHint).not.toBe(true);
   });
 
-  it.each(["auto", "cloud", "vm", "local", "browser"])("select_computer posts the requested %s target without inventing success", async (surface) => {
+  it.each(["auto", "vm", "browser"])("select_computer posts the requested %s target without inventing success", async (surface) => {
     computerResponse = { state: "pending", surface: surface === "auto" ? "vm" : surface, instruction: "End this turn; the original request will resume." };
     const response = await callTool("select_computer", { surface });
     expect(response.result.isError).toBeFalsy();
@@ -713,12 +710,12 @@ describe("agents-proxy MCP surface", () => {
   it.each(["other", "off", " VM ", 42, null, {}, ["vm"]].map((surface) => ({ surface })))("select_computer rejects invalid target $surface before contacting the server", async ({ surface }) => {
     const response = await callTool("select_computer", { surface });
     expect(response.result.isError).toBe(true);
-    expect(response.result.content[0].text).toContain("Choose auto, cloud, vm, local or browser");
+    expect(response.result.content[0].text).toContain("Choose auto, vm or browser");
     expect(computerRequests).toEqual([]);
   });
 
   it.each([
-    { status: 409, args: { surface: "cloud" }, error: "No existing cloud computer. Create one in the Computer panel first." },
+    { status: 409, args: { surface: "vm" }, error: "The Local VM is unavailable." },
     { status: 503, args: {}, error: "Computer discovery is temporarily unavailable." },
   ])("select_computer relays a $status server refusal as a tool error", async ({ status, args, error }) => {
     computerStatus = status;
@@ -733,7 +730,6 @@ describe("agents-proxy MCP surface", () => {
     const list = await rpc("tools/list");
     const readNames = [
       "tool_result_read",
-      "list_shared_computers",
       "assignment_status", "list_bots", "list_rooms", "list_threads",
       "list_team_setup",
       "session_search", "session_read", "list_routines", "skills_list",
@@ -1085,18 +1081,16 @@ describe("agents-proxy MCP surface", () => {
 
   it("requests an allowlisted credential without putting a secret in the request", async () => {
     const res = await callTool("request_credential", {
-      credential_id: "opencodeGoApiKey",
-      reason: "The selected model needs it.",
+      credential_id: "ttsKey",
+      reason: "Speech output needs it.",
     });
-    expect(res.result.content[0].text).toContain("secure OpenCode API key request");
-    expect(res.result.content[0].text).toContain("freshly QR-paired mobile app show its secure entry card");
-    expect(res.result.content[0].text).toContain("older mobile pairings explain how to pair again");
+    expect(res.result.content[0].text).toContain("secure ElevenLabs API key request");
     expect(res.result.content[0].text).toContain("End this turn");
     expect(lastCredentialBody).toEqual({
       fromBotId: "bot-asker",
       fromThreadId: "thread-asker-routine",
-      credentialId: "opencodeGoApiKey",
-      reason: "The selected model needs it.",
+      credentialId: "ttsKey",
+      reason: "Speech output needs it.",
     });
     expect(JSON.stringify(lastCredentialBody)).not.toContain("secret");
   });
@@ -2012,7 +2006,7 @@ describe("standing external runtime", () => {
       env: { ...childEnv(), QUATI_HARNESS_URL: `http://127.0.0.1:${stubPort}`, QUATI_BOT_ID: "bot-asker",
         QUATI_THREAD_ID: "thread-asker-routine", QUATI_COMMS_TOKEN: TOKEN, QUATI_TURN_DEPTH: "0",
         QUATI_EXTERNAL_RUNTIME: "1", QUATI_ROOM_TURN: "1", QUATI_OWN_THREAD_CREATION: "1",
-        QUATI_SKILL_AUTHORING_ENABLED: "1", QUATI_SHARED_COMPUTERS_ENABLED: "1" },
+        QUATI_SKILL_AUTHORING_ENABLED: "1", },
       stdio: ["pipe", "pipe", "inherit"],
     });
     let buffer = "";
@@ -2086,7 +2080,7 @@ describe("standing external runtime", () => {
 });
 
 // A separate child is the only honest check: the tool list is frozen at module load.
-describe("with computer sharing off and no Chief of Staff (the defaults)", () => {
+describe("non-chief tool permissions", () => {
   let gated: ChildProcess;
   const gatedPending = new Map<number, (msg: any) => void>();
   let gatedId = 500;
@@ -2110,7 +2104,6 @@ describe("with computer sharing off and no Chief of Staff (the defaults)", () =>
         QUATI_COMMS_TOKEN: TOKEN,
         QUATI_TURN_DEPTH: "0",
         QUATI_SKILL_AUTHORING_ENABLED: "1",
-        // deliberately no QUATI_SHARED_COMPUTERS_ENABLED or QUATI_CHIEF_OF_STAFF
       },
       stdio: ["pipe", "pipe", "inherit"],
     });
@@ -2132,22 +2125,6 @@ describe("with computer sharing off and no Chief of Staff (the defaults)", () =>
 
   afterAll(() => {
     gated?.kill();
-  });
-
-  it("does not advertise the shared-computer tools at all", async () => {
-    const list = await gatedRpc("tools/list");
-    const names = list.result.tools.map((tool: { name: string }) => tool.name);
-    expect(names).not.toContain("list_shared_computers");
-    expect(names).not.toContain("shared_computer");
-    expect(names).toContain("list_bots");
-    expect(names).toContain("skills_list");
-  });
-
-  it("refuses the handlers if a model calls them by name anyway", async () => {
-    for (const name of ["list_shared_computers", "shared_computer"]) {
-      const refused = await gatedRpc("tools/call", { name, arguments: { computer_id: "x", action: "list_files" } });
-      expect(refused.error?.message ?? refused.result?.content?.[0]?.text).toMatch(/unknown tool|turned off/i);
-    }
   });
 
   it("shows a bot that is not a Chief none of the Chief-only tools or parameters", async () => {
@@ -2287,7 +2264,7 @@ describe("tool bridge", () => {
   }
 
   /** The main child's switches: a Chief with skills and shared computers. */
-  const CHIEF = { QUATI_SKILL_AUTHORING_ENABLED: "1", QUATI_SHARED_COMPUTERS_ENABLED: "1", QUATI_CHIEF_OF_STAFF: "1" };
+  const CHIEF = { QUATI_SKILL_AUTHORING_ENABLED: "1", QUATI_CHIEF_OF_STAFF: "1" };
   const CHIEF_ONLY = ["create_bot", "list_team_setup", "propose_team_setup", "propose_bot_deletion", "create_room", "manage_room", "retry_thread"];
   const HOT = ["tool_result_read", "list_room_targets", "coordinate_bots", "list_bots", "list_rooms", "select_computer", "attach_file", "post_to_room", "request_credential", "request_sign_in", "fill_login", "memory_update"];
   let chief: Rpc;
@@ -2379,8 +2356,8 @@ describe("tool bridge", () => {
   });
 
   it("find_tool never returns a tool outside this turn's profile", async () => {
-    const profile = new Set((await listed(off)).map((tool) => tool.name).filter((name) => !CHIEF_ONLY.includes(name) && !["skills_list", "skill_manage", "list_shared_computers", "shared_computer"].includes(name)));
-    for (const query of ["create a new specialist bot", "delete a teammate", "set up the team", "save a reusable skill", "use the desktop the user shared", ...CHIEF_ONLY, "skill_manage", "shared_computer"]) {
+    const profile = new Set((await listed(off)).map((tool) => tool.name).filter((name) => !CHIEF_ONLY.includes(name) && !["skills_list", "skill_manage",].includes(name)));
+    for (const query of ["create a new specialist bot", "delete a teammate", "set up the team", "save a reusable skill", "use the desktop the user shared", ...CHIEF_ONLY, "skill_manage",]) {
       const matches = matchesOf(await find(plain, query));
       for (const match of matches) {
         expect(profile.has(match.name), `${query} → ${match.name}`).toBe(true);
@@ -2413,7 +2390,7 @@ describe("tool bridge", () => {
   });
 
   it("use_tool refuses a name outside the profile in the words a direct call to it is refused with, as a failed call the model can read", async () => {
-    for (const name of ["made_up", "skill_manage", "shared_computer", "send_voice_note", "find_tool", "use_tool"]) {
+    for (const name of ["made_up", "skill_manage", "send_voice_note", "find_tool", "use_tool"]) {
       // find_tool and use_tool are this proxy's own, so only the bridged form is unknown
       if (name !== "find_tool" && name !== "use_tool") {
         const direct = await plain("tools/call", { name, arguments: {} });

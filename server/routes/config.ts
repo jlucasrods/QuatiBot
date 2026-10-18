@@ -18,8 +18,6 @@ import { forgetKey } from "../key-rejections.ts";
 import type { LocalVmIdleTimer } from "../local-vm-idle.ts";
 import { PROVIDER_KEY_KINDS } from "../provider-key-check.ts";
 import type { SessionRegistry } from "../sessions.ts";
-import type { SharedComputerControl } from "../shared-computer-control.ts";
-import type { SharedComputers } from "../shared-computers.ts";
 import { parseSkillMd } from "../skills.ts";
 import type { Store } from "../store.ts";
 import * as tts from "../tts/index.ts";
@@ -49,10 +47,7 @@ export interface ConfigRouteDeps {
   /** After browserEngine.engine changed: closes the viewers and the browsers the other engine ran. */
   browserEngineSwitched(): void;
   decider: Pick<Decider, "testKey">;
-  sharedComputers: Pick<SharedComputers, "close">;
-  sharedComputerControl: Pick<SharedComputerControl, "close">;
   cloudHome: boolean;
-  lendingEnabled(): boolean;
   providerConfigs(): InstanceConfigMap;
   localVmIdleMs(): number;
   localVmIdles: { values(): Iterable<Pick<LocalVmIdleTimer, "setIdleMs">> };
@@ -76,7 +71,7 @@ export interface ConfigRouteDeps {
 export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
   const {
     store, cfg, registry, sessions, browserCleanup, browserLive, browserRuntime, usedBrowserSessions, decider,
-    closeBrowser, browserEngineSwitched, sharedComputers, sharedComputerControl, cloudHome: CLOUD_HOME, lendingEnabled, providerConfigs,
+    closeBrowser, browserEngineSwitched, cloudHome: CLOUD_HOME, providerConfigs,
     localVmIdleMs, localVmIdles, localVmActiveThreads, localVmLifecycleBusy, localVmImageBusy, localVmModeChangeBusy,
     providerConfigBusy,
     perBotLocalVmCountForModeChange, checkedModelSelection, browserSessionSpec, configStatus,
@@ -311,10 +306,6 @@ export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
       if (patch.signIn !== undefined) {
         sessions.revalidateEmailSessions();
         resyncOpenCodeProviderKeys();
-      }
-      if (!lendingEnabled()) {
-        sharedComputers.close();
-        sharedComputerControl.close();
       }
       if (disablingBuiltInBrowser) browserLive.closeAll();
       if (switchingBrowserEngine) browserEngineSwitched();

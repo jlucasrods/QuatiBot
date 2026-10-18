@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { builtInBrowserEnabled, llmThreadTitlesEnabled, parseSkillReviewSteps, roomMemoryCaptureEnabled, routinesInConversationEnabled, shareLearnedSkillsMode, sharedComputersEnabled, showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines } from "./feature-flags";
+import { builtInBrowserEnabled, llmThreadTitlesEnabled, parseSkillReviewSteps, roomMemoryCaptureEnabled, routinesInConversationEnabled, shareLearnedSkillsMode,  showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines } from "./feature-flags";
 
 describe("experimental feature flags", () => {
   it("keeps skill authoring on by default, before and after the config arrives", () => {
@@ -62,14 +62,6 @@ describe("experimental feature flags", () => {
     expect(routinesInConversationEnabled(null)).toBe(false);
     expect(routinesInConversationEnabled({})).toBe(false);
     expect(routinesInConversationEnabled({ features: { routinesInConversation: true } })).toBe(true);
-  });
-
-  it("keeps computer sharing off unless the server says it is on", () => {
-    expect(sharedComputersEnabled(null)).toBe(false);
-    expect(sharedComputersEnabled({})).toBe(false);
-    expect(sharedComputersEnabled({ features: {} })).toBe(false);
-    expect(sharedComputersEnabled({ features: { sharedComputers: false } })).toBe(false);
-    expect(sharedComputersEnabled({ features: { sharedComputers: true } })).toBe(true);
   });
 
   it("offers Regenerate title only while the server has generated titles on", () => {

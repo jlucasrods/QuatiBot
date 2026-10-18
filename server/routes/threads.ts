@@ -34,7 +34,6 @@ export interface ThreadRouteDeps {
   groupUsageReader: Pick<GroupUsageReader, "refresh">;
   sessionCookie: string;
   loopback: { trust: ResolveOptions["loopbackTrust"]; localBrowsers: boolean };
-  lendingEnabled(): boolean;
   cliOwnerToken(): string | undefined;
   defaultPage: number;
   pageSize(raw: string | null): number | null | undefined;
@@ -52,7 +51,7 @@ export interface ThreadRouteDeps {
 
 export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
   const {
-    store, cfg, sessions, groupUsageReader, lendingEnabled,
+    store, cfg, sessions, groupUsageReader,
     sessionCookie: SESSION_COOKIE, loopback: LOOPBACK, defaultPage: DEFAULT_PAGE,
     pageSize, messagePage, messageWindow, publicBotQueuedMessages, publicGroupState, wireBot, wireTask,
     botComputerControlSnapshot, messageFileRootsForThread, viewerFor, visibleTo,
@@ -392,7 +391,7 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
       const found = await searchMessagesAsync(q, visible.everything ? limit : Math.min(limit * 10, 1_000), threadId);
       const current = resolveRequestAuth(req, {
         sessions, cookieName: SESSION_COOKIE, streamPath: "/api/events", url,
-        features: { sharedComputers: lendingEnabled() }, loopbackTrust: LOOPBACK.trust, cliOwnerToken, trustLocalBrowser: LOOPBACK.localBrowsers,
+        loopbackTrust: LOOPBACK.trust, cliOwnerToken, trustLocalBrowser: LOOPBACK.localBrowsers,
       });
       if (!current.auth) return json(res, current.status, { error: current.error });
       const currentVisible = visibleTo(viewerFor(current.auth));

@@ -23,8 +23,6 @@ export interface EnvironmentDescriptor {
   capabilities: {
     /** Pairing and sessions are available (this build). */
     remoteSessions: true;
-    /** Only while the maintainer flag `features.sharedComputers` is on; otherwise absent, like a build without the feature. */
-    sharedComputers?: true;
     /** A person's own QUATI Cloud home. */
     cloudHome?: true;
     /** Who can update the server: the desktop app that runs it, or the operator. */
@@ -111,7 +109,7 @@ export function serverVersion(): string {
   return "unknown";
 }
 
-export function environmentDescriptor(input: { environmentId: string; desktopManaged: boolean; emailSignIn?: boolean; sharedComputers?: boolean; cloudHome?: boolean }): EnvironmentDescriptor {
+export function environmentDescriptor(input: { environmentId: string; desktopManaged: boolean; emailSignIn?: boolean; cloudHome?: boolean }): EnvironmentDescriptor {
   return {
     environmentId: input.environmentId,
     label: process.env.QUATI_ENVIRONMENT_LABEL?.trim() || hostname(),
@@ -120,7 +118,6 @@ export function environmentDescriptor(input: { environmentId: string; desktopMan
     capabilities: {
       remoteSessions: true,
       // Never advertise a protocol this server would refuse.
-      ...(input.sharedComputers === true ? { sharedComputers: true as const } : {}),
       ...(input.cloudHome === true ? { cloudHome: true as const } : {}),
       selfUpdate: input.desktopManaged ? "desktop-managed" : "operator",
       emailSignIn: input.emailSignIn === true,

@@ -7,7 +7,6 @@ export interface EnvironmentDescriptor {
         remoteSessions: true;
         selfUpdate: "desktop-managed" | "operator";
         emailSignIn?: boolean;
-        sharedComputers?: true;
         cloudHome?: true;
     };
 }

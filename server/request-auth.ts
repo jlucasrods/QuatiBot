@@ -247,15 +247,12 @@ export function clearSessionCookie(name: string): string {
 }
 
 /** What a `client` session may do. Default deny: a new route is admin-only until listed here. */
-export const CLIENT_ALLOW: ReadonlyArray<{ methods: readonly string[]; path: RegExp; feature?: "sharedComputers" }> = [
+export const CLIENT_ALLOW: ReadonlyArray<{ methods: readonly string[]; path: RegExp }> = [
   { methods: ["GET"], path: /^\/api\/auth\/session$/ },
   // the update check only reads a version
   { methods: ["GET"], path: /^\/api\/updates\/check$/ },
   { methods: ["POST"], path: /^\/api\/auth\/stream-ticket$/ },
   { methods: ["POST"], path: /^\/api\/auth\/logout$/ },
-  // Own desktop connector, bound to a private secret; listed only while features.sharedComputers is on.
-  { methods: ["POST"], path: /^\/api\/shared-computers\/(?:connect|[\w-]+\/(?:poll|lease|result|disconnect))$/, feature: "sharedComputers" },
-  { methods: ["GET"], path: /^\/api\/shared-computers$/, feature: "sharedComputers" },
   { methods: ["GET"], path: /^\/api\/health$/ },
   { methods: ["GET"], path: /^\/api\/edition$/ },
   { methods: ["GET"], path: /^\/api\/brand$/ },
@@ -329,10 +326,9 @@ export const CLIENT_ALLOW: ReadonlyArray<{ methods: readonly string[]; path: Reg
   { methods: ["GET"], path: /^\/api\/config$/ },
 ];
 
-export function requiredScope(method: string, path: string, features: { sharedComputers?: boolean } = {}): Scope {
+export function requiredScope(method: string, path: string): Scope {
   const upper = method.toUpperCase();
   for (const rule of CLIENT_ALLOW) {
-    if (rule.feature && features[rule.feature] !== true) continue;
     if (rule.path.test(path) && rule.methods.includes(upper)) return "client";
   }
   return "admin";
@@ -359,7 +355,6 @@ export interface ResolveOptions {
   cookieName: string;
   streamPath: string;
   url: URL;
-  features?: { sharedComputers?: boolean };
   /** Absent is `owner`. */
   loopbackTrust?: LoopbackTrust;
   /** Under `service`: a per-launch secret from `quatibot serve` over stdin (never env, which other children read); it opens only pairing codes. */
@@ -408,7 +403,7 @@ export function resolveRequestAuth(req: IncomingMessage, options: ResolveOptions
     if (via === "cookie" && session.cookieOnly && !["GET", "HEAD", "OPTIONS"].includes(method) && !provesSameOrigin(req)) {
       return deny(403, "forbidden: this browser's session makes changes only from its own page");
     }
-    const needed = requiredScope(method, path, options.features ?? {});
+    const needed = requiredScope(method, path);
     if (!session.scopes.includes(needed)) {
       return deny(403, `forbidden: this session lacks the ${needed} scope`);
     }

@@ -7,7 +7,6 @@ import { WIDGET_TOOL_DEFINITIONS } from "./agents-widget-tools.ts";
 /** Which tools a turn is shown. Presentation only: the server still authenticates and scopes every call. */
 export interface CatalogProfile {
   skillAuthoring: boolean;
-  sharedComputers: boolean;
   voiceNotes: boolean;
   cloudHome: boolean;
   memoryEnabled?: boolean;
@@ -23,7 +22,6 @@ export interface CatalogProfile {
 export function catalogProfileFromEnv(env: NodeJS.ProcessEnv): CatalogProfile {
   return {
     skillAuthoring: env.QUATI_SKILL_AUTHORING_ENABLED === "1",
-    sharedComputers: env.QUATI_SHARED_COMPUTERS_ENABLED === "1",
     voiceNotes: env.QUATI_VOICE_NOTES === "1",
     cloudHome: env.QUATI_CLOUD_HOME === "1",
     memoryEnabled: env.QUATI_MEMORY_ENABLED !== "0",
@@ -204,20 +202,6 @@ const TOOL_DEFINITIONS = [
       },
       required: ["id"],
     },
-  },
-  {
-    name: "list_shared_computers",
-    description: "List online desktop computers explicitly shared with this workspace, and their allowed folders/capabilities. These are the user's computers, not this server. An offline or unshared computer cannot be accessed. Folder paths use opaque folder IDs and relative paths.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
-  },
-  {
-    name: "shared_computer",
-    description: "Use a desktop explicitly shared by the user. Discover computer_id and folder_id with list_shared_computers. list_files/read_file/write_file are confined to chosen folders; paths are relative. read_file returns sha256; overwriting requires expected_sha256. Binary files support base64 encoding. run_command requires a SEPARATE unrestricted terminal grant. computer_tools lists the native computer-control tools; computer_call invokes one with arguments and needs a SEPARATE computer-control grant. Never substitute the server's filesystem when this desktop is offline. Actions are not retried automatically; inspect an uncertain outcome before retrying.",
-    inputSchema: { type: "object", additionalProperties: false, properties: {
-      computer_id: { type: "string" }, action: { type: "string", enum: ["list_files", "read_file", "write_file", "run_command", "computer_tools", "computer_call"] },
-      folder_id: { type: "string" }, path: { type: "string" }, content: { type: "string" }, encoding: { type: "string", enum: ["utf8", "base64"] }, expected_sha256: { type: "string" },
-      command: { type: "string" }, tool_name: { type: "string" }, arguments: { type: "object", additionalProperties: true },
-    }, required: ["computer_id", "action"] },
   },
   {
     name: "list_room_targets",
@@ -824,7 +808,6 @@ const TOOL_DEFINITIONS = [
 
 const SKILL_TOOL_NAMES = new Set(["skills_list", "skill_manage"]);
 // Never advertised when sharing is off: a model shown a tool it cannot use spends turns finding out.
-export const SHARED_COMPUTER_TOOL_NAMES = new Set(["list_shared_computers", "shared_computer"]);
 const VOICE_TOOL_NAMES = new Set(["send_voice_note"]);
 const CHIEF_ONLY_TOOL_NAMES = new Set([
   "create_bot", "list_team_setup", "propose_team_setup", "propose_bot_deletion", "create_room", "manage_room", "retry_thread",
@@ -855,12 +838,9 @@ function catalogTools(profile: CatalogProfile) {
   const AUTHORING_TOOLS = profile.skillAuthoring
     ? BOT_SCOPED_TOOLS
     : BOT_SCOPED_TOOLS.filter((tool) => !SKILL_TOOL_NAMES.has(tool.name));
-  const SHAREABLE_TOOLS = profile.sharedComputers
-    ? AUTHORING_TOOLS
-    : AUTHORING_TOOLS.filter((tool) => !SHARED_COMPUTER_TOOL_NAMES.has(tool.name));
   const VOICE_READY_TOOLS = profile.voiceNotes
-    ? SHAREABLE_TOOLS
-    : SHAREABLE_TOOLS.filter((tool) => !VOICE_TOOL_NAMES.has(tool.name));
+    ? AUTHORING_TOOLS
+    : AUTHORING_TOOLS.filter((tool) => !VOICE_TOOL_NAMES.has(tool.name));
   const ROLE_TOOLS = profile.chief
     ? VOICE_READY_TOOLS
     : VOICE_READY_TOOLS.filter((tool) => !CHIEF_ONLY_TOOL_NAMES.has(tool.name)).map((tool) => {

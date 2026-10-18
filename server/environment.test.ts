@@ -33,10 +33,9 @@ function loadEnvironmentIdInChild(dataDir: string): Promise<string> {
   });
 }
 
-function importComputerProvidersInChild(dataDir: string): Promise<void> {
-  const boatUrl = new URL("./boat.ts", import.meta.url).href;
-  const vpsUrl = new URL("./vps-computer.ts", import.meta.url).href;
-  const source = `await import(${JSON.stringify(boatUrl)}); await import(${JSON.stringify(vpsUrl)});`;
+function importContainerComputerInChild(dataDir: string): Promise<void> {
+  const moduleUrl = new URL("./container-computer.ts", import.meta.url).href;
+  const source = `await import(${JSON.stringify(moduleUrl)});`;
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
@@ -106,11 +105,11 @@ describe("environment identity", () => {
     expect(() => loadEnvironmentId(unreadableDir)).toThrow(/Cannot read the existing environment identity/);
   });
 
-  it("does not create the data directory merely by importing computer providers", async () => {
+  it("does not create the data directory merely by importing the VM backend", async () => {
     const parent = mkdtempSync(join(tmpdir(), "quati-provider-import-"));
     dirs.push(parent);
     const dataDir = join(parent, "not-created-yet");
-    await importComputerProvidersInChild(dataDir);
+    await importContainerComputerInChild(dataDir);
     expect(existsSync(dataDir)).toBe(false);
   });
 
@@ -126,10 +125,6 @@ describe("environment identity", () => {
       capabilities: { remoteSessions: true, selfUpdate: "desktop-managed", emailSignIn: false, jobs: true },
     });
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false }).capabilities.selfUpdate).toBe("operator");
-    expect(environmentDescriptor({ environmentId: "abc", desktopManaged: true, sharedComputers: false }).capabilities)
-      .not.toHaveProperty("sharedComputers");
-    expect(environmentDescriptor({ environmentId: "abc", desktopManaged: true, sharedComputers: true }).capabilities)
-      .toEqual({ remoteSessions: true, sharedComputers: true, selfUpdate: "desktop-managed", emailSignIn: false, jobs: true });
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false, cloudHome: true }).capabilities)
       .toEqual({ remoteSessions: true, cloudHome: true, selfUpdate: "operator", emailSignIn: false, jobs: true });
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false, cloudHome: false }).capabilities).not.toHaveProperty("cloudHome");

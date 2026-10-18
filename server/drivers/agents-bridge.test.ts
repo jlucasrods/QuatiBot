@@ -30,7 +30,6 @@ const profile = (options: { chief?: boolean; skills?: boolean; shared?: boolean;
     QUATI_BOT_ID: options.botId ?? "bot-bridge",
     QUATI_CHIEF_OF_STAFF: flag(options.chief ?? false),
     QUATI_SKILL_AUTHORING_ENABLED: flag(options.skills ?? false),
-    QUATI_SHARED_COMPUTERS_ENABLED: flag(options.shared ?? false),
     QUATI_VOICE_NOTES: flag(options.voice ?? false),
     QUATI_CLOUD_HOME: flag(options.cloudHome ?? false),
     QUATI_MEMORY_ENABLED: flag(options.memory ?? true),
@@ -246,7 +245,6 @@ describe("find_tool", () => {
     ["switch this bot to a different model", "propose_model"],
     ["search my earlier conversations", "session_search"],
     ["run a shell command in the VM", "vm_exec"],
-    ["add an MCP server", "add_mcp_server"],
     ["see how the threads I opened are going", "list_threads"],
     ["write a line to today's log", "memory_log"],
     ["remember a decision for the whole team", "propose_team_memory"],
@@ -254,7 +252,6 @@ describe("find_tool", () => {
     ["create a new specialist bot", "create_bot"],
     ["delete a teammate", "propose_bot_deletion"],
     ["rename a room or change its members", "manage_room"],
-    ["use the desktop the user shared", "shared_computer"],
     ["open a separate job for each pull request", "start_thread"],
     ["read the whole message from an old conversation", "session_read"],
     ["retry the failed thread", "retry_thread"],
@@ -270,7 +267,6 @@ describe("find_tool", () => {
     ["check how a hand-off is going", "assignment_status"],
     ["make a new room", "create_room"],
     ["my skills", "skills_list"],
-    ["computers shared with this workspace", "list_shared_computers"],
   ])("returns the hidden tool among its few matches for a looser request: %s", async (query, expected) => {
     expect(names((await found(bridgeFor(FULL_CHIEF), query)).matches)).toContain(expected);
   });
@@ -324,7 +320,7 @@ describe("find_tool", () => {
   it("never returns a tool outside this turn's profile", async () => {
     const plain = bridgeFor();
     const allowed = new Set(names(plain.hidden));
-    for (const query of ["create a new specialist bot", "delete a teammate", "set up the team", "retry a failed thread", "share a computer", "save a skill", "send a voice note", ...CHIEF_ONLY, "skill_manage", "shared_computer", "send_voice_note", "vm_exec"]) {
+    for (const query of ["create a new specialist bot", "delete a teammate", "set up the team", "retry a failed thread", "share a computer", "save a skill", "send a voice note", ...CHIEF_ONLY, "skill_manage", "send_voice_note", "vm_exec"]) {
       const answer = await plain.find({ query });
       const matches = answer.isError ? [] : (JSON.parse(answer.text) as FindPayload).matches;
       for (const match of matches) expect(allowed.has(match.name), `${query} → ${match.name}`).toBe(true);
@@ -387,7 +383,7 @@ describe("use_tool", () => {
   it("names a tool outside this turn's profile for the front end to refuse as it refuses a direct call", () => {
     // No answer of its own: the proxy's one unknown-tool check rejects it,
     // in the same words as a direct call.
-    for (const name of ["made_up", "create_bot", "skill_manage", "shared_computer", "send_voice_note", "create_options_card", FIND_TOOL, USE_TOOL]) {
+    for (const name of ["made_up", "create_bot", "skill_manage", "send_voice_note", "create_options_card", FIND_TOOL, USE_TOOL]) {
       expect(bridgeFor().use({ name, arguments: { anything: true } }), name).toEqual({ name, arguments: { anything: true } });
     }
   });
