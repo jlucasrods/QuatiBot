@@ -73,7 +73,7 @@ type BotRecord = {
     })()`);
     const messages = async (id: string) => (await control("messages", "--bot", id, "--limit", "10")).messages;
     const openMap = async () => {
-      await click("Tools");
+      if (!String((await ui("snapshot")).snapshot).includes('button "Team map"')) await click("Tools");
       await click("Team map");
       await expect.poll(() => evaluate("Boolean(document.querySelector('[data-team-canvas]'))"), { timeout: 10_000 }).toBe(true);
     };
@@ -130,7 +130,7 @@ type BotRecord = {
 
     await api("PATCH", `/api/bots/${fixture.botId}`, { name: "Ada", section: "Engineering", chiefOfStaff: true });
     const ben: BotRecord = (await api("POST", "/api/bots", { name: "Ben", title: "Build and review", section: "Engineering",
-      modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } })).bot;
+      modelSelection: { instanceId: "opencodeGo", model: "fixture/default" } })).bot;
     const cleo: BotRecord = (await api("POST", "/api/bots", { name: "Cleo", title: "Research coordinator", section: "Research",
       modelSelection: { instanceId: "codex", model: "gpt-5.4" } })).bot;
     await api("PATCH", `/api/bots/${cleo.id}`, { chiefOfStaff: true });
@@ -155,26 +155,6 @@ type BotRecord = {
     for (const name of ["Ada", "Ben", "Cleo", "Dana"]) expect(await snapshot()).toContain(`Change default model for ${name}`);
     expect(await evaluate("[...document.querySelectorAll('[data-team-key] article span')].some(span => span.textContent.trim() === 'Ready')")).toBe(false);
     expect(await evaluate("document.querySelectorAll('[data-team-canvas] [aria-label^=\"Computer for \"]').length")).toBe(0);
-
-    // The full-app fixture has no Boat credentials. The explicit + entry
-    // explains paid creation, but cannot allocate anything until connected.
-    const beforeComputers = await api("GET", "/api/team-computers");
-    expect(beforeComputers.configured).toBe(false);
-    await evaluate("document.querySelector('summary[aria-label=\"Add to team map\"]').focus(); true");
-    await ui("press", "--keys", "Enter");
-    await click("Cloud computer");
-    await expect.poll(snapshot).toContain("Connect your Boat account before creating a cloud computer.");
-    await expect.poll(snapshot).toContain("Your Boat plan and usage charges apply.");
-    const inputRefs = (await ui("snapshot")).refs as Record<string, { role: string; name: string }>;
-    const nameInput = Object.entries(inputRefs).filter(([, entry]) => entry.role === "textbox" && entry.name === "New cloud computer");
-    expect(nameInput).toHaveLength(1);
-    await ui("type", "--ref", `@${nameInput[0][0]}`, "--text", "Fixture desktop");
-    expect(await evaluate("document.querySelector('[aria-label=\"Team computers\"] button[type=submit]').disabled")).toBe(true);
-    expect((await api("GET", "/api/team-computers")).computers).toEqual(beforeComputers.computers);
-    await click("Cancel");
-    await click("Close computers");
-    expect(await evaluate("Boolean(document.querySelector('[aria-label=\"Team computers\"]'))")).toBe(false);
-    receipts.unconfiguredComputerCreation = "Explicit Add entry shows cost disclosure and keeps Create cloud computer disabled without credentials.";
 
     await evaluate(`(() => {
       const card = document.querySelector(${JSON.stringify(`[data-bot-id=${JSON.stringify(ben.id)}]`)});

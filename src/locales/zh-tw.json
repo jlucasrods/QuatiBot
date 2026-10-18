@@ -3289,7 +3289,6 @@
   "place.view.ccUnavailable.short": "目前無法使用",
   "place.view.ccUnavailable.line": "雲端電腦目前無法啟動，這不是你的操作造成的。",
   "place.view.ccEnded.short": "方案已結束",
-  "place.view.ccEnded.line": "你的 Quati Cloud 方案已結束，因此雲端電腦已關閉。",
   "place.view.ccNoStart.short": "未能啟動",
   "place.view.ccNoStart.line": "{bot} 的雲端電腦未能啟動。",
   "place.view.ccClearing.short": "正在清除",

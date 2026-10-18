@@ -1,19 +1,20 @@
 // Rows are written at the request.opened fold or in answerRequest, and both keep working (cards appear, approvals flow)
 // while logging silently rots, so these run the real server on the fake ACP CLI and assert the rows themselves.
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 import type { DecisionRow } from "./decision-log.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
-const PORT = 18800 + Math.floor(Math.random() * 10_000);
-const BASE = `http://127.0.0.1:${PORT}`;
+let BASE: string;
 const posixOnly = describe.skipIf(process.platform === "win32");
 
 let child: ChildProcess;
@@ -88,7 +89,7 @@ async function makePermissionBot(patch: Record<string, unknown>) {
   const bot = created.body.bot;
   const patched = await api("PATCH", `/api/bots/${bot.id}`, {
     ...patch,
-    modelSelection: { instanceId: "grok", model: "fake-model" },
+    modelSelection: { instanceId: "permission", model: "fixture/test" },
   });
   expect(patched.status).toBe(200);
   return patched.body.bot ?? bot;
@@ -96,35 +97,34 @@ async function makePermissionBot(patch: Record<string, unknown>) {
 
 posixOnly("authorization decisions are logged", () => {
   beforeAll(async () => {
-    chmodSync(FAKE_CLI, 0o755);
     home = mkdtempSync(join(tmpdir(), "quati-decisions-e2e-"));
-    mkdirSync(join(home, ".quatibot"), { recursive: true });
+    const port = await freePortBlock([0, 1]);
+    BASE = `http://127.0.0.1:${port}`;
+    const dataDir = join(home, ".quatibot");
+    mkdirSync(dataDir, { recursive: true });
+    const instances: Record<string, { driver: string; config: { cli: string } }> = {};
+    for (const mode of ["permission", "question"]) {
+      const cli = join(home, `${mode}.mjs`);
+      writeFileSync(cli, `#!${process.execPath}\n${Object.entries({
+        FAKE_ACP_MODE: mode,
+        FAKE_ACP_AGENT_NAME: "OpenCode",
+        FAKE_ACP_VERSION: "2.0.31",
+        FAKE_ACP_AGENT_VERSION: "2.0.31",
+        FAKE_ACP_MODELS: "fixture/test",
+        FAKE_ACP_DUMP: join(home, `${mode}-dump.json`),
+      }).map(([key, value]) => `process.env[${JSON.stringify(key)}] = ${JSON.stringify(value)};`).join("\n")}\nawait import(${JSON.stringify(FAKE_CLI)});\n`, { mode: 0o755 });
+      instances[mode] = { driver: "opencodeGo", config: { cli } };
+      mkdirSync(join(dataDir, "providers", "opencode", "discovery", ".quati-project"), { recursive: true });
+    }
     writeFileSync(
       join(home, ".quatibot", "config.json"),
       JSON.stringify({
-        instances: {
-          grok: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "permission" },
-            config: { cli: FAKE_CLI, fullAuto: false },
-          },
-          grokq: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "question" },
-            config: { cli: FAKE_CLI, fullAuto: false },
-          },
-        },
+        instances,
       }),
     );
     child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
-      env: {
-        ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-        ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-        HOME: home,
-        USERPROFILE: home,
-        QUATI_PORT: String(PORT),
-      },
+      env: { ...verificationServerEnvironment({}, dataDir, port), HOME: home },
       stdio: ["ignore", "pipe", "pipe"],
     });
     child.stderr!.on("data", (c) => (stderr += c));
@@ -135,6 +135,14 @@ posixOnly("authorization decisions are logged", () => {
       } catch {
       }
       if (Date.now() > deadline) throw new Error(`server never came up. stderr:\n${stderr}`);
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    const modelDeadline = Date.now() + 15_000;
+    for (;;) {
+      const { instances } = (await api("GET", "/api/instances")).body;
+      if (["permission", "question"].every((id) => instances.some((instance: { instanceId: string; models: { options: { id: string }[] } }) =>
+        instance.instanceId === id && instance.models.options.some((model) => model.id === "fixture/test")))) break;
+      if (Date.now() > modelDeadline) throw new Error(`fixture models unavailable: ${JSON.stringify(instances)}`);
       await new Promise((r) => setTimeout(r, 150));
     }
   }, 40_000);
@@ -222,7 +230,7 @@ posixOnly("authorization decisions are logged", () => {
       expect(created.status).toBe(201);
       const patched = await api("PATCH", `/api/bots/${created.body.bot.id}`, {
         name: "Queried",
-        modelSelection: { instanceId: "grokq", model: "fake-model" },
+        modelSelection: { instanceId: "question", model: "fixture/test" },
       });
       expect(patched.status).toBe(200);
       const bot = patched.body.bot ?? created.body.bot;

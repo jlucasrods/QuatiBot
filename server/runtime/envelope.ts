@@ -134,6 +134,7 @@ export function composeReport(a: Assignment, names: EnvelopeNames): string {
   const assignee = `@${label(names.assignee, a.assignee.botId)}`;
   const id = label(a.id, "unknown");
   const lines = [`[QuatiBot report from ${assignee} on assignment ${id}: ${outcomeLabel(a)}]`, evidenceLine(a.evidence)];
+  if (a.brief) lines.push(`Assignment originally sent to ${assignee}: ${JSON.stringify(escapeEnvelope(a.brief))}`);
   if (a.outcome === "needs_input") {
     const question = quote(a.question, QUOTE_MAX);
     lines.push(`It ended on a question the person has not answered${question ? `: "${question}"` : ""}.`);

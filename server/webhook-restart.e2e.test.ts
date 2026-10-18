@@ -1,9 +1,9 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { closeSync, openSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
+import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import type { RoutineRun } from "./routines.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 
@@ -26,19 +26,7 @@ it("does not run a delivery twice after a process dies between the queue and ing
     const created = await api("/api/webhooks", { name: "Only once", prompt: "Handle this event once", botId: bot.id });
     await waitForExit(fixture.child, { signal: "SIGTERM" });
 
-    const env: NodeJS.ProcessEnv = {};
-    for (const key of ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"]) {
-      if (process.env[key]) env[key] = process.env[key];
-    }
-    Object.assign(env, {
-      HOME: dataDir, USERPROFILE: dataDir, QUATI_DATA_DIR: dataDir,
-      APPDATA: join(dataDir, "AppData", "Roaming"), LOCALAPPDATA: join(dataDir, "AppData", "Local"),
-      XDG_CONFIG_HOME: join(dataDir, ".config"), XDG_CACHE_HOME: join(dataDir, ".cache"),
-      XDG_DATA_HOME: join(dataDir, ".local", "share"), HERMES_HOME: join(dataDir, ".hermes"),
-      TEMP: join(dataDir, "tmp"), TMP: join(dataDir, "tmp"), TMPDIR: join(dataDir, "tmp"),
-      QUATI_PORT: new URL(url).port, QUATI_WEBHOOK_PORT: String(Number(new URL(url).port) + 1),
-      PATH: dirname(process.execPath), FAKE_CLAUDE_MODE: "happy",
-    });
+    const env = verificationServerEnvironment({}, dataDir, Number(new URL(url).port));
     // This disposable child runs the real enqueue, then exits before the WebhookManager can record acceptance.
     const crash = spawnSync(process.execPath, ["--input-type=module", "-e", `
       import { readFileSync } from 'node:fs';

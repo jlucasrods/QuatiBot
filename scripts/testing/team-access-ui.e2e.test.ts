@@ -36,8 +36,11 @@ const enabled = process.env.QUATI_UI_E2E === "1" || Boolean(resolveAgentBrowserB
     const ui = (verb: string, ...args: string[]) => runControlQuati(["ui", verb, "--ui", info.ui, ...args]) as Promise<any>;
     const click = (name: string) => ui("click", "--name", name);
     // The browser harness does not assign refs to native <summary> nodes.
-    const toggleTeams = () => ui("eval", "--js", "document.querySelector('[data-bot-settings-section=permissions] summary').click()");
     const snapshot = async () => (await ui("snapshot")).snapshot as string;
+    const teamsSnapshot = async () => {
+      await ui("eval", "--js", "(() => { const summary = document.querySelector('[data-bot-settings-section=permissions] summary'); if (!summary.closest('details').open) summary.click(); })()");
+      return snapshot();
+    };
     const clickRole = async (role: string, name: string | RegExp) => {
       const refs = (await ui("snapshot")).refs as Record<string, { role: string; name: string }>;
       const match = Object.entries(refs).find(([, entry]) => entry.role === role && (typeof name === "string" ? entry.name === name : name.test(entry.name)));
@@ -57,16 +60,14 @@ const enabled = process.env.QUATI_UI_E2E === "1" || Boolean(resolveAgentBrowserB
     await clickRole("button", "Open Clive's profile");
     await click("Permissions");
     await expect.poll(snapshot, { timeout: 10_000 }).toContain("Additional teams");
-    await toggleTeams();
+    await teamsSnapshot();
     await clickRole("checkbox", "Engineering");
     await clickRole("checkbox", "Research");
     await clickRole("checkbox", "Empty delivery");
     expect((await saved()).managedSections ?? []).toEqual([]);
     await click("Save team access");
     await expect.poll(async () => (await saved()).managedSections?.toSorted(), { timeout: 10_000 }).toEqual(["Empty delivery", "Engineering", "Research"]);
-    // The server update remounts the controlled list so another bot's old
-    // selection can never be saved from a stale dialog.
-    await toggleTeams();
+    await expect.poll(teamsSnapshot, { timeout: 10_000 }).toContain('checkbox "Empty delivery" [checked=true');
     const granted = await snapshot();
     expect(granted).toContain('checkbox "Engineering" [checked=true');
     expect(granted).toContain('checkbox "Research" [checked=true');
@@ -82,8 +83,7 @@ const enabled = process.env.QUATI_UI_E2E === "1" || Boolean(resolveAgentBrowserB
     expect((await saved()).managedSections?.toSorted()).toEqual(["Empty delivery", "Research"]);
     await api("/api/sidebar-sections?section=Empty%20delivery", { name: "Empty launch" });
     await expect.poll(async () => (await saved()).managedSections, { timeout: 10_000 }).toEqual(["Research"]);
-    await toggleTeams();
-    await expect.poll(snapshot, { timeout: 10_000 }).toContain('checkbox "Empty launch" [checked=false');
+    await expect.poll(teamsSnapshot, { timeout: 10_000 }).toContain('checkbox "Empty launch" [checked=false');
     expect(await snapshot()).not.toContain('checkbox "Empty delivery"');
     // A new empty team appears in an already-open selector through SSE.
     await api("/api/sidebar-sections", { name: "Empty delivery" }, "POST");

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { launchVerificationServer, type VerificationServer } from "../scripts/control-quati.ts";
+import { launchVerificationServer, verificationServerEnvironment, type VerificationServer } from "../scripts/control-quati.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 
 const ENTRY = join(import.meta.dirname, "quatibot.ts");
@@ -17,7 +17,7 @@ let dir: string;
 function cli(args: string[], env: NodeJS.ProcessEnv = {}): Promise<Ran> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["--experimental-strip-types", ENTRY, ...args], {
-      env: { ...process.env, QUATIBOT_TOKEN: "", QUATI_PORT: "", QUATIBOT_URL: session.info.url, ...env },
+      env: { ...verificationServerEnvironment({}, session.info.dataDir, Number(new URL(session.info.url).port)), QUATIBOT_TOKEN: "", QUATI_PORT: "", QUATIBOT_URL: session.info.url, ...env },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -33,8 +33,7 @@ const json = (ran: Ran) => JSON.parse(ran.stdout);
 const botsNow = async () => json(await cli(["bots", "--json"])).bots as any[];
 
 beforeAll(async () => {
-  // A port range of its own (19975-19999), and a scripted fake engine.
-  session = await launchVerificationServer({ ...process.env, QUATI_TEST_PORTS: "19975-19999" }, undefined, undefined, undefined, undefined, { scripted: true });
+  session = await launchVerificationServer({ QUATI_TEST_PORTS: "19975-19999" }, undefined, undefined, undefined, undefined, { scripted: true });
   dir = mkdtempSync(join(tmpdir(), "quati-headless-cli-"));
 }, 60_000);
 
@@ -57,16 +56,15 @@ describe("quatibot headless: team apply → run --wait job → export", () => {
     const doctor = await cli(["doctor", "--json"]);
     expect(doctor.code, doctor.stderr).toBe(0);
     expect(json(doctor)).toMatchObject({ ok: true, server: { capabilities: { jobs: true } }, session: { kind: "loopback" } });
-    model = json(await cli(["models", "--json"])).instances.find((instance: any) => instance.instanceId === "claude").models.default;
+    model = json(await cli(["models", "--json"])).instances.find((instance: any) => instance.instanceId === "opencodeGo").models.default;
     teamFile = join(dir, "launch-room.yaml");
     writeFileSync(teamFile, `version: 1
 defaults:
   team: Launch Room
-  model: claude/${model}
+  model: opencodeGo/${model}
   approval: full
   computer: "off"
   browser: { enabled: true, profile: guest }
-  # Claude limits MCP tools only; this keeps a mail server's tools from every visitor
   tools: { deny: ["mcp:mail:*"] }
 teams:
   - name: Launch Room
@@ -113,7 +111,7 @@ rooms:
     const bots = await botsNow();
     const byName = (name: string) => bots.find((bot) => bot.name === name);
     [lead, priya, marcus] = ["Room Lead", "Priya", "Marcus"].map(byName);
-    expect(lead).toMatchObject({ section: "Launch Room", chiefOfStaff: true, modelSelection: { instanceId: "claude", model } });
+    expect(lead).toMatchObject({ section: "Launch Room", chiefOfStaff: true, modelSelection: { instanceId: "opencodeGo", model } });
     expect([priya, marcus].every((bot) => bot.section === "Launch Room")).toBe(true);
     const room = json(await cli(["channels", "--json"])).channels.find((channel: any) => channel.name === "Debrief");
     expect(room).toMatchObject({ section: "Launch Room", bulletin: "Talk over what each visitor saw.", defaultResponder: { kind: "member", botId: lead.id } });
@@ -208,7 +206,7 @@ rooms:
     writeFileSync(native, readFileSync(next, "utf8").replace('tools: { deny: ["mcp:mail:*"] }', 'tools: { deny: ["native:Bash"] }'));
     const refused = await cli(["team", "apply", native]);
     expect(refused.code).toBe(1);
-    expect(refused.stderr).toContain('bot "Priya": claudeAgent: native tool selection is not supported by this engine');
+    expect(refused.stderr).toContain('bot "Priya": opencodeGo: native tool selection is not supported by this engine');
     expect(JSON.stringify(await botsNow())).toBe(before);
   }, 120_000);
 

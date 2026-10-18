@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -7,10 +7,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { SessionRegistry } from "./sessions.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
+import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
-const PORT = 28800 + Math.floor(Math.random() * 10_000);
+const PORT = await freePortBlock([0, 1]);
 const BASE = `http://127.0.0.1:${PORT}`;
 const posixOnly = describe.skipIf(process.platform === "win32");
 const BOSS = "boss@example.test";
@@ -38,9 +40,9 @@ async function start() {
   child = spawn(process.execPath, ["--import", pathToFileURL(join(SERVER_DIR, "testing", "hold-search-result.ts")).href, join(SERVER_DIR, "index.ts")], {
     cwd: join(SERVER_DIR, ".."),
     env: {
-      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-      HOME: home, USERPROFILE: home, QUATI_PORT: String(PORT), QUATI_WEBHOOK_PORT: String(PORT + 1),
+      ...verificationServerEnvironment({}, join(home, ".quatibot"), PORT),
+      HOME: home,
+      FAKE_ACP_MODELS: "fixture/test",
       QUATI_TEST_INTERNAL_CAPABILITY_KEY: CAPABILITY_KEY,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -113,7 +115,7 @@ const ids = { pub: "", pubThread: "", hr: "", hrThread: "", board: "", roomPub: 
 async function makeBot(name: string, section?: string) {
   const created = await api("POST", "/api/bots", { name, ...(section ? { section } : {}) }, BOSS);
   expect(created.status, JSON.stringify(created.body)).toBe(201);
-  const patched = await api("PATCH", `/api/bots/${created.body.bot.id}`, { modelSelection: { instanceId: "grok", model: "fake-model" } }, BOSS);
+  const patched = await api("PATCH", `/api/bots/${created.body.bot.id}`, { modelSelection: { instanceId: "grok", model: "fixture/test" } }, BOSS);
   expect(patched.status).toBe(200);
   return created.body.bot as { id: string; threadId: string };
 }
@@ -134,16 +136,23 @@ const settledReply = (threadId: string, text: string) => waitFor(async () => {
 
 posixOnly("per-bot visibility on a shared workspace", () => {
   beforeAll(async () => {
-    chmodSync(FAKE_CLI, 0o755);
     home = mkdtempSync(join(tmpdir(), "quati-bot-visibility-"));
     const data = join(home, ".quatibot");
     mkdirSync(data, { recursive: true });
+    const echoCli = join(home, "echo-opencode.mjs");
+    writeFileSync(echoCli, [
+      "#!/usr/bin/env node",
+      'process.env.FAKE_ACP_MODE = "echo-gated";',
+      `await import(${JSON.stringify(pathToFileURL(FAKE_CLI).href)});`,
+    ].join("\n"), { mode: 0o700 });
+    const discovery = join(data, "providers", "opencode", "discovery");
+    mkdirSync(discovery, { recursive: true });
+    writeFileSync(join(discovery, ".quati-project"), "fixture");
     writeFileSync(join(data, "config.json"), JSON.stringify({
       signIn: { admins: [BOSS], members: [ADA, BOB] },
       instances: {
-        grok: { driver: "grokAgent", config: { cli: FAKE_CLI, fullAuto: false } },
-        // repeats its whole prompt back, so a test can read what a bot was told
-        grokecho: { driver: "grokAgent", environment: { FAKE_ACP_MODE: "echo-gated" }, config: { cli: FAKE_CLI, fullAuto: false } },
+        grok: { driver: "opencodeGo", config: { cli: FAKE_CLI } },
+        grokecho: { driver: "opencodeGo", config: { cli: echoCli } },
       },
     }));
     const role = (email: string) => (email === BOSS ? ["admin", "client"] as const : ["client"] as const);
@@ -151,6 +160,11 @@ posixOnly("per-bot visibility on a shared workspace", () => {
     for (const email of [BOSS, ADA, BOB]) tokens[email] = registry.issue({ label: `${email.split("@")[0]}'s laptop`, email, scopes: [...role(email)] }).token;
     registry.close();
     await start();
+    expect(await waitFor(async () => {
+      const { body } = await api("GET", "/api/instances", undefined, BOSS);
+      return ["grok", "grokecho"].every((id) => body.instances.some((instance: any) =>
+        instance.instanceId === id && instance.models.options.some((model: any) => model.id === "fixture/test")));
+    })).toBe(true);
 
     const pub = await makeBot("Helpdesk Otter", "Ops");
     const hr = await makeBot("Payroll Zebra", "People");
@@ -446,7 +460,7 @@ posixOnly("per-bot visibility on a shared workspace", () => {
 
   it("keeps a room fewer people can see out of a visible bot's recall, and refuses to mix audiences in a room", async () => {
     // An engine that repeats its prompt shows exactly what the helpdesk was told.
-    expect((await api("PATCH", `/api/bots/${ids.pub}`, { modelSelection: { instanceId: "grokecho", model: "fake-model" } }, BOSS)).status).toBe(200);
+    expect((await api("PATCH", `/api/bots/${ids.pub}`, { modelSelection: { instanceId: "grokecho", model: "fixture/test" } }, BOSS)).status).toBe(200);
     const sent = await api("POST", `/api/bots/${ids.pub}/messages`, { text: "What have you been up to?", threadId: ids.pubThread }, BOB);
     expect(sent.status, JSON.stringify(sent.body)).toBe(202);
     const reply = await settledReply(ids.pubThread, "What have you been up to?");
@@ -455,7 +469,7 @@ posixOnly("per-bot visibility on a shared workspace", () => {
     expect(answer).toContain("echo: ");
     expect(answer).not.toContain("Pay questions");
     expect(answer).not.toContain("SECRET-ROOM-42");
-    expect((await api("PATCH", `/api/bots/${ids.pub}`, { modelSelection: { instanceId: "grok", model: "fake-model" } }, BOSS)).status).toBe(200);
+    expect((await api("PATCH", `/api/bots/${ids.pub}`, { modelSelection: { instanceId: "grok", model: "fixture/test" } }, BOSS)).status).toBe(200);
     const minted = await fetch(`${BASE}/api/testing/internal-capability`, {
       method: "POST", headers: { "content-type": "application/json", "x-quatibot-test-capability": CAPABILITY_KEY },
       body: JSON.stringify({ botId: ids.pub, threadId: ids.pubThread }),

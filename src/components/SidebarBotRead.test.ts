@@ -109,8 +109,4 @@ describe("bot menu bulk reads", () => {
         await expect.poll(() => state.bots[0]!.tasks!.every((task) => !task.unread)).toBe(true);
         expect(onClose).not.toHaveBeenCalled();
     });
-    it("does not expose bulk sibling reads to thread-pinned remote clients", () => {
-        draw();
-        expect(button()).toBeUndefined();
-    });
 });

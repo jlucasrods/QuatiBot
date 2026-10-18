@@ -1,6 +1,6 @@
 import { createElement, type EffectCallback, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withTourFinished } from "@/lib/guided-tour";
 import { EMPTY_ONBOARDING, WELCOME_VERSION } from "@/lib/onboarding";
 
@@ -49,6 +49,7 @@ beforeEach(() => {
   fixture.values = [];
   store.api.mockReset();
   vi.stubGlobal("window", {});
+  vi.stubGlobal("localStorage", { getItem: () => null });
   const record = { ...EMPTY_ONBOARDING, completedAt: "2026-09-23T00:00:00.000Z", version: WELCOME_VERSION };
   store.state = {
     config: { onboarding: { ...record, hintsSeen: withTourFinished(record) } },
@@ -57,6 +58,7 @@ beforeEach(() => {
     bots: [{ id: "bot-1", threadId: "t-1", busy: false, messages: [{ kind: "options", card: { requestId: "r", tool: "Bash", answered: false } }] }],
   };
 });
+afterEach(() => vi.unstubAllGlobals());
 
 describe("first-conversation spotlights", () => {
   it("explain the approval card as before", () => {
@@ -80,7 +82,7 @@ describe("first-conversation spotlights", () => {
     expect(store.api).toHaveBeenCalledWith("/api/config", expect.objectContaining({ method: "PUT", body: expect.stringContaining("spot.approval") }));
   });
 
-  it("stay away from a hosted member, who could never dismiss them for good", () => {
+  it("stays quiet when the caller suppresses tips", () => {
     render(true);
     for (const effect of fixture.effects) effect();
     expect(render(true)).toBeNull();

@@ -1,6 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { launchVerificationServer, type VerificationServer } from "../scripts/control-quati.ts";
@@ -19,20 +18,13 @@ describe("organizational folders through an isolated HTTP fixture", () => {
     evidence.push({ method, path, body, result });
     return result;
   };
-  const selection = (model: string) => ({ instanceId: "claude", model });
+  const selection = (model: string) => ({ instanceId: "opencodeGo", model });
   const getBot = async (botId: string) => (await api("GET", "/api/bots?messages=30")).body.bots.find((bot: any) => bot.id === botId);
   const persistedBot = (botId: string) => JSON.parse(readFileSync(join(fixture.info.dataDir, "bots.json"), "utf8")).find((bot: any) => bot.id === botId);
 
   beforeAll(async () => {
-    fixture = await launchVerificationServer();
-    const wrapper = join(fixture.info.dataDir, "project-fixture.mjs");
-    writeFileSync(wrapper, [
-      "#!/usr/bin/env node",
-      'process.env.FAKE_CLAUDE_MODE = "hang";',
-      `await import(${JSON.stringify(pathToFileURL(join(process.cwd(), "server/testing/fake-claude-cli.ts")).href)});`,
-    ].join("\n"), { mode: 0o700 });
-    expect((await api("PATCH", "/api/instances/claude", { cli: wrapper })).status).toBe(200);
-    const catalog = (await api("GET", "/api/instances")).body.instances.find((instance: any) => instance.instanceId === "claude");
+    fixture = await launchVerificationServer({ FAKE_ACP_MODE: "hang" });
+    const catalog = (await api("GET", "/api/instances")).body.instances.find((instance: any) => instance.instanceId === "opencodeGo");
     models = catalog.models.options.map((model: any) => model.id);
     expect(models.length).toBeGreaterThanOrEqual(2);
   });
@@ -58,7 +50,7 @@ describe("organizational folders through an isolated HTTP fixture", () => {
     expect((await api("PATCH", `/api/bots/${bot.id}/tasks/${first.threadId}`, { modelSelection: selection(models[1]) })).status).toBe(200);
     expect(first.cwd).toBeUndefined();
     expect((await api("POST", `/api/bots/${bot.id}/messages`, { threadId: first.threadId, text: "Keep this project's conversation" })).status).toBe(202);
-    await expect.poll(() => existsSync(join(fixture.info.dataDir, "fake-claude-dump.json"))).toBe(true);
+    await expect.poll(() => existsSync(`${fixture.fixtureDumpPath}.prompts.jsonl`)).toBe(true);
     expect((await getBot(bot.id)).tasks.find((task: any) => task.threadId === first.threadId).busy).toBe(true);
     expect((await api("PATCH", `/api/bots/${bot.id}/projects/${projectId}`, { name: "Site" })).status).toBe(200);
     const moved = await api("PATCH", `/api/bots/${bot.id}/tasks/${first.threadId}`, { projectId: other.id });

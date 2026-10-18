@@ -90,16 +90,10 @@ const VERBS: Record<string, { options: ParseArgsOptionsConfig; positionals: numb
   },
   "team apply": {
     options: { "dry-run": { type: "boolean" }, check: { type: "boolean" }, prune: { type: "boolean" },
-      "rotate-secrets": { type: "boolean" }, "wait-idle": { type: "string" } },
+       "wait-idle": { type: "string" } },
     positionals: 1,
   },
   "team export": { options: { team: { type: "string", multiple: true }, out: { type: "string" } }, positionals: 0 },
-  "engine set": {
-    options: { "key-env": { type: "string" }, "key-file": { type: "string" }, "base-url": { type: "string" },
-      "only-claude-api": { type: "boolean" }, install: { type: "boolean" }, rotate: { type: "boolean" }, "dry-run": { type: "boolean" } },
-    positionals: 1,
-  },
-  "engine list": { options: {}, positionals: 0 },
   connect: {
     options: { code: { type: "string" }, out: { type: "string" }, label: { type: "string" }, client: { type: "boolean" }, force: { type: "boolean" } },
     positionals: 1,
@@ -111,7 +105,7 @@ export const HEADLESS_VERBS: ReadonlySet<string> = new Set(Object.keys(VERBS).ma
 
 /** Verbs that change something; control-quati refuses them on a discovered server. */
 export const MUTATING_VERBS: ReadonlySet<string> = new Set([
-  "send", "send-channel", "run", "interrupt", "new-bot", "new-channel", "set-model", "edit", "team apply", "engine set",
+  "send", "send-channel", "run", "interrupt", "new-bot", "new-channel", "set-model", "edit", "team apply",
 ]);
 
 export type Flags = Record<string, string | boolean | string[] | undefined>;
@@ -128,7 +122,7 @@ export function parseCommand(argv: readonly string[]): ParsedCommand {
   if (!head) throw usageError("name a verb", "run quatibot help");
   let verb = head;
   let args = rest;
-  if (head === "team" || head === "engine") {
+  if (head === "team") {
     const action = rest[0];
     const actions = head === "team" ? ["apply", "export"] : ["set", "list"];
     if (!action || !actions.includes(action)) {

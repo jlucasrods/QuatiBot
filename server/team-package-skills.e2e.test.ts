@@ -75,8 +75,8 @@ it("transfers only selected skills disabled, preserves originals, and rolls back
     await command("send", "--bot", target.id, "--text", "Confirm this isolated copy is ready.");
     expect(await command("wait", "--bot", target.id, "--timeout", "30")).toMatchObject({ status: "settled" });
     const messages = await command("messages", "--bot", target.id, "--limit", "10");
-    expect(JSON.stringify(messages)).toContain("hello from fake claude");
-    expect(readFileSync(fixture.fixtureDumpPath, "utf8")).not.toContain("SKILL_FIXTURE_MARKER");
+    expect(JSON.stringify(messages)).toContain("hello from fake acp");
+    expect(readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8")).not.toContain("SKILL_FIXTURE_MARKER");
     const after = await request("/api/bots", {}, url);
     for (const bot of before.bots) expect(after.bots.find((value: { id: string }) => value.id === bot.id)).toEqual(bot);
     const backup = await post("/api/teams/export", { format: "backup" });

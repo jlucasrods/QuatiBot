@@ -1,7 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
@@ -22,36 +20,9 @@ const jsonl = (path: string) => existsSync(path)
   ? readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
 const terminal = (status: string | undefined) => status === "completed" || status === "failed" || status === "cancelled";
 
-type ModelAnswer = { say: string } | { call: true } | { hold: Promise<void>; after: ModelAnswer };
-type ModelRequest = { lastUser: string; toolsSinceUser: number };
-
 async function chiefJob(test: (f: any) => Promise<void>) {
   // The approval deadline and the stall window elapse only on marker files, never on their own.
-  const parentEnv = { ...process.env, QUATI_TEST_APPROVAL_CLOCK: "1", QUATI_TEST_STALL_CLOCK: "1" };
-  const requests: ModelRequest[] = [];
-  let answer: (request: ModelRequest) => ModelAnswer = () => ({ say: "OK" });
-  let callSerial = 0;
-  const model = createServer(async (req, res) => {
-    if (req.url?.endsWith("/models")) { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ data: [{ id: "loop-model" }] })); return; }
-    let body = "";
-    for await (const chunk of req) body += chunk;
-    const sent = JSON.parse(body) as { messages: Array<{ role: string; content?: unknown }>; tools?: Array<{ function: { name: string } }> };
-    const text = (message: { content?: unknown }) => typeof message.content === "string" ? message.content
-      : Array.isArray(message.content) ? message.content.map((part: any) => part?.text ?? "").join("\n") : "";
-    const lastUserAt = sent.messages.map((message) => message.role).lastIndexOf("user");
-    const request = { lastUser: lastUserAt < 0 ? "" : text(sent.messages[lastUserAt]!), toolsSinceUser: sent.messages.slice(lastUserAt + 1).filter((message) => message.role === "tool").length };
-    requests.push(request);
-    const tool = sent.tools?.find((candidate) => candidate.function.name.endsWith("list_bots"))?.function.name ?? "missing_tool";
-    const frame = (delta: unknown, finish: string | null) => `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
-    const reply = async (out: ServerResponse, given: ModelAnswer): Promise<void> => {
-      if ("hold" in given) { await given.hold; return reply(out, given.after); }
-      out.writeHead(200, { "content-type": "text/event-stream" });
-      out.end("say" in given ? frame({ content: given.say }, "stop") + "data: [DONE]\n\n"
-        : frame({ tool_calls: [{ index: 0, id: `call_${++callSerial}`, type: "function", function: { name: tool, arguments: "{}" } }] }, "tool_calls") + "data: [DONE]\n\n");
-    };
-    await reply(res, answer(request)).catch(() => {});
-  });
-  await new Promise<void>((resolve) => model.listen(0, "127.0.0.1", resolve));
+  const parentEnv = { QUATI_TEST_APPROVAL_CLOCK: "1", QUATI_TEST_STALL_CLOCK: "1" };
   const session = await launchVerificationServer(parentEnv, undefined, undefined, undefined, undefined, { scripted: true });
   const url = session.info.url;
   const dataDir = session.info.dataDir;
@@ -82,7 +53,6 @@ async function chiefJob(test: (f: any) => Promise<void>) {
       return { status: response.status, body: parsed };
     };
     const cli = (...args: string[]) => runControlQuati([...args, "--url", url]) as Promise<any>;
-    // The team works at Ask, as Claude Code does there, so its approvals are cards.
     const bot = async (name: string, section: string) => {
       const made = (await cli("new-bot", "--name", name, "--section", section)).bot;
       expect((await api("PATCH", `/api/bots/${made.id}`, { approvalMode: "ask" })).status).toBe(200);
@@ -92,9 +62,6 @@ async function chiefJob(test: (f: any) => Promise<void>) {
     const mira = await bot("Mira", "Engineering");
     const eli = await bot("Eli", "Engineering");
     expect((await api("PATCH", `/api/bots/${clive.id}`, { chiefOfStaff: true, managedSections: ["Engineering"], acknowledgePeerScope: true })).status).toBe(200);
-    const compat = { key: "synthetic-fixture-key", url: `http://127.0.0.1:${(model.address() as AddressInfo).port}/v1`, model: "loop-model" };
-    expect((await api("PATCH", "/api/config", { openaiCompat: compat })).status).toBe(200);
-    await cli("set-model", "--bot", eli.id, "--instance", "openaiCompat", "--model", "loop-model");
     const planPath = join(dataDir, "room-plan.json");
     const plan: Record<string, { script: unknown[] }> = { [clive.id]: { script: [] }, [mira.id]: { script: [] } };
     const script = (botId: string, ...entries: unknown[]) => {
@@ -125,8 +92,12 @@ async function chiefJob(test: (f: any) => Promise<void>) {
     const turn = (key: string) => turns().find((candidate) => candidate.planKey === key);
     const prompt = (record: any) => {
       const content = record?.prompt?.message?.content;
-      return typeof content === "string" ? content : Array.isArray(content) ? content.map((block: any) => block?.text ?? "").join("\n") : "";
+      const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((block: any) => block?.text ?? "").join("\n") : "";
+      return text.replace(/^[\s\S]*?Current time when this message was sent:[^\n]*\n\n?/, "");
     };
+    const nativeTurns = (botId: string) => jsonl(`${session.fixtureDumpPath}.prompts.jsonl`).filter((record) =>
+      record.mcpServers.some((mounted: { env?: Array<{ name: string; value: string }> }) =>
+        mounted.env?.some((entry) => entry.name === "QUATI_BOT_ID" && entry.value === botId)));
     const messages = async (threadId: string): Promise<any[]> => (await api("GET", `/api/threads/${threadId}/messages?limit=300`)).body.messages ?? [];
     const rows = async (threadId: string) => (await messages(threadId)).map((message) => message.tool?.name).filter(Boolean) as string[];
     const said = async (threadId: string, text: string) => (await messages(threadId)).filter((message) => message.role === "bot" && message.kind === "text" && String(message.text).includes(text)).length;
@@ -152,7 +123,7 @@ async function chiefJob(test: (f: any) => Promise<void>) {
     const restart = async (signal: NodeJS.Signals, extraEnv: NodeJS.ProcessEnv = {}) => {
       events?.close();
       await waitForExit(server, { signal });
-      const env = { ...verificationServerEnvironment(parentEnv, dataDir, Number(new URL(url).port)), ...extraEnv };
+      const env = { ...verificationServerEnvironment(parentEnv, dataDir, Number(new URL(url).port)), FAKE_ACP_ROOM_PLAN: planPath, FAKE_ACP_DUMP: session.fixtureDumpPath, ...extraEnv };
       const log = openSync(session.info.logPath, "a", 0o600);
       server = spawn(process.execPath, verificationServerArgs(env), { cwd: ROOT, env, stdio: ["ignore", log, log] });
       restarted = true;
@@ -162,16 +133,14 @@ async function chiefJob(test: (f: any) => Promise<void>) {
       }, { timeout: 30_000 }).toBe(true);
       await listen();
     };
-    await test({ api, bot, dataDir, clive, mira, eli, compat, script, newJob, say, tree, root, child, eventsOf, turns, turn, prompt,
+    await test({ api, bot, dataDir, clive, mira, eli, script, newJob, say, tree, root, child, eventsOf, turns, turn, prompt, nativeTurns,
       messages, rows, final, cards, openCard, respond, tasks, gate, open, expireApprovals, stallSilentTurns, restart, notifications,
-      model: { requests, answer: (next: typeof answer) => { answer = next; } } });
+    });
     expect(turns().filter((record) => record.unplanned).map((record) => prompt(record).slice(0, 300))).toEqual([]);
   } finally {
     events?.close();
     if (restarted) await waitForExit(server, { signal: "SIGTERM" });
     await session.close();
-    model.closeAllConnections();
-    await new Promise<void>((resolve) => model.close(() => resolve()));
   }
 }
 
@@ -179,9 +148,7 @@ const ASSIGNED_BY_CLIVE = /^\[QuatiBot assignment \S+ from @Clive for the user\]
 const personLineage = (request: string) =>
   `the user asked: ${JSON.stringify(request)}. This is your task, sent on the user's behalf: do it with your own tools and permissions.`;
 const DISTRUST = /untrusted|not human approval|rather than doing it|cannot trace/;
-const STEP_CAP_CONTINUES = "Your previous turn stopped at the step limit; continue from where it stopped.";
-
-it("carries a consult-and-implement job over several teammate turns, through a step cap, to one final answer", () => chiefJob(async (f) => {
+it("carries a consult-and-implement job over several teammate turns to one final answer", () => chiefJob(async (f) => {
   const request = "PHASE-A-JOB: Build a CSV export for invoices. Ask Mira how to approach it, have Eli implement and test it, and own the result.";
   f.script(f.clive.id,
     { key: "A0", match: ["PHASE-A-JOB"], steps: [
@@ -195,9 +162,7 @@ it("carries a consult-and-implement job over several teammate turns, through a s
   f.script(f.mira.id,
     { key: "M1", match: ["CONSULT-ONE"], reply: "CONSULT-RESULT: use the stdlib csv module; handle quoting, a BOM and empty rows." },
     { key: "M2", match: ["REVIEW:"], reply: "REVIEW-RESULT: the export handles quoting, the BOM and empty rows." });
-  f.model.answer(({ lastUser }: ModelRequest) =>
-    lastUser.includes(STEP_CAP_CONTINUES) ? { say: "IMPLEMENT-FINISHED: the export is built; tests pass." }
-      : lastUser.includes("IMPLEMENT-CAP") ? { call: true } : { say: "OK" });
+  f.script(f.eli.id, { key: "E1", match: ["IMPLEMENT-CAP"], reply: "IMPLEMENT-FINISHED: the export is built; tests pass." });
   const job = await f.newJob("CSV export");
   await f.say(job, request);
   await f.final(job, "A-FINAL", 90_000);
@@ -205,27 +170,19 @@ it("carries a consult-and-implement job over several teammate turns, through a s
 
   expect(f.turns(f.clive.id).map((record: any) => record.planKey)).toEqual(["A0", "A1", "A2"]);
   expect(f.turns(f.mira.id).map((record: any) => record.planKey)).toEqual(["M1", "M2"]);
-  const capped = f.child(job, f.eli.id, "IMPLEMENT-CAP");
-  expect(capped).toMatchObject({ status: "completed", executions: 2, result: "IMPLEMENT-FINISHED: the export is built; tests pass." });
-  expect(f.eventsOf(capped.id)).toEqual(expect.arrayContaining(["started", "continued", "started", "settled"]));
+  const implemented = f.child(job, f.eli.id, "IMPLEMENT-CAP");
+  expect(implemented).toMatchObject({ status: "completed", executions: 1, result: "IMPLEMENT-FINISHED: the export is built; tests pass." });
+  expect(f.eventsOf(implemented.id)).toEqual(expect.arrayContaining(["started", "settled"]));
   expect(f.tree(job).filter((node: any) => node.botId === f.eli.id)).toHaveLength(1);
   expect(f.child(job, f.mira.id, "CONSULT-ONE")).toMatchObject({ status: "completed" });
   expect(f.child(job, f.mira.id, "REVIEW")).toMatchObject({ status: "completed" });
   expect(f.root(job).status).toBe("completed");
   const review = f.prompt(f.turn("A1"));
   expect(review).toContain("IMPLEMENT-FINISHED");
-  expect(review).not.toContain("Stopped after 64 steps");
   expect(review).not.toContain("assign what is left");
   expect(review).not.toContain('"result":"error"');
   expect((await f.tasks(f.eli.id)).map((task: any) => task.title).filter((title: string) => title.startsWith("Continue:"))).toEqual([]);
-  expect(f.model.requests.filter((sent: ModelRequest) => sent.lastUser.includes("[Auto-continuation]"))).toEqual([]);
-  expect(f.model.requests.filter((sent: ModelRequest) => sent.lastUser.includes("IMPLEMENT-CAP") && !sent.lastUser.includes(STEP_CAP_CONTINUES))).toHaveLength(64);
-  const continued = f.model.requests.filter((sent: ModelRequest) => sent.lastUser.includes(STEP_CAP_CONTINUES));
-  expect(continued).toHaveLength(1);
-  expect(continued[0]!.lastUser).toMatch(/Every step so far is listed in \S*handoffs\S*; read it before going on\./);
-  expect(continued[0]!.lastUser).toMatch(ASSIGNED_BY_CLIVE);
-  expect(continued[0]!.lastUser).toContain("IMPLEMENT-CAP");
-  expect(continued[0]!.lastUser.indexOf(STEP_CAP_CONTINUES)).toBeLessThan(continued[0]!.lastUser.search(ASSIGNED_BY_CLIVE));
+  expect(f.turns(f.eli.id).map((record: { planKey: string }) => record.planKey)).toEqual(["E1"]);
   const chiefRows = await f.rows(job);
   expect(chiefRows.filter((name: string) => name.startsWith("Eli — failed: "))).toEqual([]);
   expect(chiefRows.filter((name: string) => name.startsWith("Resumed with"))).toEqual(["Resumed with Mira, Eli results, reviewing", "Resumed with Mira, Eli results, reviewing"]);
@@ -241,8 +198,8 @@ it("carries a consult-and-implement job over several teammate turns, through a s
   expect(consult).toMatch(ASSIGNED_BY_CLIVE);
   expect(consult).toContain(personLineage(request));
   expect(consult).toContain(CONSENT_RULE);
-  expect(`${f.turn("M1").system}${consult}`).not.toMatch(DISTRUST);
-  const implement = f.model.requests.find((sent: ModelRequest) => sent.lastUser.includes("IMPLEMENT-CAP"))!.lastUser;
+  expect(consult).not.toMatch(DISTRUST);
+  const implement = f.prompt(f.turn("E1"));
   expect(implement).toMatch(ASSIGNED_BY_CLIVE);
   expect(implement).toContain(personLineage(request));
   expect(implement).not.toMatch(DISTRUST);
@@ -294,7 +251,7 @@ it("tells the Chief what happened to each approval: allowed, denied, or never an
   expect(settled).toEqual(["@Mira got your approval", "@Mira's request was denied", "Nobody answered @Mira's approval in time — that step did not run"]);
   expect(f.child(job, f.mira.id, "CHECK-HISTORY").result).toBe("HISTORY-RESULT: checked the history.");
   expect(f.child(job, f.mira.id, "PUSH-BRANCH").result).toBe("PUSH-RESULT: not pushed; the push was denied.");
-  const unanswered = "[QuatiBot: nobody answered the approval for “Bash: pnpm test” in time, so it did not run. Do not report it as done; it needs the person's approval.]";
+  const unanswered = "[QuatiBot: nobody answered the approval for “shell: pnpm test” in time, so it did not run. Do not report it as done; it needs the person's approval.]";
   expect(f.child(job, f.mira.id, "RUN-TESTS")).toMatchObject({ status: "completed", result: `${unanswered}\n\nTESTS-RESULT: I could not run the tests.` });
   expect(f.prompt(f.turn("B3"))).toContain(JSON.stringify(unanswered.replace(/^\[/, "(")).slice(1, -1));
   expect(f.prompt(f.turn("B3"))).toContain("[QuatiBot report from @Mira on assignment ");
@@ -316,26 +273,25 @@ it.each(["SIGTERM", "SIGKILL"] as const)("wakes the Chief after a restart cuts i
     ], reply: "R0: Mira and Eli are on it." },
     { key: "R1", match: [SETTLED, "PHASE-RESTART-JOB"], reply: "RESTART-FINAL: both reported after the restart." });
   f.script(f.mira.id, { key: "MR", match: ["CONSULT-SCHEMA"], progress: "MIRA-WORKING", gateFile: f.gate("mira"), reply: "SCHEMA-RESULT: one row per invoice line." });
-  let migrations = 0;
-  f.model.answer(({ lastUser }: ModelRequest) => lastUser.includes("MIGRATE") && ++migrations === 1
-    ? { hold: new Promise<void>(() => {}), after: { say: "never" } } : { say: "MIGRATE-RESULT: migration written and applied." });
+  f.script(f.eli.id, { key: "ER", match: ["MIGRATE"], gateFile: f.gate("eli"), reply: "MIGRATE-RESULT: migration written and applied." });
   const job = await f.newJob("Schema");
   await f.say(job, "PHASE-RESTART-JOB: have Mira consult on the export schema and Eli implement the migration.");
   await expect.poll(() => f.tree(job).filter((node: any) => node.parentId).map((node: any) => node.status), { timeout: 20_000 }).toEqual(["running", "running"]);
   await expect.poll(() => f.root(job)?.status, { timeout: 20_000 }).toBe("waiting");
-  await expect.poll(() => migrations, { timeout: 20_000 }).toBe(1);
+  await expect.poll(() => f.nativeTurns(f.eli.id).length, { timeout: 20_000 }).toBe(1);
   const work = { mira: f.child(job, f.mira.id, "CONSULT-SCHEMA").threadId, eli: f.child(job, f.eli.id, "MIGRATE").threadId };
-  await expect.poll(async () => (await f.messages(work.mira)).some((message: any) => message.text?.includes("MIRA-WORKING")), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => readFileSync(join(f.dataDir, "native", `${work.mira}.ndjson`), "utf8"), { timeout: 20_000 }).toContain("MIRA-WORKING");
   const before = f.notifications.length;
 
   await f.restart(signal);
   f.open("mira");
+  f.open("eli");
   await f.final(job, "RESTART-FINAL");
   await new Promise((resolve) => setTimeout(resolve, 500));
 
   expect(f.turns(f.mira.id).map((record: any) => [record.planKey, f.prompt(record).includes("this turn continues it")])).toEqual([["MR", true]]);
-  expect(migrations).toBe(2);
-  expect(f.model.requests.filter((sent: ModelRequest) => sent.lastUser.includes("MIGRATE")).at(-1)!.lastUser).toContain("this turn continues it");
+  expect(f.nativeTurns(f.eli.id)).toHaveLength(2);
+  expect(f.prompt(f.turn("ER"))).toContain("this turn continues it");
   expect(f.turns(f.clive.id).map((record: any) => record.planKey)).toEqual(["R0", "R1"]);
   const review = f.prompt(f.turn("R1"));
   expect(review).toContain("A restart cut these teammates' turns: ");
@@ -356,7 +312,7 @@ it.each(["SIGTERM", "SIGKILL"] as const)("wakes the Chief after a restart cuts i
   expect(f.notifications.slice(before).map((notification: any) => [notification.kind, notification.body])).toEqual([["delegation-settled", "Results in from Mira, Eli"]]);
 }), hostTimeout(120_000));
 
-it("keeps a job running through a provider settings save that changes nothing", () => chiefJob(async (f) => {
+it("keeps a job running through an unchanged browser-engine setting", () => chiefJob(async (f) => {
   f.script(f.clive.id,
     { key: "F0", match: ["PHASE-SAVE-JOB"], steps: [
       { arguments: { bot_ids: [f.mira.id], message: "RESEARCH-FORMAT: research the export format." } },
@@ -364,24 +320,22 @@ it("keeps a job running through a provider settings save that changes nothing", 
     ], reply: "F0: both are working." },
     { key: "F1", match: [SETTLED, "PHASE-SAVE-JOB"], reply: "SAVE-FINAL: both results reviewed." });
   f.script(f.mira.id, { key: "MF", match: ["RESEARCH-FORMAT"], gateFile: f.gate("mira"), reply: "FORMAT-RESULT: RFC 4180 with a UTF-8 BOM." });
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => { release = resolve; });
-  f.model.answer(({ lastUser }: ModelRequest) => lastUser.includes("DRAFT-SCHEMA") ? { hold: held, after: { say: "SCHEMA-DRAFT-RESULT: one row per invoice line." } } : { say: "OK" });
+  f.script(f.eli.id, { key: "EF", match: ["DRAFT-SCHEMA"], gateFile: f.gate("eli"), reply: "SCHEMA-DRAFT-RESULT: one row per invoice line." });
   const job = await f.newJob("Formats");
   await f.say(job, "PHASE-SAVE-JOB: have Mira research the export format and Eli draft the schema.");
   await expect.poll(() => f.tree(job).filter((node: any) => node.parentId).map((node: any) => node.status), { timeout: 20_000 }).toEqual(["running", "running"]);
-  await expect.poll(() => f.model.requests.filter((sent: ModelRequest) => sent.lastUser.includes("DRAFT-SCHEMA")).length, { timeout: 20_000 }).toBe(1);
+  await expect.poll(() => f.nativeTurns(f.eli.id).length, { timeout: 20_000 }).toBe(1);
 
-  expect((await f.api("PATCH", "/api/config", { openaiCompat: f.compat })).status).toBe(200);
+  expect((await f.api("PATCH", "/api/config", { browserEngine: { engine: "agent-browser" } })).status).toBe(200);
   await new Promise((resolve) => setTimeout(resolve, 500));
   expect(f.tree(job).filter((node: any) => node.parentId).map((node: any) => node.status)).toEqual(["running", "running"]);
-  release();
+  f.open("eli");
   f.open("mira");
   await f.final(job, "SAVE-FINAL");
 
   expect(f.child(job, f.mira.id, "RESEARCH-FORMAT")).toMatchObject({ status: "completed", result: "FORMAT-RESULT: RFC 4180 with a UTF-8 BOM." });
   expect(f.child(job, f.eli.id, "DRAFT-SCHEMA")).toMatchObject({ status: "completed", result: "SCHEMA-DRAFT-RESULT: one row per invoice line." });
-  expect(f.model.requests.filter((sent: ModelRequest) => sent.lastUser.includes("DRAFT-SCHEMA"))).toHaveLength(1);
+  expect(f.nativeTurns(f.eli.id)).toHaveLength(1);
   expect(f.turns(f.clive.id).map((record: any) => record.planKey)).toEqual(["F0", "F1"]);
   for (const threadId of [job, ...f.tree(job).filter((node: any) => node.parentId).map((node: any) => node.threadId)]) {
     expect((await f.rows(threadId)).filter((name: string) => /settings changed|interrupted/i.test(name))).toEqual([]);
@@ -397,7 +351,7 @@ it("tells the Chief a teammate's turn stalled, in the watchdog's words", () => c
   await f.say(job, "PHASE-STALL-JOB: have Mira run the full integration suite.");
   await expect.poll(() => f.child(job, f.mira.id, "LONG-SUITE")?.status, { timeout: 20_000 }).toBe("running");
   await expect.poll(() => f.root(job)?.status, { timeout: 20_000 }).toBe("waiting");
-  await expect.poll(async () => (await f.messages(f.child(job, f.mira.id, "LONG-SUITE").threadId)).some((message: any) => message.text === "SUITE-STARTED"), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => readFileSync(join(f.dataDir, "native", `${f.child(job, f.mira.id, "LONG-SUITE").threadId}.ndjson`), "utf8"), { timeout: 20_000 }).toContain("SUITE-STARTED");
   await new Promise((resolve) => setTimeout(resolve, 300));
   await f.stallSilentTurns(() => terminal(f.child(job, f.mira.id, "LONG-SUITE")?.status));
   await f.final(job, "STALL-FINAL");

@@ -33,7 +33,16 @@ Fake ACP proves the application protocol and orchestration, not real provider in
 
 ## CI checks
 
-CI runs on Linux with Node.js 24. Its required `CI` gate covers static checks, sharded application tests, offline evals (including golden replay and the scripted skill bench), the bundled server smoke, renderer smoke, browser identity and browser-driver checks. Browser checks run directly on the runner, not in containers. Live model evals remain disabled.
+Before committing, run `pnpm ci:local`. It runs every application check below,
+forces a fresh frontend typecheck, runs four application-test shards in parallel,
+and continues after failures to report all
+failed stages with a nonzero exit code. It uses a temporary HOME and data directory;
+the integration fixtures choose their own ports. Linux, Node.js 24+, pnpm, Chrome
+and `xvfb-run` are required. Browser fixtures can download pinned browser tools.
+Missing dependencies are failures, not successful skips. The documentation site
+stays local and is not built by CI or this command.
+
+Remote CI runs only for pull requests, on Linux with Node.js 24; pushes to main do not trigger it. Its required `CI` gate covers static checks, sharded application tests, offline evals (including golden replay and the scripted skill bench), the bundled server smoke, renderer smoke, browser identity and browser-driver checks. Browser checks run directly on the runner, not in containers. Live model evals remain disabled.
 
 Run `pnpm test:evals` for the dedicated eval suite; the application shards do not repeat it. CI retains the eval JUnit report on failure and renderer screenshots as artifacts. Docker images are built locally using `deploy/`; no workflow builds containers, publishes packages or creates releases.
 

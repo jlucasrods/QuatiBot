@@ -114,8 +114,8 @@ export interface PlaceFacts {
 /** The English catalog, mirrored by en.json. */
 export const PLACE_EN = {
   "place.view.auto.short": "Chooses for you",
-  "place.view.auto.lineDesktop": "Uses the built-in browser, a private desktop on this computer, or this computer's screen, whichever the task needs.",
-  "place.view.auto.lineLinux": "Uses the built-in browser, or a running Local VM when a task needs a desktop.",
+  "place.view.auto.lineDesktop": "Uses the agent's browser or an isolated VM, whichever the task needs.",
+  "place.view.auto.lineLinux": "Uses the agent's browser or an isolated VM, whichever the task needs.",
   "place.view.autoTeam.short": "Shared",
   "place.view.autoTeam.line": "Uses {computer}, the cloud computer this team shares.",
   "place.view.ccCannot.short": "Not with this model",
@@ -144,7 +144,7 @@ export const PLACE_EN = {
   "place.view.ccUnavailable.short": "Not available now",
   "place.view.ccUnavailable.line": "Cloud computers can't start right now. It isn't anything you did.",
   "place.view.ccEnded.short": "Plan ended",
-  "place.view.ccEnded.line": "Your Quati Cloud plan has ended, so cloud computers are off.",
+  "place.view.ccEnded.line": "Cloud computers are unavailable because the subscription has ended.",
   "place.view.ccNoStart.short": "Didn't start",
   "place.view.ccNoStart.line": "{bot}'s cloud computer didn't start.",
   "place.view.ccClearing.short": "Clearing up",

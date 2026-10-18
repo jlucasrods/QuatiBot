@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
@@ -7,10 +7,7 @@ import type { WireMessage } from "../shared/wire.ts";
 
 it("records independent turns and room speakers through the shared control fixture", async () => {
   const fixture = await launchVerificationServer({
-    // The launcher keeps only OS launch variables and FAKE_CLAUDE_* knobs; Windows shell hooks need COMSPEC/SYSTEMROOT.
-    ...process.env,
-    FAKE_CLAUDE_HOOKS: "1",
-    FAKE_CLAUDE_TOOL_CALLS: JSON.stringify([{ name: "Bash", id: "reused-tool-id", input: { command: "echo receipt" }, output: "receipt", ok: true }]),
+    FAKE_ACP_TOOL_CALLS: JSON.stringify([{ name: "Bash", kind: "execute", input: { command: "echo receipt" }, output: "receipt", ok: true }]),
   });
   const evidence: unknown[] = [{ fixture: fixture.info }];
   const control = async (args: string[]) => {
@@ -32,23 +29,23 @@ it("records independent turns and room speakers through the shared control fixtu
       expect((await control(["wait", "--bot", first.id, "--timeout", "20"])).status).toBe("settled");
     }
     await control(["messages", "--bot", first.id, "--limit", "20"]);
-    const provider = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
-    expect(JSON.stringify(provider.prompt)).not.toContain("Messages this conversation received");
+    const turns: Array<{ prompt: Array<{ text?: string }> }> = readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    expect(turns.length).toBeGreaterThanOrEqual(2);
+    expect(turns.at(-1)!.prompt.map((block) => block.text ?? "").join("\n")).not.toContain("Messages this conversation received");
     const direct = await messages(first.activeTaskId);
     const digests = direct.filter(row => row.kind === "digest");
     expect(digests).toHaveLength(2);
     expect(new Set(digests.map(row => row.turnId)).size).toBe(2);
     for (const row of digests) {
       expect(row.digest?.botId).toBe(first.id);
-      expect(row.digest?.tools).toMatchObject([{ name: "Bash", count: 1, failed: 0 }]);
-      expect(row.digest?.hookCoverage).toBe("full");
+      expect(row.digest?.tools).toMatchObject([{ name: "shell", count: 1, failed: 0 }]);
+      expect(row.digest?.hookCoverage).toBe("preview");
       const tool = direct.find(message => message.turnId === row.turnId && message.tool?.itemId);
-      expect(tool?.tool?.fullResult).toBe(true);
+      expect(tool?.tool?.fullResult).not.toBe(true);
+      expect(tool?.tool?.output).toContain("receipt");
       expect(tool?.tool).not.toHaveProperty("outputPath");
     }
-    // The fake reuses tool ids across turns: each must have its own receipt
-    // and spill file rather than inheriting evidence from its predecessor.
-    expect(readdirSync(join(fixture.info.dataDir, "tool-results", first.activeTaskId))).toHaveLength(2);
+    expect(new Set(direct.filter((row) => row.tool?.itemId).map((row) => row.tool!.itemId)).size).toBe(1);
     expect(JSON.stringify(direct)).not.toContain(fixture.info.dataDir);
     const channel = (await control(["new-channel", "--name", "Receipt room", "--members", `${first.id},${second.id}`])).channel;
     await control(["send-channel", "--channel", channel.id, "--text", "Each reply once"]);

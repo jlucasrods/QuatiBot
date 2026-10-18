@@ -4,19 +4,17 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
-// The decision model points at a fake Jev-compatible endpoint (decider.baseUrl), then a fake OpenRouter
-// (decider.openrouterBaseUrl), both on this machine; the Jev key reaches the server only through its env, as the desktop delivers it.
-
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SERVER_DIR, "..");
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
+const FAKE_ACP = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 const KEY = "tsk_e2e_secret_value_7f3a9c2e41d8";
 
 type JevRequest = { auth?: string; body: any };
@@ -30,8 +28,6 @@ let data = "";
 let base = "";
 let output = "";
 let engineDump = "";
-let titleDump = "";
-let fallbackTitleDump = "";
 const jevRequests: JevRequest[] = [];
 const openrouterRequests: JevRequest[] = [];
 let script: RouteScript = {};
@@ -92,23 +88,25 @@ beforeAll(async () => {
   writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>Decider rooms test</title>");
   writeFileSync(join(staticDir, "assets", "smoke.css"), "body{}");
   engineDump = join(home, "engine-dump.json");
-  titleDump = join(home, "title-dump.json");
-  fallbackTitleDump = join(home, "fallback-title-dump.json");
-  const titleFile = join(home, "title.txt");
-  writeFileSync(titleFile, "Safari footer fix");
+  const instances = Object.fromEntries(["quick", "titled"].map((id) => {
+    const cli = join(home, `${id}-opencode.mjs`);
+    writeFileSync(cli, [
+      "#!/usr/bin/env node",
+      'process.env.FAKE_ACP_MODE = "happy";',
+      'process.env.FAKE_ACP_VERSION = "2.0.31";',
+      'process.env.FAKE_ACP_AGENT_VERSION = "2.0.31";',
+      'process.env.FAKE_ACP_AGENT_NAME = "OpenCode";',
+      'process.env.FAKE_ACP_MODELS = "fixture/test";',
+      `process.env.FAKE_ACP_DUMP = ${JSON.stringify(id === "quick" ? engineDump : join(home, "theo-dump.json"))};`,
+      `await import(${JSON.stringify(pathToFileURL(FAKE_ACP).href)});`,
+    ].join("\n"), { mode: 0o700 });
+    return [id, { driver: "opencodeGo", displayName: id, config: { cli } }];
+  }));
+  mkdirSync(join(data, "providers", "opencode", "discovery"), { recursive: true });
+  writeFileSync(join(data, "providers", "opencode", "discovery", ".quati-project"), "fixture");
   writeFileSync(join(data, "config.json"), JSON.stringify({
-    // a room task's first message is titled by the engine of whoever answers it
     features: { llmThreadTitles: true },
-    instances: {
-      quick: {
-        driver: "claudeAgent", displayName: "Quick fixture", config: { cli: FAKE_CLAUDE },
-        environment: { FAKE_CLAUDE_MODE: "happy", FAKE_CLAUDE_DUMP: engineDump, FAKE_CLAUDE_TEXT_DUMP: fallbackTitleDump, FAKE_CLAUDE_TEXT_FILE: titleFile },
-      },
-      titled: {
-        driver: "claudeAgent", displayName: "Titled fixture", config: { cli: FAKE_CLAUDE },
-        environment: { FAKE_CLAUDE_MODE: "happy", FAKE_CLAUDE_TEXT_DUMP: titleDump, FAKE_CLAUDE_TEXT_FILE: titleFile },
-      },
-    },
+    instances,
     decider: { enabled: true, baseUrl: jevUrl, jobs: { roomRouting: true } },
   }));
   const port = await freePortBlock([0, 1]);
@@ -116,12 +114,8 @@ beforeAll(async () => {
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: ROOT,
     env: {
-      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+      ...verificationServerEnvironment({}, data, port),
       HOME: home,
-      USERPROFILE: home,
-      QUATI_PORT: String(port),
-      QUATI_WEBHOOK_PORT: String(port + 1),
       QUATI_STATIC_DIR: staticDir,
       QUATI_JEV_API_KEY: KEY,
     },
@@ -137,6 +131,13 @@ beforeAll(async () => {
     } catch {
     }
     if (Date.now() >= deadline) throw new Error(`server never became healthy: ${output}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const modelsDeadline = Date.now() + 15_000;
+  for (;;) {
+    const providers = (await api("GET", "/api/instances")).body.instances;
+    if (["quick", "titled"].every((id) => providers.find((provider: { instanceId: string }) => provider.instanceId === id)?.models.options.some((option: { id: string }) => option.id === "fixture/test"))) break;
+    if (Date.now() >= modelsDeadline) throw new Error(`fixture models never became available: ${JSON.stringify(providers)}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }, 30_000);
@@ -182,7 +183,7 @@ describe("Auto rooms ask the decision model who answers", { timeout: 90_000 }, (
 
     for (const name of ["Maya", "Theo", "Ravi"]) {
       bots[name] = (await api("POST", "/api/bots", {
-        name, title: `${name} title`, modelSelection: { instanceId: name === "Theo" ? "titled" : "quick", model: "claude-sonnet-5" }, requireAvailableModel: true,
+        name, title: `${name} title`, modelSelection: { instanceId: name === "Theo" ? "titled" : "quick", model: "fixture/test" }, requireAvailableModel: true,
       })).body.bot;
     }
     const created = await api("POST", "/api/groups", { name: "Launch", memberIds: [bots.Maya!.id, bots.Theo!.id, bots.Ravi!.id] });
@@ -226,8 +227,6 @@ describe("Auto rooms ask the decision model who answers", { timeout: 90_000 }, (
     expect([...new Set(replies.map((reply) => reply.from!.name))]).toEqual(["Theo"]);
     expect(replies[0]!.routedBy).toEqual({ provider: "jev", probability: 0.94 });
     expect(replies.slice(1).every((reply) => reply.routedBy === undefined)).toBe(true);
-    await expect.poll(() => existsSync(titleDump), { timeout: 10_000 }).toBe(true);
-    expect(existsSync(fallbackTitleDump)).toBe(false);
 
     const request = routeRequests().at(-1)!;
     expect(request.auth).toBe(`Bearer ${KEY}`);
@@ -298,14 +297,15 @@ describe("Auto rooms ask the decision model who answers", { timeout: 90_000 }, (
     const rejected = await api("PUT", "/api/config", { decider: { key: "tsk_bad" } });
     expect(rejected.status).toBe(400);
     expect((await api("GET", "/api/config")).body.decider).toMatchObject({ enabled: false });
-    // the desktop's path: the key goes to its encrypted store, config.json keeps an empty placeholder
-    const saved = await api("PUT", "/api/config?secretStorage=external", { decider: { key: "tsk_new_valid_key" } });
+    const saved = await api("PUT", "/api/config", { decider: { key: "tsk_new_valid_key" } });
     expect(saved.status).toBe(200);
     expect(saved.body.decider).toEqual({ provider: "jev", configured: true, enabled: true, jobs: { roomRouting: true } });
     expect(keyChecks().at(-1)?.auth).toBe("Bearer tsk_new_valid_key");
     expect(saved.text).not.toContain("tsk_new_valid_key");
     const disk = readFileSync(join(data, "config.json"), "utf8");
-    expect(JSON.parse(disk).decider).toMatchObject({ key: "", enabled: true, jobs: { roomRouting: true } });
+    expect(JSON.parse(disk).decider).toMatchObject({ enabled: true, jobs: { roomRouting: true } });
+    expect(JSON.parse(disk).decider).not.toHaveProperty("key");
+    expect(readFileSync(join(data, "credentials.enc"), "utf8")).not.toContain("tsk_new_valid_key");
     expect(disk).not.toContain("tsk_new_valid_key");
     expect((await api("PUT", "/api/config", { decider: { key: "" } })).body.decider).toMatchObject({ configured: false, enabled: false });
   });
@@ -375,7 +375,7 @@ describe("Auto rooms ask the decision model who answers", { timeout: 90_000 }, (
       expect(rejected.text).not.toContain("sk-or-bad");
       expect((await api("GET", "/api/config")).body.decider).toMatchObject({ provider: "jev", enabled: false });
 
-      const saved = await api("PUT", "/api/config?secretStorage=external", { decider: { provider: "openrouter", openrouterModel: MODEL, openrouterKey: OR_KEY } });
+      const saved = await api("PUT", "/api/config", { decider: { provider: "openrouter", openrouterModel: MODEL, openrouterKey: OR_KEY } });
       expect(saved.status).toBe(200);
       expect(saved.body.decider).toEqual({ provider: "openrouter", model: MODEL, api: "chat", configured: true, enabled: true, jobs: { roomRouting: true } });
       expect(saved.text).not.toContain(OR_KEY);
@@ -383,7 +383,9 @@ describe("Auto rooms ask the decision model who answers", { timeout: 90_000 }, (
       expect(check.auth).toBe(`Bearer ${OR_KEY}`);
       expect(check.body.model).toBe(MODEL);
       const disk = JSON.parse(readFileSync(join(data, "config.json"), "utf8"));
-      expect(disk.decider).toMatchObject({ provider: "openrouter", openrouterModel: MODEL, openrouterKey: "", enabled: true });
+      expect(disk.decider).toMatchObject({ provider: "openrouter", openrouterModel: MODEL, enabled: true });
+      expect(disk.decider).not.toHaveProperty("openrouterKey");
+      expect(readFileSync(join(data, "credentials.enc"), "utf8")).not.toContain(OR_KEY);
       expect(JSON.stringify(disk)).not.toContain(OR_KEY);
       expect(await api("POST", "/api/decider/test", {})).toMatchObject({ body: { ok: true } });
       expect((await api("POST", "/api/decider/test", { key: "sk-or-bad" })).body).toEqual({ ok: false, reason: "rejected", status: 401 });

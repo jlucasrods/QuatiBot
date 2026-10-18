@@ -8,7 +8,7 @@ import { removeTempDir } from "./testing/cleanup.ts";
 it("applies the bot's own alert and voice changes at once, refuses a stale Undo, and supersedes credential requests in an isolated conversation", async () => {
   const gates = mkdtempSync(join(tmpdir(), "quati-profile-cards-"));
   const gate = join(gates, "finish");
-  const fixture = await launchVerificationServer({ FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: gate });
+  const fixture = await launchVerificationServer({ FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: gate });
   const evidence: unknown[] = [];
   const api = async (method: string, path: string, body?: unknown, expected = 200, token?: string) => {
     const response = await fetch(fixture.info.url + path, {
@@ -28,10 +28,16 @@ it("applies the bot's own alert and voice changes at once, refuses a stale Undo,
   };
   try {
     const bot = (await api("POST", "/api/bots", { name: "Profile fixture" }, 201)).bot;
+    const nativeTurns = () => {
+      const turns: Array<{ mcpServers: Array<{ name: string; env?: Array<{ name: string; value: string }> }> }> =
+        readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      return turns.filter((row) => row.mcpServers.some((server) =>
+        server.env?.some((entry) => entry.name === "QUATI_THREAD_ID" && entry.value === bot.threadId)));
+    };
     await control("send", "--bot", bot.id, "--task", bot.threadId, "--text", "Review my profile preferences.");
     let token = "";
     await expect.poll(() => {
-      try { token = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN; }
+      try { token = nativeTurns().at(-1)?.mcpServers.find((server) => server.name === "agents")?.env?.find((entry) => entry.name === "QUATI_COMMS_TOKEN")?.value ?? ""; }
       catch { return false; }
       return Boolean(token);
     }, { timeout: 15_000 }).toBe(true);
@@ -48,12 +54,12 @@ it("applies the bot's own alert and voice changes at once, refuses a stale Undo,
     const undo = (requestId: string, expected = 200) => api("POST", `/api/threads/${bot.threadId}/undo`, { requestId }, expected);
     expect(await undo(applied.at(-1)!.requestId, 409)).toMatchObject({ code: "changed-since" });
     expect((await control("wait", "--bot", bot.id, "--task", bot.threadId, "--timeout", "20")).status).toBe("settled");
-    const previousPid = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).pid;
+    const previousTurns = nativeTurns().length;
     unlinkSync(gate);
     await control("send", "--bot", bot.id, "--task", bot.threadId, "--text", "Propose fresh preferences after the old cards expired.");
-    await expect.poll(() => JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).pid,
-      { timeout: 15_000 }).not.toBe(previousPid);
-    token = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+    await expect.poll(() => nativeTurns().length, { timeout: 15_000 }).toBe(previousTurns + 1);
+    token = nativeTurns().at(-1)?.mcpServers.find((server) => server.name === "agents")?.env?.find((entry) => entry.name === "QUATI_COMMS_TOKEN")?.value ?? "";
+    expect(token).toBeTruthy();
     const toggle = await propose({ notifications: false, speakReplies: true });
     const credential = (reason: string) => api("POST", "/api/internal/request-credential", {
       fromBotId: bot.id, fromThreadId: bot.threadId, credentialId: "openaiImageApiKey", reason,

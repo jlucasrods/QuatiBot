@@ -6,12 +6,15 @@ import type { TurnEvidence } from "./runtime/types.ts";
 import type { Message } from "./store.ts";
 
 const REASON_CHARS = 600;
+const PARTIAL_MESSAGE_CHARS = 600;
 
 export interface TurnStop {
   turnId?: string;
   cause?: string;
   error?: string;
   handoffPath?: string;
+  partialText?: string;
+  partialItemId?: string;
 }
 
 export class TurnStops {
@@ -20,6 +23,22 @@ export class TurnStops {
   note(event: RuntimeEvent): void {
     if (event.type === "turn.started") {
       this.#byThread.delete(event.threadId);
+      return;
+    }
+    if (event.type === "content.delta" && event.streamKind === "assistant_text" && !event.synthetic) {
+      const stop = this.#turn(event.threadId, event.turnId);
+      const previous = stop.partialItemId === event.itemId ? stop.partialText ?? "" : "";
+      const text = previous + event.delta;
+      stop.partialText = text.length > PARTIAL_MESSAGE_CHARS ? `${text.slice(0, PARTIAL_MESSAGE_CHARS - 1)}…` : text;
+      stop.partialItemId = event.itemId;
+      return;
+    }
+    if (event.type === "item.completed" && event.itemType === "assistant_text" && !event.synthetic) {
+      const stop = this.read(event.threadId, event.turnId);
+      if (stop) {
+        delete stop.partialText;
+        delete stop.partialItemId;
+      }
       return;
     }
     const error = event.type === "runtime.error" ? event.message
@@ -32,6 +51,12 @@ export class TurnStops {
 
   stopping(threadId: string, turnId: string | undefined, cause: string): void {
     this.#turn(threadId, turnId).cause = cause;
+  }
+
+  normalize(event: RuntimeEvent): RuntimeEvent {
+    if (event.type !== "turn.completed" || !event.ok) return event;
+    const cause = this.read(event.threadId, event.turnId)?.cause;
+    return cause ? { ...event, ok: false, stopReason: cause } : event;
   }
 
   #turn(threadId: string, turnId: string | undefined): TurnStop {

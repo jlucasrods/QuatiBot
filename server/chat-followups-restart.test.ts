@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 
-import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
+import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 
 it("survives a real server crash: queued sends keep receipts, cancellation and uncertain dispatch never replay", async () => {
@@ -39,8 +39,12 @@ it("survives a real server crash: queued sends keep receipts, cancellation and u
     return result;
   };
   const messages = async (thread: string) => (await api("GET", `/api/threads/${thread}/messages?limit=100`)).messages as any[];
-  const prompts = (thread: string): any[] => {
-    try { return readFileSync(join(dataDir, `${thread}.prompts`), "utf8").trim().split("\n").map((line) => JSON.parse(line)); }
+  const prompts = (thread: string) => {
+    try {
+      const rows: Array<{ prompt: Array<{ type: string; data?: string; mimeType?: string }>; mcpServers: Array<{ env?: Array<{ name: string; value: string }> }> }> =
+        readFileSync(join(dataDir, "provider.json.prompts.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      return rows.filter((row) => row.mcpServers.some((server) => server.env?.some((entry) => entry.name === "QUATI_THREAD_ID" && entry.value === thread)));
+    }
     catch (error) {
       if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
@@ -52,18 +56,7 @@ it("survives a real server crash: queued sends keep receipts, cancellation and u
     finally { db.close(); }
   };
   const restart = async () => {
-    const env: NodeJS.ProcessEnv = {};
-    for (const [key, value] of Object.entries(process.env)) {
-      if (["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"].includes(key.toUpperCase()) && value) env[key.toUpperCase()] = value;
-    }
-    Object.assign(env, {
-      HOME: dataDir, USERPROFILE: dataDir, QUATI_DATA_DIR: dataDir,
-      APPDATA: join(dataDir, "AppData", "Roaming"), LOCALAPPDATA: join(dataDir, "AppData", "Local"),
-      XDG_CONFIG_HOME: join(dataDir, ".config"), XDG_CACHE_HOME: join(dataDir, ".cache"),
-      XDG_DATA_HOME: join(dataDir, ".local", "share"), HERMES_HOME: join(dataDir, ".hermes"),
-      TEMP: join(dataDir, "tmp"), TMP: join(dataDir, "tmp"), TMPDIR: join(dataDir, "tmp"),
-      QUATI_PORT: new URL(url).port, QUATI_WEBHOOK_PORT: String(Number(new URL(url).port) + 1), PATH: dirname(process.execPath),
-    });
+    const env = verificationServerEnvironment({}, dataDir, Number(new URL(url).port));
     const log = openSync(logPath, "a", 0o600);
     restarted = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
       cwd: fileURLToPath(new URL("..", import.meta.url)), env, stdio: ["ignore", log, log],
@@ -76,22 +69,25 @@ it("survives a real server crash: queued sends keep receipts, cancellation and u
     }, { timeout: 20_000 }).toBe(true);
   };
   try {
-    const wrapper = join(dataDir, "queued-claude.mjs");
+    const wrapper = join(dataDir, "queued-opencode.mjs");
     writeFileSync(wrapper, [
       "#!/usr/bin/env node",
       'import { existsSync } from "node:fs";',
-      'import { basename, join } from "node:path";',
-      'const thread = basename(process.cwd());',
+      'import { join } from "node:path";',
       `const home = ${JSON.stringify(dataDir)};`,
-      'process.env.FAKE_CLAUDE_MODE = existsSync(join(home, "restarted")) ? "happy" : "slow";',
-      'process.env.FAKE_CLAUDE_SLOW_FINISH_GATE = join(home, thread + ".gate");',
-      'process.env.FAKE_CLAUDE_PROMPTS = join(home, thread + ".prompts");',
-      // Crash the server, not unrelated processes: a fixture provider exits
-      // when its parent's pipe closes, even if its fake finish gate is shut.
+      'process.env.FAKE_ACP_MODE = existsSync(join(home, "restarted")) ? "happy" : "controlled";',
+      'process.env.FAKE_ACP_CONTROL_KEY = "thread";',
+      'process.env.FAKE_ACP_CONTROL_DIR = home;',
+      'process.env.FAKE_ACP_DUMP = join(home, "provider.json");',
+      'process.env.FAKE_ACP_MODELS = "fixture/default";',
+      'process.env.FAKE_ACP_IMAGE_CAPABILITY = "1";',
+      'process.env.FAKE_ACP_VERSION = "2.0.31";',
+      'process.env.FAKE_ACP_AGENT_VERSION = "2.0.31";',
+      'process.env.FAKE_ACP_AGENT_NAME = "OpenCode";',
       'process.stdin.on("end", () => process.exit(0));',
-      `await import(${JSON.stringify(pathToFileURL(fileURLToPath(new URL("./testing/fake-claude-cli.ts", import.meta.url))).href)});`,
+      `await import(${JSON.stringify(pathToFileURL(fileURLToPath(new URL("./testing/fake-acp-cli.ts", import.meta.url))).href)});`,
     ].join("\n"), { mode: 0o700 });
-    await api("PATCH", "/api/instances/claude", { cli: wrapper });
+    await api("PATCH", "/api/instances/opencodeGo", { cli: wrapper });
     await api("PATCH", "/api/config", { threads: { maxConcurrentPerBot: 1 } });
     const pairing = await fetch(`${url}/api/auth/pair`, {
       method: "POST",
@@ -114,9 +110,6 @@ it("survives a real server crash: queued sends keep receipts, cancellation and u
     await api("POST", `/api/bots/${bot.id}/messages`, { text: "Working before restart", threadId: bot.threadId }, 202);
     await expect.poll(() => prompts(bot.threadId).length, { timeout: 15_000 }).toBe(1);
     const replyToId = (await messages(bot.threadId)).find((message) => message.role === "user").id;
-    // Claude takes pictures into a running turn, so words for this busy
-    // thread would be steered in. Let the turn finish and have a second task
-    // hold the bot's one slot: the attachment then waits in the durable queue.
     writeFileSync(join(dataDir, `${bot.threadId}.gate`), "finish the first task");
     expect(await runControlQuati(["wait", "--bot", bot.id, "--task", bot.threadId, "--url", url])).toMatchObject({ status: "settled" });
     const holder = (await api("POST", `/api/bots/${bot.id}/tasks`, { title: "Hold the slot" }, 201)).task;
@@ -219,7 +212,7 @@ it("survives a real server crash: queued sends keep receipts, cancellation and u
     ]);
     expect((await api("POST", `/api/bots/${bot.id}/messages`, cancelledBody, 409)).error).toContain("cancelled");
     expect(prompts(bot.threadId)).toHaveLength(2);
-    expect(prompts(bot.threadId)[1].message.content).toEqual(expect.arrayContaining([expect.objectContaining({ type: "image" })]));
+    expect(prompts(bot.threadId)[1].prompt).toEqual(expect.arrayContaining([expect.objectContaining({ type: "image", mimeType: "image/png", data: readFileSync(image).toString("base64") })]));
 
     await expect.poll(async () => (await messages(channel.threadId)).filter((message) => message.sendId === channelBody.sendId).length, { timeout: 15_000 }).toBe(1);
     expect((await api("POST", `/api/groups/${channel.id}/messages`, channelBody, 202)).message).toMatchObject({

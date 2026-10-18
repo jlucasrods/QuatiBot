@@ -161,7 +161,7 @@ describe("terminal onboarding commands", () => {
         expect(setup.runSetup).toHaveBeenCalledWith({ dataDir: options.dataDir, port: options.port });
         expect(setup.isSetupComplete).not.toHaveBeenCalled();
         expect(serve).not.toHaveBeenCalled();
-        expect(output.log).toHaveBeenCalledWith(expect.stringContaining("Start with: quatibot"));
+        expect(output.log).toHaveBeenCalledWith(expect.stringContaining("Start with: pnpm start"));
     });
     it("starts after first-time setup and passes through the requested serve options", async () => {
         terminal(true);

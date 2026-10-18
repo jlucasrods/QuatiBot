@@ -1,18 +1,17 @@
-// The fake CLI plays the frames Claude Code 2.1.295 sent past its weekly limit.
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 import { runControlQuati, verificationServerArgs, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
-const LIMITED = "Limited Claude";
-const BACKUP = "Backup Claude";
-const FAKE_CLI = fileURLToPath(new URL("./testing/fake-claude-cli.ts", import.meta.url));
+const LIMITED = "Limited OpenCode";
+const BACKUP = "Backup OpenCode";
+const FAKE_CLI = fileURLToPath(new URL("./testing/fake-acp-cli.ts", import.meta.url));
 const jsonLines = (path: string): any[] => existsSync(path)
   ? readFileSync(path, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
 
@@ -33,14 +32,27 @@ async function withQuotaFixture(
   const evidenceDir = join(tmpdir(), "quatibot-verification-evidence");
   mkdirSync(evidenceDir, { recursive: true });
   const logPath = join(evidenceDir, `quota-switch-${Date.now()}-${process.pid}.log`);
-  const backupFile = join(dataDir, "backup-prompts.jsonl");
-  const engine = (displayName: string, environment: Record<string, string>) =>
-    ({ driver: "claudeAgent", displayName, config: { cli: FAKE_CLI }, environment });
+  const backupFile = join(dataDir, "backup-dump.json");
+  const failure = join(dataDir, "limit.json");
+  writeFileSync(failure, JSON.stringify({ code: -32603, message: "This provider has reached its usage limit. Try again after the quota resets." }));
+  const engine = (displayName: string, environment: Record<string, string>) => {
+    const cli = join(dataDir, `${displayName.replace(/\W+/g, "-")}.mjs`);
+    writeFileSync(cli, ["#!/usr/bin/env node",
+      ...Object.entries({ FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_AGENT_NAME: "OpenCode",
+        FAKE_ACP_MODELS: "fixture/test", ...environment }).map(([key, value]) => `process.env[${JSON.stringify(key)}] = ${JSON.stringify(value)};`),
+      `await import(${JSON.stringify(pathToFileURL(FAKE_CLI).href)});`,
+    ].join("\n"), { mode: 0o700 });
+    return { driver: "opencodeGo", displayName, config: { cli } };
+  };
+  const discovery = join(dataDir, "providers", "opencode", "discovery");
+  mkdirSync(discovery, { recursive: true });
+  writeFileSync(join(discovery, ".quati-project"), "fixture");
   writeFileSync(join(dataDir, "config.json"), JSON.stringify({
     instances: {
-      claude: engine(LIMITED, { FAKE_CLAUDE_MODE: "usage-limit" }),
-      backup: engine(BACKUP, { FAKE_CLAUDE_MODE: "happy", FAKE_CLAUDE_PROMPTS: backupFile, FAKE_CLAUDE_TOOL_CALLS: "[]" }),
+      limited: engine(LIMITED, { FAKE_ACP_RPC_FAILURE_FILE: failure }),
+      backup: engine(BACKUP, { FAKE_ACP_MODE: "happy", FAKE_ACP_DUMP: backupFile, FAKE_ACP_TOOL_CALLS: "[]" }),
     },
+    defaultModelSelection: { instanceId: "limited", model: "fixture/test" },
   }));
   const evidence: unknown[] = [{ url, options }];
   let server: ChildProcess | undefined;
@@ -49,7 +61,7 @@ async function withQuotaFixture(
       method, headers: { "content-type": "application/json", origin: url },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(30_000),
     });
-    const result = await response.json();
+    const result = JSON.parse(await response.text());
     expect(response.ok, `${method} ${path}: ${JSON.stringify(result)}`).toBe(true);
     return result;
   };
@@ -77,9 +89,12 @@ async function withQuotaFixture(
     await expect.poll(async () => {
       try { return (await fetch(url + "/api/health", { signal: AbortSignal.timeout(1_000) })).ok; } catch { return false; }
     }, { timeout: 90_000 }).toBe(true);
-    await check({ api, control, respond, backupPrompts: () => jsonLines(backupFile), dataDir });
+    await expect.poll(async () => (await api("GET", "/api/instances")).instances.filter((instance: { models: { options: Array<{ id: string }> } }) =>
+      instance.models.options.some((option) => option.id === "fixture/test")).length, { timeout: 15_000 }).toBe(2);
+    await check({ api, control, respond, backupPrompts: () => jsonLines(`${backupFile}.prompts.jsonl`).filter((turn) =>
+      turn.mcpServers.some((server: { name: string }) => server.name === "agents")), dataDir });
   } finally {
-    evidence.push({ backupPrompts: jsonLines(backupFile), roots: readHandoffs(dataDir) });
+    evidence.push({ backupPrompts: jsonLines(`${backupFile}.prompts.jsonl`), roots: readHandoffs(dataDir) });
     const evidencePath = `${logPath}.quota-switch.json`;
     writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
     await waitForExit(server, { signal: "SIGTERM" });
@@ -94,7 +109,7 @@ async function meetTheLimit(api: (method: string, path: string, body?: unknown) 
   const { bot } = await control("new-bot", "--name", "Out of quota");
   const threadId = bot.activeTaskId as string;
   const limited = (await api("GET", "/api/bots")).bots.find((entry: any) => entry.id === bot.id).modelSelection;
-  await api("PATCH", `/api/bots/${bot.id}/tasks/${threadId}`, { modelSelection: { ...limited, instanceId: "claude" }, updateBotDefault: true });
+  await api("PATCH", `/api/bots/${bot.id}/tasks/${threadId}`, { modelSelection: { ...limited, instanceId: "limited" }, updateBotDefault: true });
   await control("send", "--bot", bot.id, "--task", threadId, "--text", text);
   expect((await control("wait", "--bot", bot.id, "--task", threadId, "--timeout", "30")).status).toBe("failed");
   const messages = async () => (await api("GET", `/api/threads/${threadId}/messages?limit=100`)).messages as any[];
@@ -113,7 +128,7 @@ it("offers the working engine once, and on the person's answer switches this con
     const before = await messages();
     const failures = before.filter((message) => message.tool?.name?.startsWith("error:"));
     expect(failures).toHaveLength(1);
-    expect(failures[0].tool.name).toMatch(/This Claude account has reached its usage limit/);
+    expect(failures[0].tool.name).toContain("This provider has reached its usage limit");
     const offer = before.find((message) => message.card?.quotaSwitch);
     expect(offer.card).toMatchObject({
       title: `${LIMITED} is out of quota`,
@@ -125,7 +140,7 @@ it("offers the working engine once, and on the person's answer switches this con
     expect(offer.card.tool).toBeUndefined();
     // Nothing moved without the answer: same engine, the failed turn's root settled, nothing else begun.
     expect((await state()).tasks.find((task: any) => task.threadId === threadId)).toMatchObject({ busy: false });
-    expect((await state()).modelSelection.instanceId).toBe("claude");
+    expect((await state()).modelSelection.instanceId).toBe("limited");
     expect(backupPrompts()).toHaveLength(0);
     const rootsBefore = readHandoffs(dataDir).filter((node) => node.threadId === threadId);
     expect(rootsBefore.map((node) => [node.status, node.outcome, node.executions])).toEqual([["failed", "provider_error", 1]]);
@@ -142,7 +157,7 @@ it("offers the working engine once, and on the person's answer switches this con
     expect(after.filter((message) => message.role === "user" && message.text === text)).toHaveLength(2);
     expect(backupPrompts()).toHaveLength(1);
     expect(JSON.stringify(backupPrompts()[0])).toContain(text);
-    expect(after.findLast((message) => message.role === "bot" && message.kind === "text")).toMatchObject({ text: "hello from fake claude", turnSucceeded: true });
+    expect(after.findLast((message) => message.role === "bot" && message.kind === "text")).toMatchObject({ text: "hello from fake acp", turnSucceeded: true });
     expect(after.filter((message) => message.tool?.name === `notice: continuing on ${BACKUP} after hitting quota`)).toHaveLength(1);
     // Settled only once the switch went through, inside the answer's own request: so who answered is on the card.
     expect(after.find((message) => message.id === offer.id).card).toMatchObject({ answered: "answer", answeredText: BACKUP, answeredBy: { kind: "loopback" } });
@@ -155,8 +170,8 @@ it("offers the working engine once, and on the person's answer switches this con
     expect(bots.tasks.find((task: any) => task.threadId === threadId)).toMatchObject({
       modelSelection: { instanceId: "backup", model: instances.find((instance) => instance.instanceId === "backup").models.default }, busy: false,
     });
-    expect(bots.modelSelection.instanceId).toBe("claude");
-    expect(bots.tasks.find((task: any) => task.threadId === sibling.threadId).modelSelection?.instanceId ?? bots.modelSelection.instanceId).toBe("claude");
+    expect(bots.modelSelection.instanceId).toBe("limited");
+    expect(bots.tasks.find((task: any) => task.threadId === sibling.threadId).modelSelection?.instanceId ?? bots.modelSelection.instanceId).toBe("limited");
 
     // No job twice: the failed turn's root stayed settled, and the resend is one new root that completed.
     const roots = readHandoffs(dataDir).filter((node) => node.threadId === threadId);
@@ -193,12 +208,12 @@ it.each([
     expect(after.filter((entry) => entry.role === "user")).toHaveLength(1);
     expect(after.some((entry) => entry.tool?.name?.startsWith("notice:"))).toBe(false);
     expect((await state()).tasks.find((task: any) => task.threadId === threadId)).toMatchObject({ busy: false });
-    expect((await state()).modelSelection.instanceId).toBe("claude");
+    expect((await state()).modelSelection.instanceId).toBe("limited");
     // Nothing was switched and nothing was sent again: asked once more, the settled
     // card is refused, and the working engine was never run.
     expect(await respond(threadId, { requestId: offer.card.requestId, behavior: "answer", message: BACKUP }))
       .toEqual({ status: 409, body: { error: "this question has already been answered" } });
-    expect((await state()).tasks.find((task: any) => task.threadId === threadId).modelSelection?.instanceId ?? "claude").toBe("claude");
+    expect((await state()).tasks.find((task: any) => task.threadId === threadId).modelSelection?.instanceId ?? "limited").toBe("limited");
     expect(backupPrompts()).toHaveLength(0);
     expect(readHandoffs(dataDir).filter((node) => node.threadId === threadId).map((node) => node.status)).toEqual(["failed"]);
   });

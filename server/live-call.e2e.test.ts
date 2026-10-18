@@ -1,12 +1,11 @@
-// POSIX-gated: the fakes are shebang scripts.
-
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LIVE_COPY } from "../shared/live-approval.ts";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 
 import type { LiveCallState } from "../shared/wire.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
@@ -15,12 +14,10 @@ import { freePortBlock } from "./testing/ports.ts";
 import { openSse } from "./testing/sse.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
 const FAKE_ACP = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
-const FAKE_CODEX = join(SERVER_DIR, "testing", "fake-codex-app-server.ts");
 const LIVE_KEY = "sk-fake-e2e";
 const SDP = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\n";
-const posixOnly = describe.skipIf(process.platform === "win32");
+const posixOnly = describe.skipIf(process.platform !== "linux");
 
 posixOnly("Live call e2e", () => {
   let child: ChildProcess;
@@ -28,12 +25,6 @@ posixOnly("Live call e2e", () => {
   let base = "";
   let output = "";
   let live: FakeOpenAiLive;
-  /** while missing, the `steer` engine holds its turn open after its tool result */
-  let steerGate = "";
-  /** the fake claude's one-shot replies, by a marker in the prompt */
-  let titleRoutes = "";
-  /** while present, the `codexQueue` engine refuses a live steer */
-  let queueSteerGate = "";
 
   const serverOutput = () => output;
   const post = async (path: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; body: unknown }> => {
@@ -44,7 +35,7 @@ posixOnly("Live call e2e", () => {
     });
     return { status: res.status, body: await res.json() };
   };
-  const createBot = async (instanceId = "claude", model = "claude-fake"): Promise<{ id: string; threadId: string; name: string }> => {
+  const createBot = async (instanceId = "opencodeGo", model = "fixture/default"): Promise<{ id: string; threadId: string; name: string }> => {
     const { bot } = (await post("/api/bots", {})).body as { bot: { id: string; threadId: string; name: string } };
     const res = await fetch(`${base}/api/bots/${bot.id}`, {
       method: "PATCH",
@@ -79,43 +70,29 @@ posixOnly("Live call e2e", () => {
   };
 
   beforeAll(async () => {
-    chmodSync(FAKE_CLAUDE, 0o755);
-    chmodSync(FAKE_ACP, 0o755);
-    chmodSync(FAKE_CODEX, 0o755);
     live = await startFakeOpenAiLive();
     home = mkdtempSync(join(tmpdir(), "quati-live-call-"));
     mkdirSync(join(home, ".quatibot"), { recursive: true });
-    steerGate = join(home, "steer.gate");
-    titleRoutes = join(home, "title-routes.json");
-    writeFileSync(titleRoutes, JSON.stringify({ "Requests:\nwhat is six times seven": "Times table question" }));
-    queueSteerGate = join(home, "queue-steer.gate");
+    const routes = join(home, "replies.json");
+    writeFileSync(routes, JSON.stringify({ "what is six times seven": "Six times seven is 42." }));
+    const instances = Object.fromEntries(Object.entries({ opencodeGo: "echo-gated", acp: "hang", asks: "permission", questions: "question" }).map(([id, mode]) => {
+      const cli = join(home, `${id}-opencode.mjs`);
+      writeFileSync(cli, [
+        "#!/usr/bin/env node",
+        `process.env.FAKE_ACP_MODE = ${JSON.stringify(mode)};`,
+        ...(id === "opencodeGo" ? [`process.env.FAKE_ACP_TEXT_ROUTES = ${JSON.stringify(routes)};`] : []),
+        `await import(${JSON.stringify(pathToFileURL(FAKE_ACP).href)});`,
+      ].join("\n"), { mode: 0o700 });
+      return [id, { driver: "opencodeGo", displayName: id, config: { cli } }];
+    }));
+    const discovery = join(home, ".quatibot", "providers", "opencode", "discovery");
+    mkdirSync(discovery, { recursive: true });
+    writeFileSync(join(discovery, ".quati-project"), "fixture");
     writeFileSync(
       join(home, ".quatibot", "config.json"),
       JSON.stringify({
-        instances: {
-          claude: {
-            driver: "claudeAgent",
-            environment: { FAKE_CLAUDE_REPLIES: JSON.stringify(["Six times seven is 42."]), FAKE_CLAUDE_TEXT_ROUTES: titleRoutes },
-            config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
-          },
-          // pauses after its tool result until steerGate exists, so a request spoken then is steered into the running turn
-          steer: {
-            driver: "claudeAgent",
-            environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: steerGate },
-            config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
-          },
-          // cannot steer and never finishes: a request made while it works waits in the queue
-          acp: { driver: "grokAgent", environment: { FAKE_ACP_MODE: "hang" }, config: { cli: FAKE_ACP, fullAuto: true } },
-          // parks its turn on a question and can steer, but refuses while queueSteerGate exists
-          codexQueue: {
-            driver: "codex",
-            environment: { FAKE_CODEX_MODE: "question", FAKE_CODEX_ASK_HOLD: "1", FAKE_CODEX_STEER_ERROR_FILE: queueSteerGate },
-            config: { cli: FAKE_CODEX },
-          },
-          // every turn asks permission to run a command
-          asks: { driver: "grokAgent", environment: { FAKE_ACP_MODE: "permission" }, config: { cli: FAKE_ACP, fullAuto: false } },
-          questions: { driver: "grokAgent", environment: { FAKE_ACP_MODE: "question" }, config: { cli: FAKE_ACP, fullAuto: false } },
-        },
+        instances,
+        defaultModelSelection: { instanceId: "opencodeGo", model: "fixture/default" },
       }),
     );
     const port = await freePortBlock([0, 1]);
@@ -123,15 +100,14 @@ posixOnly("Live call e2e", () => {
     child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
       env: {
-        ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
+        ...verificationServerEnvironment({}, join(home, ".quatibot"), port),
         HOME: home,
-        USERPROFILE: home,
-        QUATI_PORT: String(port),
-        QUATI_WEBHOOK_PORT: String(port + 1),
+        FAKE_ACP_VERSION: "2.0.31",
+        FAKE_ACP_AGENT_VERSION: "2.0.31",
+        FAKE_ACP_AGENT_NAME: "OpenCode",
+        FAKE_ACP_MODELS: "fixture/default",
         QUATI_OPENAI_LIVE_URL: live.url,
         QUATI_OPENAI_LIVE_KEY: LIVE_KEY,
-        // Live calls need Pro: how a server the desktop app did not start says so
-        QUATI_PRO_PLAN: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -141,7 +117,11 @@ posixOnly("Live call e2e", () => {
     const deadline = Date.now() + 90_000;
     for (;;) {
       try {
-        if ((await fetch(`${base}/api/health`)).ok) break;
+        if ((await fetch(`${base}/api/health`)).ok) {
+          const response = await fetch(`${base}/api/instances`);
+          const snapshot = JSON.parse(await response.text());
+          if (Object.keys(instances).every((id) => snapshot.instances.find((instance: { instanceId: string }) => instance.instanceId === id)?.models.options.some((option: { id: string }) => option.id === "fixture/default"))) break;
+        }
       } catch {
       }
       if (Date.now() > deadline) throw new Error(`server never came up. output:\n${output}`);
@@ -219,7 +199,7 @@ posixOnly("Live call e2e", () => {
   }, 40_000);
 
   it("queues a spoken request while the bot is busy, and the drained turn still keeps the words out of the log", async () => {
-    const bot = await createBot("acp", "fake-model");
+    const bot = await createBot("acp");
     const sse = await openSse(`${base}/api/events`);
     try {
       expect((await post(`/api/bots/${bot.id}/messages`, { text: "first" })).status).toBe(202);
@@ -253,7 +233,7 @@ posixOnly("Live call e2e", () => {
   }, 60_000);
 
   it("stops waiting for a queued spoken request once it is cancelled in the chat", async () => {
-    const bot = await createBot("acp", "fake-model");
+    const bot = await createBot("acp");
     const sse = await openSse(`${base}/api/events`);
     try {
       const { call, session } = await startCall(bot.id);
@@ -279,70 +259,6 @@ posixOnly("Live call e2e", () => {
       await live.waitForCommand(session.id, (c) => c.type === "session.commentary.append" && c.content === LIVE_COPY.noAnswer, 20_000);
       expect(await post("/api/live/call/end", { callId: call.callId })).toMatchObject({ status: 200 });
     } finally {
-      sse.close();
-    }
-  }, 60_000);
-
-  it("steers a request spoken while the bot works into its turn, with the call's id", async () => {
-    rmSync(steerGate, { force: true });
-    const bot = await createBot("steer", "claude-fake");
-    const sse = await openSse(`${base}/api/events`);
-    let callId = "";
-    try {
-      const { call, session } = await startCall(bot.id);
-      callId = call.callId;
-      await live.waitForAttach(session.id);
-      expect((await post(`/api/bots/${bot.id}/messages`, { text: "start the report" })).status).toBe(202);
-      await sse.until((frame) => frame.kind === "message" && frame.threadId === bot.threadId && frame.message?.kind === "activity", 20_000);
-      live.emit(session.id, { type: "session.input_transcript.delta", delta: "and add the totals", start_ms: 100, end_ms: 900 });
-      live.emit(session.id, { type: "session.delegation.created", offset_ms: 950, delegation: { id: "del_steer", target: "client", type: "delegation" } });
-      const steered = await sse.until(
-        (frame) => frame.kind === "message" && frame.threadId === bot.threadId && frame.message?.role === "user" && frame.message?.steered === true,
-        20_000,
-      );
-      expect(steered.message).toMatchObject({ text: "and add the totals", via: "call", callId: call.callId });
-    } finally {
-      writeFileSync(steerGate, "finish");
-      await expect.poll(() => isBusy(bot.id), { timeout: 20_000 }).toBe(false);
-      if (callId) await post("/api/live/call/end", { callId });
-      sse.close();
-    }
-  }, 60_000);
-
-  it("keeps the call's id on a queued spoken request that is steered from the queue", async () => {
-    writeFileSync(queueSteerGate, "refuse live steers until this test clears the gate");
-    const { instances } = (await (await fetch(`${base}/api/instances`)).json()) as { instances: Array<{ instanceId: string; models: { default: string } }> };
-    const bot = await createBot("codexQueue", instances.find((instance) => instance.instanceId === "codexQueue")!.models.default);
-    type Line = { id: string; role: string; text?: string; steered?: boolean; via?: string; callId?: string; card?: { requestId?: string } };
-    const lines = async (): Promise<Line[]> => ((await (await fetch(`${base}/api/threads/${bot.threadId}/messages`)).json()) as { messages: Line[] }).messages;
-    const sse = await openSse(`${base}/api/events`);
-    let callId = "";
-    try {
-      expect((await post(`/api/bots/${bot.id}/messages`, { text: "first gated turn" })).status).toBe(202);
-      await expect.poll(async () => (await lines()).some((line) => line.card?.requestId), { timeout: 20_000 }).toBe(true);
-      const { call, session } = await startCall(bot.id);
-      callId = call.callId;
-      await live.waitForAttach(session.id);
-
-      live.emit(session.id, { type: "session.input_transcript.delta", delta: "steer these queued words", start_ms: 100, end_ms: 900 });
-      live.emit(session.id, { type: "session.delegation.created", offset_ms: 950, delegation: { id: "del_queue_steer", target: "client", type: "delegation" } });
-      const waiting = await sse.until(
-        (frame) => frame.kind === "bot.queued" && (frame.queues?.[bot.threadId] ?? []).some((item: { text?: string }) => item.text === "steer these queued words"),
-        20_000,
-      );
-      const { queueId } = (waiting.queues[bot.threadId] as Array<{ queueId: string; text: string }>).find((item) => item.text === "steer these queued words")!;
-      expect((await lines()).some((line) => line.text === "steer these queued words")).toBe(false);
-
-      rmSync(queueSteerGate, { force: true });
-      const steered = await post(`/api/bots/${bot.id}/queue/${queueId}/steer`, { threadId: bot.threadId });
-      expect(steered).toMatchObject({ status: 200, body: { ok: true, steered: true, queueIds: [queueId] } });
-      const line = { text: "steer these queued words", steered: true, via: "call", callId: call.callId };
-      expect((steered.body as { messages: unknown[] }).messages).toEqual([expect.objectContaining(line)]);
-      expect((await lines()).find((m) => m.text === "steer these queued words")).toMatchObject(line);
-    } finally {
-      await post(`/api/bots/${bot.id}/interrupt`, { threadId: bot.threadId });
-      await expect.poll(() => isBusy(bot.id), { timeout: 20_000 }).toBe(false);
-      if (callId) await post("/api/live/call/end", { callId });
       sse.close();
     }
   }, 60_000);
@@ -379,7 +295,7 @@ posixOnly("Live call e2e", () => {
   }, 60_000);
 
   it("approves a card by voice and marks it as decided on the call", async () => {
-    const bot = await createBot("asks", "fake-model");
+    const bot = await createBot("asks");
     const { call, session } = await startCall(bot.id);
     try {
       await live.waitForAttach(session.id);
@@ -404,7 +320,7 @@ posixOnly("Live call e2e", () => {
   }, 60_000);
 
   it("reports a rejected question answer honestly and can retry it after the provider settles", async () => {
-    const bot = await createBot("questions", "fake-model");
+    const bot = await createBot("questions");
     const { call, session } = await startCall(bot.id);
     try {
       await live.waitForAttach(session.id);
@@ -433,7 +349,7 @@ posixOnly("Live call e2e", () => {
   }, 40_000);
 
   it("delivers a spoken answer to a persistent question after its turn is stopped", async () => {
-    const bot = await createBot("questions", "fake-model");
+    const bot = await createBot("questions");
     const { call, session } = await startCall(bot.id);
     try {
       await live.waitForAttach(session.id);
@@ -501,7 +417,7 @@ posixOnly("Live call e2e", () => {
   }, 40_000);
 
   // The first call's missing title is checked only after the second's title arrives: an event, not a clock.
-  it("names a call from what was asked on it when generated titles are on, and never one that ended while they were off", async () => {
+  it("keeps truthful call labels when OpenCode has no background title generator", async () => {
     const quiet = await createBot();
     const named = await createBot();
     const sse = await openSse(`${base}/api/events`);
@@ -523,12 +439,9 @@ posixOnly("Live call e2e", () => {
       await setGeneratedTitles(true);
       const second = await askAndHangUp(named);
       expect(second.message.call.title).toBeUndefined();
-      const titled = await sse.until(
-        (frame) => frame.kind === "message.patch" && frame.message?.id === second.message.id && typeof frame.message?.call?.title === "string",
-        15_000,
-      );
-      expect(titled.message.call).toMatchObject({ callId: second.message.call.callId, title: "Times table question" });
-      expect(titled.message.text).toBe(second.message.text);
+      const saved = (await (await fetch(`${base}/api/threads/${named.threadId}/messages`)).json()) as { messages: Array<{ id: string; text: string; call?: { title?: string } }> };
+      expect(saved.messages.find((message) => message.id === second.message.id)).toMatchObject({ text: second.message.text });
+      expect(saved.messages.find((message) => message.id === second.message.id)?.call?.title).toBeUndefined();
 
       const { messages } = (await (await fetch(`${base}/api/threads/${quiet.threadId}/messages`)).json()) as { messages: Array<{ id: string; call?: { title?: string } }> };
       expect(messages.find((message) => message.id === first.message.id)?.call?.title).toBeUndefined();

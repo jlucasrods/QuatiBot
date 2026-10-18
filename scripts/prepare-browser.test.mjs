@@ -11,16 +11,13 @@ const fixtures = [];
 function fixture() { const root = mkdtempSync(join(tmpdir(), "quati-browser-prepare-test-")); fixtures.push(root); return root; }
 afterEach(() => { vi.unstubAllGlobals(); for (const root of fixtures.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
-describe("pinned desktop browser preparation", () => {
+describe("pinned Linux browser preparation", () => {
   it("pins the exact headless vendor archives for only shipped targets", () => {
     expect(CHROME_VERSION).toBe("153.0.8010.47");
-    expect(SUPPORTED_BROWSER_TARGETS).toEqual(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64"]);
+    expect(SUPPORTED_BROWSER_TARGETS).toEqual(["linux-arm64", "linux-x64"]);
     const pins = {
-      "darwin-arm64": [98668949, "6d28839675b6f22dbd7ba8775dbdabcae7a5be37b482380b27b12f05b748b955"],
-      "darwin-x64": [103712919, "aa178547f9751fbcf413e0f57915ddb72e83064d4d1c4a29dc1719b169f9cc2f"],
       "linux-arm64": [120245582, "af0931a58d6bab688112d5ca1f7abd6d95c0b8a296ef34637f272795787774d7"],
       "linux-x64": [119695587, "7728775cf4a35464cd81c8eea2d44d6d32ccc0bd1edfa75aea7f32d146963d63"],
-      "win32-x64": [120466147, "9f405cfaf7bc08bf9e046e653cd3086c0faa1d4e25907de857f7e7f093a20122"],
     };
     for (const target of SUPPORTED_BROWSER_TARGETS) {
       const spec = browserBundleSpec(target);
@@ -34,21 +31,19 @@ describe("pinned desktop browser preparation", () => {
   });
 
   it("chooses host targets and rejects unsupported/cross-directory inputs", () => {
-    expect(targetsForPreparation({ platform: "darwin", arch: "arm64" })).toEqual(["darwin-arm64", "darwin-x64"]);
-    expect(targetsForPreparation({ platform: "darwin", arch: "arm64", current: true })).toEqual(["darwin-arm64"]);
-    expect(targetsForPreparation({ platform: "win32", arch: "x64" })).toEqual(["win32-x64"]);
+    expect(targetsForPreparation({ platform: "linux", arch: "x64", current: true })).toEqual(["linux-x64"]);
     expect(targetsForPreparation({ target: "linux-x64" })).toEqual(["linux-x64"]);
     expect(targetsForPreparation({ platform: "linux", arch: "arm64" })).toEqual(["linux-arm64"]);
-    for (const target of ["win32-arm64", "../darwin-arm64", "freebsd-x64"]) expect(() => browserBundleSpec(target)).toThrow(/Unsupported/);
+    for (const target of ["win32-x64", "darwin-arm64", "../linux-arm64", "freebsd-x64"]) expect(() => browserBundleSpec(target)).toThrow(/Unsupported/);
     expect(() => targetsForPreparation({ platform: "win32", arch: "arm64" })).toThrow(/Unsupported/);
   });
 
-  it("has stable resource-relative paths on every platform", () => {
+  it("has stable resource-relative paths for both architectures", () => {
     const root = join("app", "resources", "browser-engine");
     for (const target of SUPPORTED_BROWSER_TARGETS) {
       const spec = browserBundleSpec(target);
       const paths = browserBundlePaths(root, target);
-      expect(paths.engine).toBe(join(root, target.startsWith("win32") ? "agent-browser.exe" : "agent-browser"));
+      expect(paths.engine).toBe(join(root, "agent-browser"));
       expect(paths.chrome).toBe(join(root, spec.chrome.executable));
       expect(paths.manifest).toBe(join(root, "manifest.json"));
     }
@@ -61,9 +56,8 @@ describe("pinned desktop browser preparation", () => {
     for (const args of [["--all"], ["--current", "--current"], ["--current", "--target", "linux-x64"], ["--target"], ["--target", "../../tmp"]]) expect(() => parsePrepareBrowserArgs(args, host)).toThrow();
   });
 
-  it("uses Windows' ZIP-capable system tar instead of Git Bash's GNU tar", () => {
-    expect(browserExtractionCommand("a.zip", "out", { platform: "win32", systemRoot: "D:\\Windows" })).toEqual({ file: "D:\\Windows\\System32\\tar.exe", args: ["-xf", "a.zip", "-C", "out"] });
-    expect(browserExtractionCommand("a.zip", "out", { platform: "darwin" })).toEqual({ file: "unzip", args: ["-q", "a.zip", "-d", "out"] });
+  it("extracts vendor ZIP archives on Linux", () => {
+    expect(browserExtractionCommand("a.zip", "out", { platform: "linux" })).toEqual({ file: "unzip", args: ["-q", "a.zip", "-d", "out"] });
   });
 
   it("repairs a tampered cache by re-downloading and fails closed on a bad download", async () => {
@@ -111,11 +105,11 @@ describe("pinned desktop browser preparation", () => {
 
   it("rejects incomplete and incompatible manifests", () => {
     const root = fixture();
-    expect(() => verifyBrowserBundle(root, "darwin-arm64")).toThrow();
+    expect(() => verifyBrowserBundle(root, "linux-arm64")).toThrow();
     writeFileSync(join(root, "manifest.json"), JSON.stringify({ ...browserBundleSpec("linux-x64"), files: [] }));
-    expect(() => verifyBrowserBundle(root, "darwin-arm64")).toThrow(/pinned release/);
-    writeFileSync(join(root, "manifest.json"), JSON.stringify({ ...browserBundleSpec("darwin-arm64"), files: [] }));
-    expect(() => verifyBrowserBundle(root, "darwin-arm64")).toThrow();
+    expect(() => verifyBrowserBundle(root, "linux-arm64")).toThrow(/pinned release/);
+    writeFileSync(join(root, "manifest.json"), JSON.stringify({ ...browserBundleSpec("linux-arm64"), files: [] }));
+    expect(() => verifyBrowserBundle(root, "linux-arm64")).toThrow();
   });
 
   it("keeps an earlier complete stage untouched when cached inputs are invalid", async () => {

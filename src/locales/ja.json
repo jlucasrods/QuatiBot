@@ -3098,7 +3098,6 @@
   "place.view.ccUnavailable.short": "現在は使えません",
   "place.view.ccUnavailable.line": "現在、クラウドコンピューターを起動できません。ご自身の操作が原因ではありません。",
   "place.view.ccEnded.short": "プラン終了",
-  "place.view.ccEnded.line": "Quati Cloud プランが終了したため、クラウドコンピューターはオフです。",
   "place.view.ccNoStart.short": "起動しませんでした",
   "place.view.ccNoStart.line": "{bot} のクラウドコンピューターは起動しませんでした。",
   "place.view.ccClearing.short": "削除処理中",

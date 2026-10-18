@@ -677,7 +677,7 @@ describe("agents-proxy MCP surface", () => {
       expect(tool(name).description, name).not.toMatch(/\b(delegate_bot|ask_bot)\b/);
     }
     const credential = tool("request_credential");
-    expect(credential.description).toContain("freshly QR-paired mobile app show a secure entry card");
+    expect(credential.description).toContain("QuatiBot's secure web entry card");
     expect(credential.description).toContain("Never claim a secure field opened unless this request succeeds");
   });
 

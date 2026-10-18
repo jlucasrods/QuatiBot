@@ -37,15 +37,24 @@ interface SavedBot { id: string; name: string; toolScope?: { allow?: string[]; d
     const initial = await bots();
     const first = initial.find(bot => bot.name === "Pepper")!;
     const second = initial.find(bot => bot.id !== first.id)!;
-    const selectBot = (name: string) => evaluate(`(() => {
+    const selectBot = async (name: string) => {
+      await expect.poll(snapshot, { timeout: 15_000 }).toContain(": " + name);
+      return evaluate(`(() => {
       const button = [...document.querySelectorAll('main > div button')].find(button => button.textContent.trim().endsWith(': ' + ${JSON.stringify(name)}));
       if (!button) throw new Error('Missing fixture bot'); button.click(); return true;
-    })()`);
-    const mode = (value: "all" | "custom") => evaluate(`(() => {
-      const select = document.querySelector('select[aria-label="Tool selection"]');
-      if (!select || select.disabled) throw new Error('Selection is unavailable');
-      select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change', { bubbles: true })); return true;
-    })()`);
+      })()`);
+    };
+    const mode = async (value: "all" | "custom") => {
+      await expect.poll(() => evaluate(`(() => {
+        const select = document.querySelector('select[aria-label="Tool selection"]');
+        return Boolean(select && !select.disabled);
+      })()`)).toBe(true);
+      return evaluate(`(() => {
+        const select = document.querySelector('select[aria-label="Tool selection"]');
+        if (!select || select.disabled) throw new Error('Selection is unavailable');
+        select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change', { bubbles: true })); return true;
+      })()`);
+    };
     const fill = async (name: string, text: string) => {
       // Use the native setter for a deterministic React change, as in the
       // existing UI tests; saving still uses the real button and API.
@@ -65,7 +74,7 @@ interface SavedBot { id: string; name: string; toolScope?: { allow?: string[]; d
     await click("Save tool selection");
     const selected = { allow: ["native:*", "mcp:mail:read_notes"], deny: ["mcp:mail:send"] };
     await expect.poll(() => scope()).toEqual(selected);
-    expect(await snapshot()).toContain("Custom selection saved");
+    await expect.poll(snapshot).toContain("Custom selection saved");
 
     await fill("Allow (one per line)", "native:read*");
     expect(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Save tool selection')?.disabled")).toBe(true);
@@ -75,7 +84,7 @@ interface SavedBot { id: string; name: string; toolScope?: { allow?: string[]; d
     expect(await snapshot()).toContain("This engine cannot limit native tools");
     await click("Save tool selection");
     await expect.poll(() => scope()).toEqual({ allow: [], deny: ["mcp:mail:send"] });
-    expect(await snapshot()).toContain("No tools selected");
+    await expect.poll(snapshot).toContain("No tools selected");
     await mode("all"); await click("Save tool selection");
     await expect.poll(() => scope()).toBeUndefined();
 

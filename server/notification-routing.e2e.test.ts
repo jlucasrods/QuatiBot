@@ -1,10 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 
 import type { HandoffView } from "./coordinator.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
@@ -16,7 +17,6 @@ import { openSse } from "./testing/sse.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SERVER_DIR, "..");
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
 const FAKE_ACP = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 const TEST_CAPABILITY_KEY = "notification-routing-fixture-capability";
 const TAGGED_REPLY = "Draft is up.\n\n@you three open questions are blocking Section 2 & 3.";
@@ -25,7 +25,6 @@ let child: ChildProcess;
 let home = "";
 let base = "";
 let stderr = "";
-let dumpFile = "";
 
 const api = async (
   method: string,
@@ -62,7 +61,7 @@ const botState = async (botId: string) =>
 const groupState = async (groupId: string) =>
   (await state(40)).groups.find((candidate: { id: string }) => candidate.id === groupId);
 
-const createBot = async (name: string, instanceId: string, model = "claude-sonnet-5") => {
+const createBot = async (name: string, instanceId: string, model = "fixture/test") => {
   const created = (await api("POST", "/api/bots", {})).body.bot;
   // notifications on, explicitly: a silent bot would pass the "no banner" assertions for the wrong reason
   const patched = await api("PATCH", `/api/bots/${created.id}`, {
@@ -86,64 +85,40 @@ const cleanup = async (groupIds: Array<string | undefined>, botIds: string[]) =>
 };
 
 beforeAll(async () => {
-  chmodSync(FAKE_CLAUDE, 0o755);
-  chmodSync(FAKE_ACP, 0o755);
   home = mkdtempSync(join(tmpdir(), "quati-notification-routing-"));
   const data = join(home, ".quatibot");
   mkdirSync(data, { recursive: true });
-  dumpFile = join(home, "quick-dump.json");
-  writeFileSync(join(data, "config.json"), JSON.stringify({
-    instances: {
-      // answers at once; its dump is the only place to read the per-boot comms token the internal endpoints need
-      quick: {
-        driver: "claudeAgent",
-        displayName: "Quick fixture",
-        environment: { FAKE_CLAUDE_MODE: "happy", FAKE_CLAUDE_DUMP: dumpFile },
-        config: { cli: FAKE_CLAUDE },
-      },
-      tagger: {
-        driver: "claudeAgent",
-        displayName: "Tagger fixture",
-        environment: {
-          FAKE_CLAUDE_MODE: "happy",
-          FAKE_CLAUDE_REPLIES: JSON.stringify(Array.from({ length: 8 }, () => TAGGED_REPLY)),
-        },
-        config: { cli: FAKE_CLAUDE },
-      },
-      // never finishes, so a bot is held mid-room long enough to ask for hands
-      stuck: {
-        driver: "claudeAgent",
-        displayName: "Stuck fixture",
-        environment: { FAKE_CLAUDE_MODE: "hang" },
-        config: { cli: FAKE_CLAUDE },
-      },
-      // stops mid-turn to ask the person a question no rule may answer
-      curious: {
-        driver: "grokAgent",
-        displayName: "Curious fixture",
-        environment: { FAKE_ACP_MODE: "question" },
-        config: { cli: FAKE_ACP, fullAuto: true },
-      },
-      // consults the first teammate list_bots shows through the real agents proxy, and its resume says it saw the result
-      asker: {
-        driver: "grokAgent",
-        displayName: "Asker fixture",
-        environment: { FAKE_ACP_MODE: "ask-peer" },
-        config: { cli: FAKE_ACP, fullAuto: true },
-      },
-    },
-  }));
+  const profiles: Record<string, { mode: string; reply?: string }> = {
+    quick: { mode: "happy" }, tagger: { mode: "happy", reply: TAGGED_REPLY },
+    stuck: { mode: "hang" }, curious: { mode: "question" }, asker: { mode: "ask-peer" },
+  };
+  const instances: Record<string, { driver: string; displayName: string; config: { cli: string } }> = {};
+  for (const [id, profile] of Object.entries(profiles)) {
+    const cli = join(home, `${id}-opencode.mjs`);
+    writeFileSync(cli, [
+      "#!/usr/bin/env node",
+      'process.env.FAKE_ACP_VERSION = "2.0.31";',
+      'process.env.FAKE_ACP_AGENT_VERSION = "2.0.31";',
+      'process.env.FAKE_ACP_AGENT_NAME = "OpenCode";',
+      'process.env.FAKE_ACP_MODELS = "fixture/test";',
+      `process.env.FAKE_ACP_MODE = ${JSON.stringify(profile.mode)};`,
+      ...(profile.reply ? [`process.env.FAKE_ACP_TEXT_REPLY = ${JSON.stringify(profile.reply)};`] : []),
+      `process.env.FAKE_ACP_DUMP = ${JSON.stringify(join(home, `${id}-dump.json`))};`,
+      `await import(${JSON.stringify(pathToFileURL(FAKE_ACP).href)});`,
+    ].join("\n"), { mode: 0o700 });
+    instances[id] = { driver: "opencodeGo", displayName: `${id} fixture`, config: { cli } };
+  }
+  const discovery = join(data, "providers", "opencode", "discovery");
+  mkdirSync(discovery, { recursive: true });
+  writeFileSync(join(discovery, ".quati-project"), "");
+  writeFileSync(join(data, "config.json"), JSON.stringify({ instances }));
   const port = await freePortBlock([0, 1]);
   base = `http://127.0.0.1:${port}`;
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: ROOT,
     env: {
-      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+      ...verificationServerEnvironment({}, data, port),
       HOME: home,
-      USERPROFILE: home,
-      QUATI_PORT: String(port),
-      QUATI_WEBHOOK_PORT: String(port + 1),
       QUATI_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -160,7 +135,13 @@ beforeAll(async () => {
     if (Date.now() >= deadline) throw new Error(`server never became healthy: ${stderr}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-
+  const modelDeadline = Date.now() + 15_000;
+  for (;;) {
+    const available = (await api("GET", "/api/instances")).body.instances;
+    if (Object.keys(instances).every((id) => available.find((instance: any) => instance.instanceId === id)?.models?.options?.some((model: any) => model.id === "fixture/test"))) break;
+    if (Date.now() >= modelDeadline) throw new Error("OpenCode fixture models did not become available");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
 }, 45_000);
 
 afterAll(async () => {
@@ -183,7 +164,7 @@ describe("an ordinary turn still announces itself", () => {
         20_000,
       );
       expect(frame.notification).toMatchObject({ threadId: bot.threadId, title: "Herald finished" });
-      expect(frame.notification.body).toContain("hello from fake claude");
+      expect(frame.notification.body).toContain("hello from fake acp");
       expect(frame.notification.groupId).toBeUndefined();
       await expect.poll(async () => (await botState(bot.id))?.unread, { timeout: 20_000 }).toBe(true);
     } finally {
@@ -364,7 +345,7 @@ describe("bot-to-bot coordination is recorded, not announced", () => {
       const [root, consult] = exchange() as [HandoffView, HandoffView];
       expect(root).toMatchObject({ botId: asker.id, threadId: asker.threadId });
       expect(root.parentId).toBeUndefined();
-      expect(consult).toMatchObject({ botId: peer.id, parentId: root.id, mode: "consult", reply: "resume", result: expect.stringContaining("hello from fake claude") });
+      expect(consult).toMatchObject({ botId: peer.id, parentId: root.id, mode: "consult", reply: "resume", result: expect.stringContaining("hello from fake acp") });
 
       const current = await state(40);
       const ink = current.bots.find((candidate: { id: string }) => candidate.id === peer.id);
@@ -377,7 +358,7 @@ describe("bot-to-bot coordination is recorded, not announced", () => {
       const replied = pen.messages.find(
         (message: { kind: string; tool?: { name?: string } }) => message.kind === "activity" && message.tool?.name === "Ink replied",
       );
-      expect(replied?.tool?.output).toContain("hello from fake claude");
+      expect(replied?.tool?.output).toContain("hello from fake acp");
       expect(replied?.threadRef).toMatchObject({ botId: peer.id, threadId: consult.threadId });
       expect(ink.unread).toBe(true);
 
@@ -453,7 +434,7 @@ describe("bot-to-bot coordination is recorded, not announced", () => {
       expect((await botState(peer.id))?.unread).toBeFalsy();
 
       expect((await api("PATCH", `/api/bots/${peer.id}`, {
-        modelSelection: { instanceId: "quick", model: "claude-sonnet-5" },
+        modelSelection: { instanceId: "quick", model: "fixture/test" },
       })).status).toBe(200);
       expect((await api("POST", `/api/bots/${peer.id}/messages`, { text: "back? tell me when" })).status).toBe(202);
       const frame = await stream.until(
@@ -516,7 +497,7 @@ describe("bot-to-bot coordination is recorded, not announced", () => {
 
   it("still buzzes when a peer's turn stops to ask the person a question", async () => {
     const asker = await createBot("Quill", "quick");
-    const peer = await createBot("Sage", "curious", "fake-model");
+    const peer = await createBot("Sage", "curious");
     const stream = await openSse(`${base}/api/events`);
     try {
       const asked = await api(

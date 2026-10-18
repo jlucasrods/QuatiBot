@@ -1,4 +1,3 @@
-// The fake Claude CLI in `slow` mode holds every reply until the gate file exists, so "still working" is a state the test controls.
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,14 +7,13 @@ import type { WireGroup } from "../shared/wire.ts";
 
 type Message = { role: string; kind: string; text?: string; tool?: { name?: string; ok?: boolean }; from?: { botId: string } };
 
-describe.skipIf(process.platform === "win32")("parallel room threads", () => {
+describe.skipIf(process.platform !== "linux")("parallel room threads", () => {
   it("runs threads side by side, stops one thread alone, and queues a shared bot thread by thread", async () => {
     const gateDir = mkdtempSync(join(tmpdir(), "quati-parallel-threads-"));
     const gate = join(gateDir, "finish.gate");
     const fixture = await launchVerificationServer({
-      ...process.env,
-      FAKE_CLAUDE_MODE: "slow",
-      FAKE_CLAUDE_SLOW_FINISH_GATE: gate,
+      FAKE_ACP_MODE: "echo-gated",
+      FAKE_ACP_GATE_FILE: gate,
     });
     const { url } = fixture.info;
     const control = (...args: string[]) => runControlQuati([...args, "--url", url]) as Promise<any>;

@@ -25,15 +25,13 @@ vi.mock("./DesktopCapabilities", async (importOriginal) => ({
 const { RoomToolChip } = await import("./GroupView");
 const { FailedTurnRow } = await import("./ChatView");
 
-const claude = {
-  instanceId: "claude", driverKind: "claudeAgent", displayName: "Claude",
+const opencode = {
+  instanceId: "opencodeGo", driverKind: "opencodeGo", displayName: "OpenCode",
   snapshot: { state: "available", authenticated: false },
-  install: { command: { darwin: "npm i -g x", linux: "npm i -g x", win32: "npm i -g x" }, signInCommand: "claude /login", server: { package: "@anthropic-ai/claude-code" } },
-  authentication: { method: "paste-code" },
-  models: { default: "sonnet", options: [] },
+  models: { default: "fixture/default", options: [] },
 } as InstanceInfo;
-fixture.instances = [claude];
-fixture.bots = [{ id: "lead", name: "Lead", modelSelection: { instanceId: "claude", model: "sonnet" } } as Bot];
+fixture.instances = [opencode];
+fixture.bots = [{ id: "lead", name: "Lead", modelSelection: { instanceId: "opencodeGo", model: "fixture/default" } } as Bot];
 
 const failed = (name: string, patch: Partial<NonNullable<Message["tool"]>> = {}): Message => ({
   id: "failed", role: "bot", kind: "activity", at: 1,
@@ -47,17 +45,19 @@ describe("a member's failed turn in a room", () => {
 
   it("says the engine is signed out and offers the sign-in, not the CLI's /login text", () => {
     const markup = room(signedOut);
-    expect(markup).toContain("Claude isn&#x27;t signed in yet. Sign in below, then send your message again.");
-    expect(markup).toContain("Sign in to Claude");
+    expect(markup).toContain("OpenCode isn&#x27;t signed in yet. Sign in below, then send your message again.");
+    expect(markup).toContain("opencode auth login");
     expect(markup).not.toContain('data-testid="tool-activity"');
-    expect(markup).not.toContain("truncate font-mono");
+    const errorClasses = markup.match(/<span class="([^"]*)">OpenCode isn/)?.[1];
+    expect(errorClasses).toContain("break-words");
+    expect(errorClasses).not.toContain("truncate");
     const details = markup.indexOf("<details");
     expect(details).toBeGreaterThan(-1);
     expect(markup.indexOf("Not logged in")).toBeGreaterThan(details);
   });
 
   it("is the very row a direct chat shows for the same failure", () => {
-    expect(room(signedOut)).toBe(renderToStaticMarkup(createElement(FailedTurnRow, { tool: signedOut.tool!, engine: claude })));
+    expect(room(signedOut)).toBe(renderToStaticMarkup(createElement(FailedTurnRow, { tool: signedOut.tool!, engine: opencode })));
   });
 
   it("shows a plan-limit refusal whole, next action included", () => {
@@ -69,13 +69,13 @@ describe("a member's failed turn in a room", () => {
   });
 
   it("keeps the engine's words once it is signed in again (nothing left to set up)", () => {
-    fixture.instances = [{ ...claude, snapshot: { state: "available", authenticated: true } }];
+    fixture.instances = [{ ...opencode, snapshot: { state: "available", authenticated: true } }];
     try {
       const markup = room(signedOut);
       expect(markup).toContain(">Not logged in · Please run /login</span>");
-      expect(markup).not.toContain("Sign in to Claude");
+      expect(markup).not.toContain("opencode auth login");
     } finally {
-      fixture.instances = [claude];
+      fixture.instances = [opencode];
     }
   });
 });

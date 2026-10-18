@@ -9,14 +9,14 @@ import { mountPreview } from "./testing/preview-fixture.ts";
 import { agentBrowser, ensureUiBrowser, sessionEnv } from "./testing/control-quati-ui.ts";
 
 const fixture = await launchVerificationServer();
-const home = mkdtempSync(join(tmpdir(), "quati-vmr-")); // Keep macOS browser sockets below their path limit.
+const home = mkdtempSync(join(tmpdir(), "quati-vmr-"));
 let preview: Awaited<ReturnType<typeof mountPreview>> | undefined;
 let browser: { binary: string; env: NodeJS.ProcessEnv } | undefined;
 try {
   console.log(JSON.stringify(fixture.info));
   await runControlQuati(["new-bot", "--name", "Resume test", "--url", fixture.info.url]);
   preview = await mountPreview(fixture, {
-    entry: "/scripts/testing/cloud-preview.tsx", route: "/__vm-resume.html", title: "Local VM resume verification", logLevel: "silent",
+    entry: "/scripts/testing/vm-preview.tsx", route: "/__vm-resume.html", title: "Local VM resume verification", logLevel: "silent",
   });
   const { binary, chrome } = await ensureUiBrowser(process.env);
   const env = sessionEnv({ home, session: `vm-resume-${process.pid}`, chrome });
@@ -31,7 +31,7 @@ try {
   await command("set", "viewport", "900", "720");
   await command("open", preview.previewUrl);
   await wait(`document.querySelector('select[aria-label="Conversation surface"]') !== null`);
-  await wait(`Array.from(document.querySelectorAll('img')).some(img => img.src === window.cloudPreviewFixture.screenshot && img.complete)`);
+  await wait(`Array.from(document.querySelectorAll('img')).some(img => img.src === window.vmPreviewFixture.screenshot && img.complete)`);
   await evaluate(`(() => { const s = document.querySelector('select[aria-label="Conversation surface"]'); s.value='vm-stopped'; s.dispatchEvent(new Event('change', {bubbles:true})); })()`);
   await wait(`document.body.textContent.includes('The Local VM is stopped')`);
   assert.equal(await evaluate(`document.body.textContent.includes('Stopped after inactivity')`), true);
@@ -43,23 +43,23 @@ try {
     await command("record", "start", join(evidenceDir, "resume.mp4"));
   }
   await command("find", "role", "button", "click", "--name", "Start Local VM", "--exact");
-  await wait(`window.cloudPreviewFixture.vmStarts === 1`);
+  await wait(`window.vmPreviewFixture.vmStarts === 1`);
   await wait(`Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('Starting Local VM') && b.disabled && b.getAttribute('aria-busy') === 'true')`);
   // The POST has returned but Cua is still warming up: the button must keep
   // spinning rather than become clickable or claim the desktop is ready.
-  await wait(`window.cloudPreviewFixture.vmReadinessReads >= 2`);
+  await wait(`window.vmPreviewFixture.vmReadinessReads >= 2`);
   assert.equal(await evaluate(`Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('Starting Local VM') && b.disabled)`), true);
   await command("screenshot", "aside", join(evidenceDir, "starting.png"));
   await evaluate(`Array.from(document.querySelectorAll("button")).find(b => b.textContent === "Finish VM startup").click()`);
-  await wait(`Array.from(document.querySelectorAll('img')).some(img => img.src === window.cloudPreviewFixture.vmScreenshot && img.complete && img.naturalWidth > 1)`);
-  assert.equal(await evaluate(`window.cloudPreviewFixture.vmStarts`), 1);
-  assert.equal(await evaluate(`window.cloudPreviewFixture.paths.some(p => p.endsWith('/local-computer/remove') || p.endsWith('/local-computer/run'))`), false);
+  await wait(`Array.from(document.querySelectorAll('img')).some(img => img.src === window.vmPreviewFixture.screenshot && img.complete && img.naturalWidth > 1)`);
+  assert.equal(await evaluate(`window.vmPreviewFixture.vmStarts`), 1);
+  assert.equal(await evaluate(`window.vmPreviewFixture.paths.some(p => p.endsWith('/local-computer/remove') || p.endsWith('/local-computer/run'))`), false);
   await command("screenshot", "aside", join(evidenceDir, "ready.png"));
   if (record) {
     await command("record", "stop");
     await evaluate(`document.querySelector('.fixed.left-2.top-2').style.visibility = ''`);
   }
-  await evaluate(`window.cloudPreviewFixture.resetVm(); const s = document.querySelector('select[aria-label="Panel"]'); s.value='settings'; s.dispatchEvent(new Event('change', {bubbles:true}));`);
+  await evaluate(`window.vmPreviewFixture.resetVm(); const s = document.querySelector('select[aria-label="Panel"]'); s.value='settings'; s.dispatchEvent(new Event('change', {bubbles:true}));`);
   await wait(`document.body.textContent.includes('Stopped after inactivity')`);
   assert.equal(await evaluate(`document.body.textContent.includes('Delete and recreate')`), false);
   await command("find", "role", "button", "click", "--name", "Start Local VM", "--exact");

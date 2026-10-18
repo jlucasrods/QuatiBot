@@ -3494,7 +3494,6 @@
   "place.view.ccUnavailable.short": "Hiện không khả dụng",
   "place.view.ccUnavailable.line": "Máy tính đám mây hiện không thể khởi động. Đây không phải do lỗi của bạn.",
   "place.view.ccEnded.short": "Gói đã hết hạn",
-  "place.view.ccEnded.line": "Gói Quati Cloud của bạn đã hết hạn, vì vậy máy tính đám mây đã tắt.",
   "place.view.ccNoStart.short": "Không khởi động được",
   "place.view.ccNoStart.line": "Máy tính đám mây của {bot} không khởi động được.",
   "place.view.ccClearing.short": "Đang dọn dẹp",

@@ -1,13 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 
 it("bounds a real roster, retrieves its tail, isolates owners and expires stopped capabilities", async () => {
-  const fixture = await launchVerificationServer({ FAKE_CLAUDE_MODE: "hang" });
+  const fixture = await launchVerificationServer({ FAKE_ACP_MODE: "hang" });
   const proxies: ChildProcess[] = [];
   const evidence: unknown[] = [];
   const cli = async (...args: string[]) => {
@@ -21,15 +20,26 @@ it("bounds a real roster, retrieves its tail, isolates owners and expires stoppe
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(10_000) });
     return { status: response.status, body: await response.json() as any };
   };
-  const dumpFile = join(fixture.info.dataDir, "fake-claude-dump.json");
+  const dumpFile = `${fixture.fixtureDumpPath}.prompts.jsonl`;
   const held = async (bot: any, threadId = bot.activeTaskId) => {
     rmSync(dumpFile, { force: true });
     await cli("send", "--bot", bot.id, "--task", threadId, "--text", "Hold this isolated verification turn open.");
-    await expect.poll(() => existsSync(dumpFile), { timeout: 15_000 }).toBe(true);
-    const mounted = JSON.parse(readFileSync(dumpFile, "utf8")).mcpConfig.mcpServers.agents;
-    expect(mounted.env.QUATI_THREAD_ID).toBe(threadId);
+    let turns: Array<{
+      mcpServers: Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }>;
+    }> = [];
+    await expect.poll(() => {
+      if (!existsSync(dumpFile)) return false;
+      turns = readFileSync(dumpFile, "utf8").trim().split("\n").map(line => JSON.parse(line));
+      return turns.some(turn => turn.mcpServers.some(server =>
+        server.env.some(item => item.name === "QUATI_THREAD_ID" && item.value === threadId)));
+    }, { timeout: 15_000 }).toBe(true);
+    const dump = turns.findLast(turn => turn.mcpServers.some(server =>
+      server.env.some(item => item.name === "QUATI_THREAD_ID" && item.value === threadId)))!;
+    const mounted = dump.mcpServers.find((server) => server.name === "agents")!;
+    const environment = Object.fromEntries(mounted.env.map(({ name, value }) => [name, value]));
+    expect(environment.QUATI_THREAD_ID).toBe(threadId);
     const proxy = spawn(mounted.command, mounted.args, { cwd: process.cwd(),
-      env: { ...mounted.env, PATH: process.env.PATH, HOME: fixture.info.dataDir }, stdio: ["pipe", "pipe", "pipe"] });
+      env: { ...environment, PATH: process.env.PATH, HOME: fixture.info.dataDir }, stdio: ["pipe", "pipe", "pipe"] });
     proxies.push(proxy);
     proxy.stderr!.resume();
     let sequence = 0;
@@ -46,7 +56,7 @@ it("bounds a real roster, retrieves its tail, isolates owners and expires stoppe
       proxy.stdin!.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
     });
     await rpc("initialize", { protocolVersion: "2024-11-05" });
-    return { token: mounted.env.QUATI_COMMS_TOKEN as string,
+    return { token: environment.QUATI_COMMS_TOKEN,
       tool: async (name: string, args = {}) => (await rpc("tools/call", { name, arguments: args })).result };
   };
   try {

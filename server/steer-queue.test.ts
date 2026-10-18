@@ -1,12 +1,13 @@
-// The e2e half runs the fake ACP CLI in echo-gated mode: turns stay open until a gate file exists, and the echo carries the full prompt.
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
+import { freePortBlock } from "./testing/ports.ts";
 import { saveChatFollowup } from "./message-db.ts";
 import {
   cancelSteeredMessage,
@@ -29,8 +30,8 @@ import type { BotRecord, Message } from "./store.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
-const PORT = 18800 + Math.floor(Math.random() * 10_000);
-const BASE = `http://127.0.0.1:${PORT}`;
+let PORT = 0;
+let BASE = "";
 
 function fakeBot(id: string, threadId: string, busy: boolean): BotRecord {
   return {
@@ -725,11 +726,12 @@ describe("steer-queue e2e (fake ACP fleet)", () => {
   };
 
   const newBot = async (instanceId: string, name: string) => {
-    return (await api("POST", "/api/bots", { name, modelSelection: { instanceId, model: "fake-model" } })).body.bot;
+    return (await api("POST", "/api/bots", { name, modelSelection: { instanceId, model: "fixture/test" } })).body.bot;
   };
 
   beforeAll(async () => {
-    chmodSync(FAKE_CLI, 0o755);
+    PORT = await freePortBlock([0, 1]);
+    BASE = `http://127.0.0.1:${PORT}`;
     home = mkdtempSync(join(tmpdir(), "quati-steer-test-"));
     mkdirSync(join(home, ".quatibot"), { recursive: true });
     mkdirSync(join(home, "gates"), { recursive: true });
@@ -741,6 +743,22 @@ describe("steer-queue e2e (fake ACP fleet)", () => {
     dispatchGate = join(home, "gates", "early-dispatch.gate");
     roomGate = join(home, "gates", "room.gate");
     evidencePath = join(tmpdir(), `quati-steer-evidence-${Date.now()}-${process.pid}.json`);
+    const discovery = join(home, ".quatibot", "providers", "opencode", "discovery");
+    mkdirSync(discovery, { recursive: true });
+    writeFileSync(join(discovery, ".quati-project"), "fixture");
+    const engine = (id: string, gate: string, rpcDump?: string) => {
+      const cli = join(home, `${id}-opencode.mjs`);
+      const environment = {
+        FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_AGENT_NAME: "OpenCode",
+        FAKE_ACP_MODELS: "fixture/test", FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: gate,
+        ...(rpcDump ? { FAKE_ACP_RPC_DUMP: rpcDump } : {}),
+      };
+      writeFileSync(cli, ["#!/usr/bin/env node",
+        ...Object.entries(environment).map(([key, value]) => `process.env[${JSON.stringify(key)}] = ${JSON.stringify(value)};`),
+        `await import(${JSON.stringify(pathToFileURL(FAKE_CLI).href)});`,
+      ].join("\n"), { mode: 0o700 });
+      return { driver: "opencodeGo", config: { cli } };
+    };
     // Delay only the adapter's returned acknowledgment, reproducing completion before sendTurn resolves.
     const prelude = join(home, "delayed-dispatch.mjs");
     writeFileSync(prelude, [
@@ -788,49 +806,16 @@ describe("steer-queue e2e (fake ACP fleet)", () => {
       join(home, ".quatibot", "config.json"),
       JSON.stringify({
         instances: {
-          steer: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: drainGate },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          steerEarly: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: earlyGate },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          steerReceipt: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: receiptGate },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // Wait for session/prompt to be in flight: an earlier interrupt is a no-op on a turn the driver has not registered.
-          steerStop: {
-            driver: "grokAgent",
-            environment: {
-              FAKE_ACP_MODE: "echo-gated",
-              FAKE_ACP_GATE_FILE: stopGate,
-              FAKE_ACP_RPC_DUMP: stopRpcDump,
-            },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // One gate holds the room's turn open while a 1:1 message arrives.
-          steerRoom: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: roomGate },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
+          steer: engine("steer", drainGate),
+          steerEarly: engine("steerEarly", earlyGate),
+          steerReceipt: engine("steerReceipt", receiptGate),
+          steerStop: engine("steerStop", stopGate, stopRpcDump),
+          steerRoom: engine("steerRoom", roomGate),
         },
       }),
     );
 
-    const env: NodeJS.ProcessEnv = {
-      HOME: home,
-      USERPROFILE: home,
-      QUATI_PORT: String(PORT),
-    };
-    if (process.env.PATH) env.PATH = process.env.PATH;
-    // Without SystemRoot, winsock fails to initialize in the child.
-    if (process.env.SystemRoot) env.SystemRoot = process.env.SystemRoot;
+    const env = { ...verificationServerEnvironment({}, join(home, ".quatibot"), PORT), HOME: home };
     child = spawn(process.execPath, ["--import", pathToFileURL(prelude).href, join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
       env,
@@ -849,6 +834,8 @@ describe("steer-queue e2e (fake ACP fleet)", () => {
       if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}. stderr:\n${stderr}`);
       await new Promise((r) => setTimeout(r, 150));
     }
+    await until(async () => (await api("GET", "/api/instances")).body.instances.filter((instance: { models: { options: Array<{ id: string }> } }) =>
+      instance.models.options.some((option) => option.id === "fixture/test")).length === 5, "fixture model discovery", 15_000);
   }, 30_000);
 
   afterAll(async () => {

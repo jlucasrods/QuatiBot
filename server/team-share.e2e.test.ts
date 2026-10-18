@@ -34,9 +34,6 @@ it("shares one team whole (minus chat history) and imports it back as new, inert
       name: "research-brief", description: "Write a prospect brief.", source: "fixture",
       text: "---\nname: research-brief\ndescription: Write a prospect brief.\n---\n\n# Brief\n", enabled: true,
     });
-    await ok("POST", "/api/mcp/servers", { name: "crm", type: "http", url: "https://mcp.example.com/crm", headers: { Authorization: "Bearer fixture-secret-value" }, enabled: true });
-    await ok("POST", "/api/mcp/servers", { name: "local-tool", command: "npx", args: ["fixture"], enabled: true });
-    await ok("PATCH", `/api/bots/${lead.id}`, { mcpServers: ["crm", "local-tool"] });
     await ok("PUT", `/api/bots/${lead.id}/memory/file`, { path: "MEMORY.md", text: "- Prefers short summaries.\n" });
     await ok("PUT", `/api/bots/${lead.id}/memory/file`, { path: "memory/pricing.md", text: "List price 49.\n" });
     const room = (await ok("POST", "/api/groups", { name: "Deal desk", memberIds: [lead.id, scout.id, outsider.id], section: "Sales desk" })).group;
@@ -50,12 +47,12 @@ it("shares one team whole (minus chat history) and imports it back as new, inert
     const published = join(fixture.info.dataDir, "published-teams.json");
     const preview = await ok("POST", "/api/teams/export", { ...body, dryRun: true });
     expect(existsSync(published)).toBe(false);
-    expect(preview.summary.counts).toEqual({ bots: 2, skills: 1, presets: 0, rooms: 1, routines: 2, connections: 1, playbooks: 0 });
+    expect(preview.summary.counts).toEqual({ bots: 2, skills: 1, presets: 0, rooms: 1, routines: 2, connections: 0, playbooks: 0 });
     expect(preview.choices.skills).toEqual(["research-brief"]);
     const saved = await ok("POST", "/api/teams/export", body);
     expect(saved.filename).toBe("sales-desk-1.0.0.quati.json");
     expect(saved.redacted).toEqual(["agents[morgan].soul"]);
-    expect(saved.skipped).toEqual([{ part: "connections[local-tool]", reason: "stdio_server" }]);
+    expect(saved.skipped).toEqual([]);
     const text = JSON.stringify(saved.document);
     expect(text).not.toMatch(/SalesDesk-Portal-2026|fixture-secret-value|Elsewhere|modelSelection|threadId/);
     expect(saved.document.package.agents.find((agent: { key: string }) => agent.key === "morgan").seed.memory).toEqual({ "MEMORY.md": "- Prefers short summaries.\n", "memory/pricing.md": "List price 49.\n" });
@@ -69,17 +66,16 @@ it("shares one team whole (minus chat history) and imports it back as new, inert
     expect(again.document.package.agents.map((agent: { key: string }) => agent.key)).toEqual(saved.document.package.agents.map((agent: { key: string }) => agent.key));
     expect(again.document.package.rooms[0].key).toBe(saved.document.package.rooms[0].key);
 
-    const beforeServers = (await ok("GET", "/api/mcp/servers")).servers.map((server: { name: string }) => server.name);
     const imported = await call("POST", "/api/teams/import?trust=org", {
       ...saved.document, trust: "org", org: { installId: "x" },
       package: { ...saved.document.package, publisher: { organization: "acme", name: "Acme" } },
     });
     expect(imported.status).toBe(201);
     expect(imported.body).toMatchObject({ section: "Sales desk", brief: true, notes: 2, offeredSkills: [], skipped: [] });
-    expect(imported.body.connections).toEqual([{ key: "crm", name: "crm-2", label: "crm" }]);
+    expect(imported.body.connections).toEqual([]);
     const copies = imported.body.bots as Array<{ id: string; name: string; installedPackage: Record<string, unknown>; approvalMode?: string; avatarUrl: string | null; mcpServers?: string[]; chiefOfStaff?: boolean }>;
     const copyLead = copies.find((bot) => bot.name === "Morgan 2")!;
-    expect(copyLead).toMatchObject({ chiefOfStaff: true, mcpServers: ["crm-2"], installedPackage: { id: "sales-desk", source: "file", agentKey: "morgan" } });
+    expect(copyLead).toMatchObject({ chiefOfStaff: true, installedPackage: { id: "sales-desk", source: "file", agentKey: "morgan" } });
     expect(copyLead.installedPackage).not.toHaveProperty("publisher");
     expect(copyLead.avatarUrl).toMatch(/^\/api\/attachments\//);
     expect(copies.map((bot) => bot.approvalMode)).toEqual(copies.map(() => "full"));
@@ -89,11 +85,6 @@ it("shares one team whole (minus chat history) and imports it back as new, inert
     }
     expect(imported.body.routines.every((routine: { enabled: boolean }) => !routine.enabled)).toBe(true);
     expect(imported.body.routines.map((routine: { target: string }) => routine.target).sort()).toEqual(["bot", "room-goal"]);
-    const servers = (await ok("GET", "/api/mcp/servers")).servers as Array<{ name: string; enabled: boolean; headerKeys?: string[] }>;
-    expect(servers.map((server) => server.name).sort()).toEqual([...beforeServers, "crm-2"].sort());
-    expect(servers.find((server) => server.name === "crm-2")).toMatchObject({ enabled: false, headerKeys: ["Authorization"] });
-    const config = JSON.parse(readFileSync(join(fixture.info.dataDir, "config.json"), "utf8"));
-    expect(config.mcpServers["crm-2"].headers).toEqual({ Authorization: "" });
     expect((await ok("GET", `/api/section-context?section=${encodeURIComponent("Sales desk")}`)).text).toBe("Quote list prices only.");
     expect((await ok("GET", `/api/bots/${copyLead.id}/memory/file?path=${encodeURIComponent("memory/pricing.md")}`)).text).toBe("List price 49.\n");
     expect(imported.body.groups[0]).toMatchObject({ name: "Deal desk", bulletin: "Cite sources.", defaultResponder: { kind: "member", botId: copyLead.id } });
@@ -110,8 +101,7 @@ it("shares one team whole (minus chat history) and imports it back as new, inert
   }
 }, 120_000);
 
-// Skills that cannot all fit one file (a bot with 31, a name two bots hold with different content) and an address carrying its key.
-it("never leaves Share team stuck on skills, and keeps keys out of connection addresses", async () => {
+it("handles skill limits and conflicting skill contents when sharing a team", async () => {
   const fixture = await launchVerificationServer();
   console.log(JSON.stringify({ fixture: fixture.info }));
   const url = fixture.info.url;
@@ -136,8 +126,6 @@ it("never leaves Share team stuck on skills, and keeps keys out of connection ad
     for (const name of names) await addSkill(lead.id, name);
     await addSkill(lead.id, "pricing", "Lead pricing");
     await addSkill(scout.id, "pricing", "Scout pricing");
-    await ok("POST", "/api/mcp/servers", { name: "zap", type: "http", url: "https://mcp.zapier.com/api/mcp/s/ZTJmNDk1YjMtNjQ0Yi00ZjU2LWI1ZjY/mcp", enabled: true });
-    await ok("PATCH", `/api/bots/${lead.id}`, { mcpServers: ["zap"] });
 
     const body = { format: "package", version: 2, team: "Crowded desk", dryRun: true };
     const all = await ok("POST", "/api/teams/export", body);
@@ -147,9 +135,6 @@ it("never leaves Share team stuck on skills, and keeps keys out of connection ad
       { part: "skills[pricing]", reason: "skill_conflict" },
       { part: "agents[morgan].skills[step-31]", reason: "bot_skill_limit" },
     ]));
-    expect(all.document.package.connections[0].mcp.url).toBe("https://mcp.zapier.com/api/mcp/s/redacted/mcp");
-    expect(all.redacted).toContain("connections[zap].mcp.url");
-    expect(JSON.stringify(all.document)).not.toContain("ZTJmNDk1YjMtNjQ0Yi00ZjU2LWI1ZjY");
 
     const crowded = await call("POST", "/api/teams/export", { ...body, skills: names });
     expect(crowded).toEqual({ status: 400, body: { error: "Morgan has more than 30 skills. Choose fewer skills and try again.", choices: { skills: all.choices.skills } } });

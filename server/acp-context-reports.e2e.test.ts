@@ -1,10 +1,9 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
-import { waitForExit } from "./testing/cleanup.ts";
+import { launchVerificationServer, runControlQuati, type VerificationServer } from "../scripts/control-quati.ts";
+import { removeTempDir } from "./testing/cleanup.ts";
 
 const MODEL = "fixture/context";
 const REPORTED_WINDOW = 200_000;
@@ -50,38 +49,23 @@ async function conversation(name: string, ...used: number[]) {
 }
 
 async function withAcpServer(run: () => Promise<void>): Promise<void> {
-  const fixture = await launchVerificationServer();
-  const { dataDir, logPath } = fixture.info;
-  let server: ChildProcess | undefined;
+  const scratch = mkdtempSync(join(tmpdir(), "quati-acp-context-"));
+  let fixture: VerificationServer | undefined;
   try {
-    url = fixture.info.url;
-    usageFile = join(dataDir, "acp-usage.json");
-    updatesFile = join(dataDir, "acp-updates.json");
+    usageFile = join(scratch, "acp-usage.json");
+    updatesFile = join(scratch, "acp-updates.json");
     reports();
     writeFileSync(updatesFile, "[]");
-    // Never discover the person's own CLI or home.
-    await waitForExit(fixture.child, { signal: "SIGTERM" });
-    const configPath = join(dataDir, "config.json");
-    const config = JSON.parse(readFileSync(configPath, "utf8"));
-    config.instances.opencodeGo = {
-      driver: "opencodeGo", displayName: "Context fixture",
-      config: { cli: fileURLToPath(new URL("./testing/fake-acp-cli.ts", import.meta.url)) },
-      environment: { FAKE_ACP_MODELS: MODEL, FAKE_ACP_USAGE_UPDATES_FILE: usageFile, FAKE_ACP_UPDATES_FILE: updatesFile },
-    };
-    writeFileSync(configPath, JSON.stringify(config));
-    const log = openSync(logPath, "a", 0o600);
-    server = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
-      cwd: fileURLToPath(new URL("..", import.meta.url)),
-      env: verificationServerEnvironment({}, dataDir, Number(new URL(url).port)), stdio: ["ignore", log, log],
+    fixture = await launchVerificationServer({
+      FAKE_ACP_MODELS: MODEL,
+      FAKE_ACP_USAGE_UPDATES_FILE: usageFile,
+      FAKE_ACP_UPDATES_FILE: updatesFile,
     });
-    closeSync(log);
-    await expect.poll(async () => {
-      try { return (await fetch(url + "/api/health", { signal: AbortSignal.timeout(1_000) })).ok; } catch { return false; }
-    }, { timeout: 20_000 }).toBe(true);
+    url = fixture.info.url;
     await run();
   } finally {
-    await waitForExit(server, { signal: "SIGTERM" });
-    await fixture.close();
+    await fixture?.close();
+    await removeTempDir(scratch);
   }
 }
 

@@ -20,19 +20,23 @@ it("dispatches setup and canonical standing instructions through the real isolat
     const turn = async (text: string) => {
       await runControlQuati(["send", "--bot", bot.id, "--text", text], { env });
       await runControlQuati(["wait", "--bot", bot.id, "--timeout", "30"], { env });
-      return JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
+      const prompts = readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8").trim().split("\n").map((line) => {
+        const row = JSON.parse(line);
+        return row.prompt.map((block: { text?: string }) => block.text ?? "").join("\n");
+      });
+      return prompts.findLast((prompt) => prompt.includes(text.replace(/^\/setup /, ""))) ?? "";
     };
     const setup = await turn("/setup Help me track garden watering");
-    expect(setup.systemPrompt).toContain("The user explicitly asked you to set yourself up");
-    expect(setup.systemPrompt).toContain("propose_profile");
-    expect(JSON.stringify(setup.prompt)).toContain("Set yourself up for this job: Help me track garden watering");
+    expect(setup).toContain("The user explicitly asked you to set yourself up");
+    expect(setup).toContain("propose_profile");
+    expect(setup).toContain("Set yourself up for this job: Help me track garden watering");
 
     await api("PATCH", `/api/bots/${bot.id}`, { description: "Garden helper", soul: "Only water the fixture garden after approval." });
     writeFileSync(join(fixture.info.dataDir, "bots", bot.id, "SOUL.md"), "UNAPPROVED MIRROR INSTRUCTIONS");
     const configured = await turn("What is your job?");
-    expect(configured.systemPrompt).toContain("Only water the fixture garden after approval.");
-    expect(configured.systemPrompt).not.toContain("UNAPPROVED MIRROR INSTRUCTIONS");
-    expect(configured.systemPrompt).not.toContain("The user explicitly asked you to set yourself up");
+    expect(configured).toContain("Only water the fixture garden after approval.");
+    expect(configured).not.toContain("UNAPPROVED MIRROR INSTRUCTIONS");
+    expect(configured).not.toContain("The user explicitly asked you to set yourself up");
     const drift = await api("GET", `/api/bots/${bot.id}/soul`);
     expect(drift.drift).toBe(true);
     expect(drift.fileText).toBe("UNAPPROVED MIRROR INSTRUCTIONS");
@@ -40,7 +44,7 @@ it("dispatches setup and canonical standing instructions through the real isolat
       expect.objectContaining({ field: "soul" }),
     ]));
     const messages = await runControlQuati(["messages", "--bot", bot.id, "--limit", "10"], { env });
-    expect(JSON.stringify(messages)).toContain("hello from fake claude");
+    expect(JSON.stringify(messages)).toContain("hello from fake acp");
   } finally {
     await fixture.close();
   }

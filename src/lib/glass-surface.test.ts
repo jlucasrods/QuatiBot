@@ -52,8 +52,8 @@ describe("glass surface", () => {
     }
   });
 
-  it("is what the Settings, Apps and Triggers pop-ups are drawn on", () => {
-    for (const file of ["SettingsModal.tsx", "PluginsPanel.tsx", "TriggersPanel.tsx"]) {
+  it("is what the Settings and Triggers pop-ups are drawn on", () => {
+    for (const file of ["SettingsModal.tsx", "TriggersPanel.tsx"]) {
       const source = readFileSync(join(src, "components", file), "utf8");
       expect(source, file).toContain("glass-surface");
       // The scrim is a sibling: a backdrop-filter on an ancestor would hide the app from the pane's own blur.
@@ -71,21 +71,12 @@ describe("glass surface", () => {
     expect(glassPopupTopInset("mac-inset")).toBe(56);
     expect(glassPopupTopInset("win-caption")).toBe(56);
     expect(glassPopupTopInset("native")).toBe(24);
-    for (const file of ["SettingsModal.tsx", "PluginsPanel.tsx", "TriggersPanel.tsx"]) {
+    for (const file of ["SettingsModal.tsx", "TriggersPanel.tsx"]) {
       const source = readFileSync(join(src, "components", file), "utf8");
       expect(source, file).toContain('className="glass-popup-frame"');
       expect(source, file).toContain("style={glassPopupFrameStyle()}");
       expect(source, file).toMatch(/className="glass-surface glass-popup /);
       expect(source, file).not.toMatch(/100dvh/);
     }
-  });
-
-  it("lets the Apps contents reflow inside the pop-up rather than overflow it", () => {
-    const apps = readFileSync(join(src, "components", "PluginsPanel.tsx"), "utf8");
-    expect(apps).toContain('data-apps-grid className="@container flex flex-col gap-7 pt-1"');
-    expect(apps).toContain("grid grid-cols-1 items-start gap-x-6 gap-y-1 @xl:grid-cols-2");
-    const mcp = readFileSync(join(src, "components", "McpServersPanel.tsx"), "utf8");
-    expect(mcp).toContain('data-mcp-row className="flex flex-wrap items-center gap-3"');
-    expect(mcp).toContain('data-mcp-row-actions className="ml-auto flex flex-wrap items-center justify-end gap-1"');
   });
 });

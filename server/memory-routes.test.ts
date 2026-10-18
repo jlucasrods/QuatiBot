@@ -29,26 +29,27 @@ describe("memory routes through an isolated HTTP fixture", () => {
 
   beforeAll(async () => {
     fixture = await launchVerificationServer();
-    // A CLI stand-in that, on a real turn, drops a topic file into the workspace named by memory-target.txt, as a file tool would.
     const target = join(fixture.info.dataDir, "memory-target.txt");
     const wrapper = join(fixture.info.dataDir, "memory-fixture.mjs");
     writeFileSync(wrapper, [
       "#!/usr/bin/env node",
       'import { mkdirSync, readFileSync, writeFileSync } from "node:fs";',
       'import { dirname } from "node:path";',
-      `if (process.argv.includes("stream-json")) {`,
+      'import { createInterface } from "node:readline";',
+      `createInterface({ input: process.stdin }).on("line", (line) => {`,
       `  try {`,
+      `    if (JSON.parse(line).method !== "session/prompt") return;`,
       `    const target = readFileSync(${JSON.stringify(target)}, "utf8").trim();`,
       `    mkdirSync(dirname(target), { recursive: true });`,
       `    writeFileSync(target, "- the user prefers short replies\\n");`,
       `  } catch {}`,
-      `}`,
-      `await import(${JSON.stringify(pathToFileURL(join(process.cwd(), "server/testing/fake-claude-cli.ts")).href)});`,
+      `});`,
+      `await import(${JSON.stringify(pathToFileURL(join(process.cwd(), "server/testing/fake-acp-cli.ts")).href)});`,
     ].join("\n"), { mode: 0o700 });
-    expect((await api("PATCH", "/api/instances/claude", { cli: wrapper })).status).toBe(200);
-    const catalog = (await api("GET", "/api/instances")).body.instances.find((instance: { instanceId: string }) => instance.instanceId === "claude");
+    expect((await api("PATCH", "/api/instances/opencodeGo", { cli: wrapper })).status).toBe(200);
+    const catalog = (await api("GET", "/api/instances")).body.instances.find((instance: { instanceId: string }) => instance.instanceId === "opencodeGo");
     const model = catalog.models.options[0].id;
-    const created = await api("POST", "/api/bots", { name: "Scout", modelSelection: { instanceId: "claude", model } });
+    const created = await api("POST", "/api/bots", { name: "Scout", modelSelection: { instanceId: "opencodeGo", model } });
     expect(created.status).toBe(201);
     botId = created.body.bot.id;
     threadId = created.body.bot.threadId;
@@ -196,9 +197,13 @@ describe("memory routes through an isolated HTTP fixture", () => {
 
     expect((await api("POST", `/api/bots/${botId}/messages`, { threadId, text: "Memory is off in this fixture." })).status).toBe(202);
     await runControlQuati(["wait", "--bot", botId, "--timeout", "30"], { env: { QUATIBOT_URL: fixture.info.url } });
-    const dump = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")) as { systemPrompt?: string };
-    expect(dump.systemPrompt).not.toContain("Your memory (MEMORY.md)");
-    expect(dump.systemPrompt).not.toContain("Use memory_update");
+    const prompts = readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8").trim().split("\n")
+      .map((line) => JSON.parse(line) as { prompt: Array<{ type: string; text?: string }> })
+      .map((row) => row.prompt.filter((block) => block.type === "text").map((block) => block.text).join("\n"));
+    const prompt = prompts.findLast((text) => text.includes("Memory is off in this fixture."));
+    expect(prompt).toBeDefined();
+    expect(prompt).not.toContain("Your memory (MEMORY.md)");
+    expect(prompt).not.toContain("Use memory_update");
     const after = (await api("GET", `/api/bots/${botId}/memory`)).body;
     expect(logSizes(after)).toEqual(logSizes(before));
     expect(readFileSync(join(workspace(), "MEMORY.md"), "utf8")).toBe("- legacy note\n");

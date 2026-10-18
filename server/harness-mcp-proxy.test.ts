@@ -45,7 +45,7 @@ describe("harness MCP capability proxy", () => {
     await expect(harnessMcpRequest(frame("tools/call", { name: "agent_browser_snapshot" }), connection())).resolves.toMatchObject({ result: { content: [{ type: "image", data: "jpeg" }] } });
   });
 
-  it("sends the cloud computer's calls to its own harness route", async () => {
+  it("sends the isolated computer's calls to its own harness route", async () => {
     status = 200;
     payload = { result: { tools: [{ name: "screenshot" }] } };
     await expect(harnessMcpRequest(frame("initialize"), connection("computer"))).resolves.toMatchObject({ result: { serverInfo: { name: "quatibot-computer" } } });
@@ -56,7 +56,7 @@ describe("harness MCP capability proxy", () => {
     const refused = await harnessMcpRequest(frame("tools/call", { name: "exec", arguments: { command: "true" } }), connection("computer")) as any;
     expect(refused.result.isError).toBe(true);
     expect(refused.result.content[0].text).toContain("expired");
-    expect(refused.result.content[0].text).toContain("cloud computer");
+    expect(refused.result.content[0].text).toContain("isolated computer");
     expect(refused.result.content[0].text).not.toContain("select_computer");
   });
 
@@ -92,7 +92,7 @@ describe("harness MCP capability proxy", () => {
     const resetting = await listening((req) => req.socket.destroy());
     try {
       expect(textOf(await harnessMcpRequest(click, { url: resetting.url, token: "t", kind: "computer" })))
-        .toMatch(/^QuatiBot restarted while this cloud computer call was running, so it may or may not have taken effect\./);
+        .toMatch(/^QuatiBot restarted while this computer call was running, so it may or may not have taken effect\./);
     } finally { await new Promise<void>((resolve) => resetting.peer.close(() => resolve())); }
     vi.stubGlobal("fetch", vi.fn(async () => { throw new DOMException("The operation was aborted due to timeout", "TimeoutError"); }));
     try {

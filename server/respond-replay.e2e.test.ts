@@ -1,19 +1,19 @@
-// The real server runs against the fake ACP CLI in "permission" mode: every turn asks to run `echo hi`.
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 
 import type { DecisionRow } from "./decision-log.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
-const PORT = 28800 + Math.floor(Math.random() * 10_000);
-const BASE = `http://127.0.0.1:${PORT}`;
-const posixOnly = describe.skipIf(process.platform === "win32");
+let port: number;
+let BASE: string;
 const UNDELIVERED = "Couldn't deliver that answer";
 
 let child: ChildProcess;
@@ -33,9 +33,9 @@ async function start() {
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: join(SERVER_DIR, ".."),
     env: {
-      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-      HOME: home, USERPROFILE: home, QUATI_PORT: String(PORT), QUATI_WEBHOOK_PORT: String(PORT + 1),
+      ...verificationServerEnvironment({}, join(home, ".quatibot"), port), HOME: home,
+      FAKE_ACP_MODE: "permission", FAKE_ACP_MODELS: "fixture/test",
+      FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_AGENT_NAME: "OpenCode",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -44,12 +44,17 @@ async function start() {
   const deadline = Date.now() + 20_000;
   for (;;) {
     try {
-      if ((await fetch(`${BASE}/api/health`)).ok) return;
+      if ((await fetch(`${BASE}/api/health`)).ok) break;
     } catch {
     }
     if (Date.now() > deadline) throw new Error(`server never came up:\n${log}`);
     await new Promise((r) => setTimeout(r, 150));
   }
+  const ready = await waitFor(async () => {
+    const snapshot = (await api("GET", "/api/instances")).body.instances.find((instance: { instanceId: string }) => instance.instanceId === "opencodeGo");
+    return snapshot?.models.options.some((model: { id: string }) => model.id === "fixture/test") ? true : null;
+  });
+  expect(ready).toBe(true);
 }
 
 async function waitFor<T>(read: () => Promise<T | null | undefined>, ms = 30_000): Promise<T | null> {
@@ -75,15 +80,19 @@ const userDecisionsFor = async (requestId: string) => {
   );
 };
 
-posixOnly("a replayed respond for a settled card", () => {
+describe("a replayed respond for a settled card", () => {
   beforeAll(async () => {
-    chmodSync(FAKE_CLI, 0o755);
     home = mkdtempSync(join(tmpdir(), "quati-respond-replay-"));
     const data = join(home, ".quatibot");
     mkdirSync(data, { recursive: true });
+    const discovery = join(data, "providers", "opencode", "discovery");
+    mkdirSync(discovery, { recursive: true });
+    writeFileSync(join(discovery, ".quati-project"), "Verification fixture\n");
     writeFileSync(join(data, "config.json"), JSON.stringify({
-      instances: { grok: { driver: "grokAgent", environment: { FAKE_ACP_MODE: "permission" }, config: { cli: FAKE_CLI, fullAuto: false } } },
+      instances: { opencodeGo: { driver: "opencodeGo", config: { cli: FAKE_CLI } } },
     }));
+    port = await freePortBlock([0, 1]);
+    BASE = `http://127.0.0.1:${port}`;
     await start();
   }, 40_000);
 
@@ -96,7 +105,7 @@ posixOnly("a replayed respond for a settled card", () => {
     const created = await api("POST", "/api/bots", { name: "Replayed" });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const bot = created.body.bot as { id: string; threadId: string };
-    const patched = await api("PATCH", `/api/bots/${bot.id}`, { modelSelection: { instanceId: "grok", model: "fake-model" }, approvalMode: "ask" });
+    const patched = await api("PATCH", `/api/bots/${bot.id}`, { modelSelection: { instanceId: "opencodeGo", model: "fixture/test" }, approvalMode: "ask" });
     expect(patched.status).toBe(200);
 
     const sent = await api("POST", `/api/bots/${bot.id}/messages`, { text: "run it", threadId: bot.threadId });

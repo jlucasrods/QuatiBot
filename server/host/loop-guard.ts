@@ -140,7 +140,7 @@ function loopCause(call: string, streak: number): string {
 export function createLoopGuard(deps: LoopGuardDeps): LoopGuard {
   const repeats = new RepeatDetector({ thresholds: NOTICE_AT, maxKeysPerThread: MAX_CALLS_PER_TURN });
   const streaks = new RepeatStreak<CountedCall>({ maxPending: MAX_CALLS_PER_TURN });
-  const acted = new Map<string, { stopped: boolean; steered: Set<string> }>();
+  const acted = new Map<string, { stopped: boolean; stopCause?: string; steered: Set<string> }>();
   const turnOf = new Map<string, string>();
   const log = (what: string, threadId: string, streak: number) =>
     (deps.log ?? console.info)(`[loop-guard] ${what}: thread=${threadId} failures-in-a-row=${streak}`);
@@ -154,6 +154,13 @@ export function createLoopGuard(deps: LoopGuardDeps): LoopGuard {
     repeats.settle(threadId);
     startOver(threadId);
     turnOf.delete(threadId);
+  };
+
+  const flushStop = (threadId: string) => {
+    const turn = acted.get(threadId);
+    if (!turn?.stopCause) return;
+    deps.append(threadId, failedTurnTool(turn.stopCause));
+    delete turn.stopCause;
   };
 
   const steer = (threadId: string, note: string, streak: number) => {
@@ -173,11 +180,10 @@ export function createLoopGuard(deps: LoopGuardDeps): LoopGuard {
     try {
       stopping = Promise.resolve(deps.interrupt(threadId, cause));
     } catch {
+      delete acted.get(threadId)?.stopCause;
       return log("stop not sent", threadId, streak);
     }
     log("stop sent", threadId, streak);
-    // Last row, so Retry belongs to it, and written before the engine answers.
-    deps.append(threadId, failedTurnTool(cause));
     // One stop per turn; an engine that ignores it runs on, as after the person's Stop.
     void stopping.catch(() => log("stop rejected", threadId, streak));
   };
@@ -191,7 +197,8 @@ export function createLoopGuard(deps: LoopGuardDeps): LoopGuard {
     // At or past: a streak that passed the mark while the turn was waiting is acted on after the wait.
     if (stopAt !== undefined && streak >= stopAt) {
       turn.stopped = true;
-      stop(threadId, loopCause(quoted(call), streak), streak);
+      turn.stopCause = loopCause(quoted(call), streak);
+      stop(threadId, turn.stopCause, streak);
       return;
     }
     if (turn.steered.has(call.key) || turn.steered.size >= MAX_CALLS_PER_TURN || !deps.canSteer(threadId)) return;
@@ -201,9 +208,14 @@ export function createLoopGuard(deps: LoopGuardDeps): LoopGuard {
 
   const onEvent = (event: RuntimeEvent) => {
     const { threadId } = event;
-    if (event.type === "turn.completed" || event.type === "session.exited") return settle(threadId);
+    if (event.type === "turn.completed" || event.type === "session.exited") {
+      if (event.turnId && turnOf.has(threadId) && turnOf.get(threadId) !== event.turnId) return;
+      flushStop(threadId);
+      return settle(threadId);
+    }
     // A turn's end does not always reach this fold, so a turn's start is a fence too.
     if (event.type === "turn.started") {
+      flushStop(threadId);
       startOver(threadId);
       if (event.turnId === undefined) turnOf.delete(threadId);
       else turnOf.set(threadId, event.turnId);

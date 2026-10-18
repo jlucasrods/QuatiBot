@@ -133,7 +133,6 @@ it.skipIf(process.platform === "win32")("saves a login from the sign-in card wit
     await expect.poll(() => evidence().length, { timeout: 20_000 }).toBe(2);
     const resumed = evidence()[1];
     expect(JSON.stringify(resumed.prompt)).toContain("the person saved a login for example.com and login.microsoftonline.com. Open its login page in your browser and call fill_login there: it fills the form and submits it.");
-    expect(resumed.system).toContain(`Your saved logins, for fill_login on these sites and their sign-in pages: example.com (${USERNAME}).`);
     const [filled] = answered(1, "fill_login");
     expect(filled.isError).toBeFalsy();
     expect(filled.content[0].text).toBe(`Filled the username and the password for ${USERNAME} on login.microsoftonline.com and submitted it; the page is now https://example.com/invoices (“Invoices”). Check you are signed in.`);
@@ -178,6 +177,8 @@ it.skipIf(process.platform === "win32")("fills a login saved for example.com on 
     };
 
     await turn("Sign in to example.com.", 1);
+    expect(evidence()[0].prompt.message.content).toContain("Your saved logins, for fill_login on these sites and their sign-in pages:");
+    expect(evidence()[0].prompt.message.content).toContain(`example.com (${USERNAME})`);
     expect(answered(0, "fill_login")[0].content[0].text).toBe(`Filled the username and the password for ${USERNAME} on accounts.example.com. Submit the form now (its sign-in button, or Enter). The password is cleared from the page in 60 seconds. You never see the password; do not read it back from the page.`);
     const [evaluated] = answered(0, "agent_browser_eval");
     expect(evaluated).toMatchObject({ isError: true, content: [{ text: expect.stringMatching(/^A saved password was just filled on this page, so agent_browser_eval is refused here/u) }] });

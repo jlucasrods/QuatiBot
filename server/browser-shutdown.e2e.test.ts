@@ -1,4 +1,3 @@
-// Real server, fake Claude CLI, and an agent-browser stub that logs each command it gets and lists the daemons the test marks running.
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,7 +9,7 @@ import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const FAKE_CLI = join(ROOT, "server/testing/fake-claude-cli.ts");
+const FAKE_CLI = join(ROOT, "server/testing/fake-acp-cli.ts");
 
 const homes: string[] = [];
 const children: ChildProcess[] = [];
@@ -40,9 +39,13 @@ function engineHome(config: Record<string, unknown> = {}) {
   ].join("\n"), { mode: 0o755 });
   writeFileSync(join(home, "config.json"), JSON.stringify({
     features: { browser: true },
-    instances: { claude: { driver: "claudeAgent", displayName: "Verification fixture", config: { cli: FAKE_CLI } } },
+    instances: { opencodeGo: { driver: "opencodeGo", displayName: "Verification fixture", config: { cli: FAKE_CLI } } },
+    defaultModelSelection: { instanceId: "opencodeGo", model: "fixture/default" },
     ...config,
   }));
+  const discovery = join(home, "providers", "opencode", "discovery");
+  mkdirSync(discovery, { recursive: true });
+  writeFileSync(join(discovery, ".quati-project"), "");
   // Each start is a new daemon with a pid of its own, which no process has.
   let started = 0;
   const run = (session: string) => {
@@ -58,7 +61,11 @@ async function startServer(home: string, engine: string) {
   const base = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ["--experimental-strip-types", join(ROOT, "server/index.ts")], {
     cwd: ROOT,
-    env: { ...verificationServerEnvironment(process.env, home, port), QUATI_AGENT_BROWSER_PATH: engine },
+    env: {
+      ...verificationServerEnvironment({}, home, port), QUATI_AGENT_BROWSER_PATH: engine,
+      FAKE_ACP_MODE: "happy", FAKE_ACP_MODELS: "fixture/default",
+      FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_AGENT_NAME: "OpenCode",
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   children.push(child);
@@ -76,6 +83,9 @@ async function startServer(home: string, engine: string) {
     });
     return { status: response.status, body: await response.json() as any };
   };
+  await expect.poll(async () => (await api("GET", "/api/instances")).body.instances
+    .find((instance: { instanceId: string }) => instance.instanceId === "opencodeGo")?.models?.options
+    ?.some((model: { id: string }) => model.id === "fixture/default"), { timeout: 15_000 }).toBe(true);
   return { child, api };
 }
 
@@ -101,9 +111,7 @@ async function browserTurnThenQuit(config: Record<string, unknown> = {}, browser
     stillRunning: existsSync(join(fixture.home, "running", session)) };
 }
 
-// The stub is a POSIX shell script; Windows resolves engines through a
-// separate launch contract.
-describe.skipIf(process.platform === "win32")("closing the browsers at shutdown", () => {
+describe.skipIf(process.platform !== "linux")("closing the browsers at shutdown", () => {
   it("closes the browser a bot used when the server stops", async () => {
     const { session, turnCommands, commands, stillRunning } = await browserTurnThenQuit();
     expect(turnCommands.some((line) => line.startsWith(`${session} `))).toBe(true);

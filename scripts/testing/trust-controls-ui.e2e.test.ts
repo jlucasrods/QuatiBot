@@ -10,7 +10,7 @@ import { UI_TOOLS_DIR } from "./control-quati-ui.ts";
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const enabled = process.env.QUATI_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
 interface FixtureInfo { ui: string; url: string; logPath: string }
-interface SavedBot { id: string; name: string; modelSelection: { instanceId: string; model: string }; outbound?: unknown; connectorScopes?: unknown; fallback?: unknown }
+interface SavedBot { id: string; name: string; modelSelection: { instanceId: string; model: string }; fallback?: unknown }
 
 describe("trust controls in the real renderer", () => {
   let child: ChildProcess | undefined;
@@ -19,13 +19,13 @@ describe("trust controls in the real renderer", () => {
     await waitForExit(child, { graceMs: 30_000 });
   });
 
-  (enabled ? it : it.skip)("refreshes receipts, saves intersecting limits and serializes memory edits", async () => {
+  (enabled ? it : it.skip)("refreshes receipts, saves recovery choices and serializes memory edits", async () => {
     let output = "", errors = "";
     let info!: FixtureInfo;
     const launcher = new URL("./control-quati-ui.ts", import.meta.url).href;
     const bootstrap = `import { launchUi } from ${JSON.stringify(launcher)};
       process.on('message', message => { if (message === 'stop') process.emit('SIGINT'); });
-      try { await launchUi(['--tool-calls', '[{"name":"Bash","input":{"command":"echo fixture"},"ok":true}]']); } finally { process.disconnect(); }`;
+      try { await launchUi(['--tool-calls', '[{"name":"Bash","kind":"execute","input":{"command":"echo fixture"},"ok":true}]']); } finally { process.disconnect(); }`;
     child = spawn(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", bootstrap], {
       cwd: ROOT, env: process.env, stdio: ["ignore", "pipe", "pipe", "ipc"],
     });
@@ -73,37 +73,6 @@ describe("trust controls in the real renderer", () => {
       .find(([, entry]) => entry.role === "button" && entry.name === "Open Pepper's profile");
     expect(profile).toBeDefined();
     await ui("click", "--ref", `@${profile![0]}`);
-    await click("Permissions");
-    await click("Allow a daily amount");
-    await type("Daily outbound limit", "7");
-    await ui("press", "--keys", "Tab");
-    await expect.poll(async () => (await saved()).outbound, { timeout: 10_000 }).toEqual({ policy: "allow", dailyCap: 7 });
-    await click("Ask every time");
-    await expect.poll(async () => (await saved()).outbound, { timeout: 10_000 }).toEqual({ policy: "ask", dailyCap: 7 });
-
-    // Only this page's inventory reads are synthetic; policy writes still
-    // pass through the real bot queue and server validation.
-    await evaluate(`(async () => {
-      const original = window.fetch.bind(window);
-      window.fetch = (input, init) => String(input) === '/api/connectors/connected'
-        ? Promise.resolve(new Response(JSON.stringify({ services: { gmail: { connected: true } } }), { headers: {'content-type':'application/json'} }))
-        : String(input) === '/api/connectors/tools'
-          ? Promise.resolve(new Response(JSON.stringify({ configured: true, services: { gmail: [] } }), { headers: {'content-type':'application/json'} }))
-          : original(input, init);
-      await (await import('/src/components/PluginsPanel.tsx')).preloadConnectedApps(true);
-      return true;
-    })()`);
-    await click("Access");
-    await expect.poll(snapshot, { timeout: 10_000 }).toContain("Limit this bot to specific apps");
-    await click("Limit this bot to specific apps");
-    await expect.poll(async () => (await saved()).connectorScopes, { timeout: 10_000 }).toEqual({ apps: {} });
-    await click("Read");
-    await expect.poll(async () => (await saved()).connectorScopes, { timeout: 10_000 }).toEqual({ apps: { gmail: "read" } });
-    expect(await snapshot()).toContain("Per-app tools");
-    await click("Read & write");
-    await expect.poll(async () => (await saved()).connectorScopes, { timeout: 10_000 }).toEqual({ apps: { gmail: "write" } });
-    await click("Limit this bot to specific apps");
-    await expect.poll(async () => (await saved()).connectorScopes, { timeout: 10_000 }).toBeUndefined();
     // Seed a saved chain without any real account/auth or execution. The
     // actual Model control must remove it via the existing bot patch queue.
     const seeded = await fetch(`${info.url}/api/bots/${bot.id}`, {
@@ -121,6 +90,7 @@ describe("trust controls in the real renderer", () => {
     await ui("press", "--keys", "Escape");
 
     await evaluate(`(() => { localStorage.setItem('quati-advanced-mode','1'); window.dispatchEvent(new StorageEvent('storage', {key:'quati-advanced-mode'})); return true; })()`);
+    if (!(await snapshot()).includes('button "Team map"')) await click("Tools");
     await click("Team map");
     const openMemory = async () => {
       await evaluate(`(() => { const menu = document.querySelector('[data-team-key=""] details'); if (!menu) throw new Error('No General team menu'); if (!menu.open) menu.querySelector('summary').click(); return true; })()`);

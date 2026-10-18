@@ -25,7 +25,6 @@ import { setLocale } from "@/lib/i18n";
 import { shouldOpenKeyboardShortcuts } from "@/lib/keyboard-shortcuts";
 import { effectiveLanguage, useLanguageChoice } from "@/lib/language-preference";
 import { botShowsUnread } from "@/lib/bot-unread";
-import { useExternalChatLinks } from "@/hooks/use-external-chat-links";
 import { ChatNotice } from "@/components/ChatErrorBanner";
 function Shell() {
     const { state, dispatch } = useStore();
@@ -34,7 +33,6 @@ function Shell() {
         state.groups.filter((group) => group.unread).length;
     const twoSidePanelsFit = useMediaQuery(TWO_SIDE_PANELS_FIT, true);
     const sidebarAndPanelFit = useMediaQuery(SIDEBAR_AND_PANEL_FIT, true);
-    useExternalChatLinks(state, dispatch);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const language = effectiveLanguage(useLanguageChoice(), state.config?.language);
     const [, setLocaleEpoch] = useState(0);

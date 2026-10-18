@@ -1,6 +1,6 @@
 // Turns are held open by a gated fake CLI so the slot arithmetic is observable rather than raced.
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
 import { freePortBlock } from "./testing/ports.ts";
@@ -15,7 +16,6 @@ import { openSse } from "./testing/sse.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SERVER_DIR, "..");
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
 const FAKE_ACP = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 const TEST_CAPABILITY_KEY = "thread-aware-bots-fixture-capability";
 
@@ -39,25 +39,36 @@ const api = async (
   return { status: response.status, body: response.status === 204 ? null : await response.json() };
 };
 
-/** A gate written before the turn starts lets it finish at once. Depth-1 turns (no thread id in their MCP config) share the "peer" gate. */
 const release = (threadId: string) => writeFileSync(join(gates, `${threadId}.gate`), "finish");
-const dumpOf = (threadId: string): { systemPrompt?: string; mcpConfig?: any } | undefined => {
+interface TurnEvidence {
+  prompt: Array<{ text?: string }>;
+  mcpServers: Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }>;
+}
+const dumpOf = (threadId: string): TurnEvidence | undefined => {
   try {
     return JSON.parse(readFileSync(join(gates, `${threadId}.json`), "utf8"));
   } catch {
     return undefined;
   }
 };
-const promptsOf = (threadId: string): any[] => {
+const promptsOf = (threadId: string): string[] => {
   try {
-    return readFileSync(join(gates, `${threadId}.prompts.jsonl`), "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
+    return readFileSync(join(gates, `${threadId}.prompts.jsonl`), "utf8").trim().split("\n").filter(Boolean).map(line => {
+      const turn: TurnEvidence = JSON.parse(line);
+      return turn.prompt.map((block) => block.text ?? "").join("\n");
+    });
   } catch {
     return [];
   }
 };
+const mountedAgents = (threadId: string) => {
+  const server = dumpOf(threadId)?.mcpServers.find((entry) => entry.name === "agents");
+  if (!server) return undefined;
+  return { ...server, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) };
+};
 const liveToken = async (threadId: string): Promise<Record<string, string>> => {
-  await expect.poll(() => dumpOf(threadId)?.mcpConfig?.mcpServers?.agents?.env?.QUATI_COMMS_TOKEN, { timeout: 15_000 }).toBeTruthy();
-  return { authorization: `Bearer ${dumpOf(threadId)!.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN}` };
+  await expect.poll(() => mountedAgents(threadId)?.env.QUATI_COMMS_TOKEN, { timeout: 15_000 }).toBeTruthy();
+  return { authorization: `Bearer ${mountedAgents(threadId)!.env.QUATI_COMMS_TOKEN}` };
 };
 /** A wake on that thread cannot start while this turn runs, so the token stays valid while the test holds the gate. */
 const heldTurn = async (bot: { id: string; threadId: string }, text: string): Promise<Record<string, string>> => {
@@ -72,8 +83,8 @@ const heldTurn = async (bot: { id: string; threadId: string }, text: string): Pr
 };
 const proxyCall = async (threadId: string, name: string, args: Record<string, unknown>) => {
   await liveToken(threadId);
-  const server = dumpOf(threadId)!.mcpConfig.mcpServers.agents;
-  const proxy = spawn(server.command, server.args, { cwd: ROOT, env: { ...process.env, ...server.env }, stdio: ["pipe", "pipe", "pipe"] });
+  const server = mountedAgents(threadId)!;
+  const proxy = spawn(server.command, server.args, { cwd: ROOT, env: { PATH: process.env.PATH, HOME: home, ...server.env }, stdio: ["pipe", "pipe", "pipe"] });
   const lines = createInterface({ input: proxy.stdout });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -126,7 +137,7 @@ const coordinated = async (headers: Record<string, string>, botId: string, messa
   return handoffs().find(node => node.id === response.body.receipts[0].requestId);
 };
 
-const createBot = async (name: string, instanceId: string, model = "claude-sonnet-5") => {
+const createBot = async (name: string, instanceId: string, model = "fixture/default") => {
   const created = (await api("POST", "/api/bots", {})).body.bot;
   const patched = await api("PATCH", `/api/bots/${created.id}`, { name, notifications: true, modelSelection: { instanceId, model } });
   expect(patched.status).toBe(200);
@@ -139,64 +150,40 @@ const cleanup = async (botIds: string[]) => {
 };
 
 beforeAll(async () => {
-  chmodSync(FAKE_CLAUDE, 0o755);
-  chmodSync(FAKE_ACP, 0o755);
   home = mkdtempSync(join(tmpdir(), "quati-thread-aware-"));
   gates = join(home, "gates");
   const data = join(home, ".quatibot");
   mkdirSync(data, { recursive: true });
   mkdirSync(gates, { recursive: true });
-  // Every turn holds until its gate exists and dumps argv/env/prompt under its key: a [[gate:NAME]] marker, else the agents thread id (depth 0), else "peer".
-  const gated = join(home, "gated-claude.mjs");
+  const gated = join(home, "gated-opencode.mjs");
   writeFileSync(gated, [
     "#!/usr/bin/env node",
-    'import { readFileSync } from "node:fs";',
-    'import { join } from "node:path";',
-    'import { PassThrough } from "node:stream";',
-    'const at = process.argv.indexOf("--mcp-config");',
-    "let thread = null;",
-    "if (at >= 0) {",
-    "  try {",
-    '    const servers = JSON.parse(readFileSync(process.argv[at + 1], "utf8")).mcpServers ?? {};',
-    "    for (const server of Object.values(servers)) thread ??= server?.env?.QUATI_THREAD_ID ?? null;",
-    "  } catch {}",
-    "}",
-    "const relay = new PassThrough();",
-    "const real = process.stdin;",
-    'Object.defineProperty(process, "stdin", { value: relay, configurable: true });',
-    "let decided = false;",
-    'let held = "";',
-    'real.on("data", (chunk) => {',
-    "  if (decided) { relay.write(chunk); return; }",
-    "  held += chunk;",
-    '  const nl = held.indexOf("\\n");',
-    "  if (nl === -1) return;",
-    "  const marker = /\\[\\[gate:([\\w-]+)\\]\\]/.exec(held.slice(0, nl));",
-    '  const key = marker?.[1] ?? thread ?? "peer";',
-    `  process.env.FAKE_CLAUDE_SLOW_FINISH_GATE = join(${JSON.stringify(gates)}, key + ".gate");`,
-    `  process.env.FAKE_CLAUDE_DUMP = join(${JSON.stringify(gates)}, key + ".json");`,
-    `  process.env.FAKE_CLAUDE_PROMPTS = join(${JSON.stringify(gates)}, key + ".prompts.jsonl");`,
-    "  decided = true;",
-    "  relay.write(held);",
-    '  held = "";',
-    "});",
-    'real.on("end", () => relay.end());',
-    'process.env.FAKE_CLAUDE_MODE = "slow";',
-    `await import(${JSON.stringify(pathToFileURL(FAKE_CLAUDE).href)});`,
+    'process.env.FAKE_ACP_MODE = "controlled";',
+    'process.env.FAKE_ACP_CONTROL_KEY = "thread";',
+    'process.env.FAKE_ACP_CONTROL_MARKERS = "1";',
+    `process.env.FAKE_ACP_CONTROL_DIR = ${JSON.stringify(gates)};`,
+    `await import(${JSON.stringify(pathToFileURL(FAKE_ACP).href)});`,
   ].join("\n"), { mode: 0o700 });
+  const curious = join(home, "curious-opencode.mjs");
+  writeFileSync(curious, [
+    "#!/usr/bin/env node",
+    'process.env.FAKE_ACP_MODE = "question";',
+    `await import(${JSON.stringify(pathToFileURL(FAKE_ACP).href)});`,
+  ].join("\n"), { mode: 0o700 });
+  mkdirSync(join(data, "providers", "opencode", "discovery"), { recursive: true });
+  writeFileSync(join(data, "providers", "opencode", "discovery", ".quati-project"), "fixture");
   writeFileSync(join(data, "config.json"), JSON.stringify({
     threads: { maxConcurrentPerBot: 2 },
     instances: {
       gated: {
-        driver: "claudeAgent",
+        driver: "opencodeGo",
         displayName: "Gated fixture",
         config: { cli: gated },
       },
       curious: {
-        driver: "grokAgent",
+        driver: "opencodeGo",
         displayName: "Curious fixture",
-        environment: { FAKE_ACP_MODE: "question" },
-        config: { cli: FAKE_ACP, fullAuto: true },
+        config: { cli: curious },
       },
     },
   }));
@@ -205,12 +192,12 @@ beforeAll(async () => {
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: ROOT,
     env: {
-      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+      ...verificationServerEnvironment({}, data, port),
       HOME: home,
-      USERPROFILE: home,
-      QUATI_PORT: String(port),
-      QUATI_WEBHOOK_PORT: String(port + 1),
+      FAKE_ACP_VERSION: "2.0.31",
+      FAKE_ACP_AGENT_VERSION: "2.0.31",
+      FAKE_ACP_AGENT_NAME: "OpenCode",
+      FAKE_ACP_MODELS: "fixture/default,fixture/alternate",
       QUATI_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -226,6 +213,13 @@ beforeAll(async () => {
     }
     if (Date.now() >= deadline) throw new Error(`server never became healthy: ${stderr}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const modelDeadline = Date.now() + 15_000;
+  for (;;) {
+    const instances = (await api("GET", "/api/instances")).body.instances;
+    if (["gated", "curious"].every((id) => instances.find((instance: { instanceId: string }) => instance.instanceId === id)?.models.options.some((option: { id: string }) => option.id === "fixture/default"))) break;
+    if (Date.now() >= modelDeadline) throw new Error("OpenCode fixture models were not discovered");
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
 }, 45_000);
 
@@ -266,7 +260,7 @@ describe("start_thread on yourself", () => {
       expect(opening.text).toContain("[Thread you opened yourself from #Plan the QA round.");
       expect(opening.text).toContain("Review the login fix.");
       await liveToken(first.body.threadId);
-      const self = dumpOf(first.body.threadId)!.mcpConfig.mcpServers.agents;
+      const self = mountedAgents(first.body.threadId)!;
       expect(self.env.QUATI_THREAD_ID).toBe(first.body.threadId);
 
       release(first.body.threadId);
@@ -277,7 +271,7 @@ describe("start_thread on yourself", () => {
       release(third.body.threadId);
       release(pm.threadId);
       await expect.poll(async () => (await botState(pm.id))?.busy, { timeout: 15_000 }).toBe(false);
-      expect((await messages(third.body.threadId)).some((message) => message.role === "bot" && message.text?.includes("reply to:"))).toBe(true);
+      expect((await messages(third.body.threadId)).some((message) => message.role === "bot" && message.text?.includes("echo:"))).toBe(true);
       await heldTurn({ id: pm.id, threadId: first.body.threadId }, "Please start a separate follow-up job.");
       const followUp = await proxyCall(first.body.threadId, "start_thread", { title: "User follow-up", message: "A separately requested check." });
       expect(followUp.isError).not.toBe(true);
@@ -321,16 +315,16 @@ describe("start_thread on yourself", () => {
   it("starts on the model of the thread it was opened from, never on a teammate's", async () => {
     const pm = await createBot("Pam", "gated");
     const qa = await createBot("Quinn", "gated");
-    const sonnet = { instanceId: "gated", model: "claude-sonnet-5" };
-    const opus = { instanceId: "gated", model: "claude-opus-5" };
+    const sonnet = { instanceId: "gated", model: "fixture/default" };
+    const opus = { instanceId: "gated", model: "fixture/alternate" };
     try {
-      expect((await api("PATCH", `/api/bots/${pm.id}`, { approvalMode: "edits" })).status).toBe(200);
+      expect((await api("PATCH", `/api/bots/${pm.id}`, { approvalMode: "auto" })).status).toBe(200);
       expect((await api("PATCH", `/api/bots/${pm.id}/tasks/${pm.threadId}`, { modelSelection: opus })).status).toBe(200);
       const token = await heldTurn(pm, "Split this into separate jobs.");
       const opened = await api("POST", "/api/internal/threads", { title: "Same model", message: "go" }, token);
       expect(opened.status).toBe(201);
       release(opened.body.threadId);
-      expect(await taskOf(pm.id, opened.body.threadId)).toMatchObject({ modelSelection: opus, approvalMode: "edits" });
+      expect(await taskOf(pm.id, opened.body.threadId)).toMatchObject({ modelSelection: opus, approvalMode: "auto" });
       expect((await botState(pm.id)).modelSelection).toMatchObject(sonnet);
       const handed = await coordinated(token, qa.id, "Check it.");
       release(handed.threadId);
@@ -339,17 +333,17 @@ describe("start_thread on yourself", () => {
       await expect.poll(async () => (await botState(pm.id))?.busy, { timeout: 15_000 }).toBe(false);
 
       const fresh = await api("POST", `/api/bots/${pm.id}/tasks`, { title: "From scratch" });
-      expect(fresh.body.task).toMatchObject({ modelSelection: sonnet, approvalMode: "edits" });
+      expect(fresh.body.task).toMatchObject({ modelSelection: sonnet, approvalMode: "auto" });
       const retired = { instanceId: "retired", model: "old-model" };
       expect((await api("PATCH", `/api/bots/${pm.id}/tasks/${fresh.body.task.threadId}`,
         { modelSelection: retired, resetApprovalToAsk: true })).status).toBe(200);
       const elsewhere = await api("POST", "/api/internal/threads", { title: "Retired engine", message: "go" },
         await mintedToken(pm.id, fresh.body.task.threadId));
       expect(elsewhere.status).toBe(201);
-      expect(await taskOf(pm.id, elsewhere.body.threadId)).toMatchObject({ modelSelection: sonnet, followsBotModel: true, approvalMode: "ask", alwaysAllow: [] });
+      expect(await taskOf(pm.id, elsewhere.body.threadId)).toMatchObject({ modelSelection: sonnet, followsBotModel: true, approvalMode: "auto", alwaysAllow: [] });
       expect((await messages(elsewhere.body.threadId)).filter((message) => message.tool?.name?.startsWith("notice: This thread's model (old-model)")))
         .toHaveLength(1);
-      expect(await botState(pm.id)).toMatchObject({ modelSelection: sonnet, approvalMode: "edits" });
+      expect(await botState(pm.id)).toMatchObject({ modelSelection: sonnet, approvalMode: "auto" });
     } finally {
       await cleanup([pm.id, qa.id]);
     }
@@ -392,7 +386,7 @@ describe("coordinate_bots on a teammate", () => {
         const request = (await messages(thread)).find((message) => message.roomRequest?.id === node.id && message.roomRequest.phase === "request");
         expect(request).toMatchObject({ from: { botId: pm.id } });
         expect(request.text).toContain(`Test pull request ${index + 1}.`);
-        expect(dumpOf(gate(index + 1))?.systemPrompt).toContain("coordinate_bots");
+        expect(dumpOf(gate(index + 1))?.prompt.map((block) => block.text ?? "").join("\n")).toContain("coordinate_bots");
         expect((await api("GET", "/api/internal/assignment-status", undefined, live)).status).toBe(200);
         release(gate(index + 1));
         await expect.poll(() => handoffs().find(n => n.id === node.id)?.status, { timeout: 15_000 }).toBe("completed");
@@ -405,7 +399,7 @@ describe("coordinate_bots on a teammate", () => {
         return state?.busy === false && state.waitingForTeammates !== true;
       }, { timeout: 15_000 }).toBe(true);
       // The review turn quotes the requests, gate markers included, so the engine files its prompt under the first request's gate.
-      expect(promptsOf(gate(1)).at(-1)?.message.content).toContain("Your downstream room requests have settled");
+      expect(promptsOf(gate(1)).at(-1)).toContain("Your downstream room requests have settled");
       expect(stream.frames.filter((frame) => frame.kind === "notify" && frame.notification?.botId === qa.id)).toEqual([]);
       expect((await botState(qa.id)).tasks.filter((task: any) => task.unread)).toEqual([]);
       expect((await botState(qa.id)).threadId).toBe(qa.threadId);

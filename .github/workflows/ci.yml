@@ -1,27 +1,20 @@
 name: CI
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [main]
   pull_request:
-  merge_group:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event_name == 'merge_group' && github.event.merge_group.head_ref || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   static:
     name: typecheck + lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: read
-      actions: read
     outputs:
       runtime: ${{ steps.scope.outputs.runtime }}
       vitest_os: ${{ steps.scope.outputs.vitest_os }}
@@ -37,15 +30,13 @@ jobs:
           cache: pnpm
       - name: Select checks for this change
         id: scope
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: node scripts/ci-scope.mjs
       - run: pnpm install --frozen-lockfile
       - name: Verify CI selection and documentation references
         run: pnpm exec vitest run scripts/ci-scope.test.ts scripts/ci-workflow.test.ts scripts/testing/verification-docs.test.ts
       - name: Validate locale catalogs
         run: pnpm i18n:check
-      - run: pnpm typecheck
+      - run: pnpm exec tsc -b --force && pnpm exec tsc -p tsconfig.server.json
       - run: pnpm lint
       - name: production UI build
         run: pnpm exec vite build
@@ -70,14 +61,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Run tests
-        env:
-          QUATI_VITEST_RETRY_LOG: ${{ runner.temp }}/vitest-retries.jsonl
         run: pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=github-actions
-      - name: Report flaky tests that needed a retry
-        if: ${{ !cancelled() }}
-        env:
-          QUATI_VITEST_RETRY_LOG: ${{ runner.temp }}/vitest-retries.jsonl
-        run: node scripts/testing/ci-retry-summary.mjs
 
   behavior-evals:
     needs: static
@@ -161,9 +145,9 @@ jobs:
   ui-smoke:
     needs: static
     if: needs.static.outputs.runtime == 'true'
-    name: renderer smoke (control-quati ui, Ubuntu 24.04)
+    name: renderer qualification (Ubuntu 24.04)
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -176,11 +160,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Let Chrome build its sandbox on this runner
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: pnpm exec vite build
       - name: Drive the real renderer through control-quati ui
         env:
           QUATI_UI_E2E: "1"
           QUATI_UI_EVIDENCE_DIR: .quati-scratch/verify-evidence
-        run: pnpm exec vitest run scripts/testing/control-quati-ui.e2e.test.ts scripts/testing/bot-tools-ui.e2e.test.ts scripts/testing/thinking-timer-ui.e2e.test.ts scripts/testing/team-share-ui.e2e.test.ts scripts/testing/presets-ui.e2e.test.ts scripts/testing/browser-evidence.e2e.test.ts
+        run: pnpm exec vitest run scripts/testing/*ui.e2e.test.ts scripts/testing/browser-evidence.e2e.test.ts scripts/testing/vm-preview.e2e.test.ts
       - name: Upload renderer evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()

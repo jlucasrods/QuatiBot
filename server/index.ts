@@ -229,7 +229,7 @@ import { recordLiveCall, spokenLineFields, titleLiveCall } from "./live-call-rec
 import { narrateTool, toUtterances } from "./tts/speech-text.ts";
 import { turnStartLogLine } from "./turn-log.ts";
 import { TurnStops, outwardActions, stoppedTurnOutcome, turnEvidence } from "./turn-outcome.ts";
-import { buildRecoveryText, buildTurnContext, engineIsFresh, replaysNatively } from "./turn-context.ts";
+import { buildRecoveryText, buildTurnContext, engineIsFresh } from "./turn-context.ts";
 import { Handoffs, handedStateUsable, isContextMessage, recordHanded, renderUnseen, sessionStart, unseenMessages, withUnseenMessages, type ContextMessage } from "./delta-context.ts";
 import { extractReplayImages, extractTurnImages } from "./turn-images.ts";
 import { callTitleExcerpt, threadTitlePrompt, type ThreadTitleSource } from "./thread-title.ts";
@@ -908,11 +908,11 @@ function adminActorFor(auth: RequestAuth, req: IncomingMessage): AdminActor {
 }
 
 const adminActorScope = new AsyncLocalStorage<{ actor: AdminActor; sharedAtStart: boolean } | null>();
-onConfigSaved((before, after) => {
+onConfigSaved((before, after, changedSecrets) => {
   const scope = adminActorScope.getStore();
   if (!scope || DESKTOP_MANAGED) return;
   if (!scope.sharedAtStart && !adminActivityRecording() && !sharedSignIn(signInListsOf(before)) && !sharedSignIn(signInListsOf(after))) return;
-  for (const row of configChangeRows(before, after)) appendAdminAction(DATA_DIR, { ...row, actor: scope.actor });
+  for (const row of configChangeRows(before, after, changedSecrets)) appendAdminAction(DATA_DIR, { ...row, actor: scope.actor });
 });
 
 interface AuditPlan {
@@ -1124,7 +1124,8 @@ const browserCleanup: BrowserCleanupCoordinator = new BrowserCleanupCoordinator(
   },
 });
 
-const bus = new EventBus();
+const turnStops = new TurnStops();
+const bus = new EventBus(undefined, (event) => turnStops.normalize(event));
 bus.attach(registry.instances());
 onKeyRejectionChange(() => broadcast({ kind: "config", ...configStatus() }));
 
@@ -1362,7 +1363,7 @@ function agentsIntegration(
   return {
     command: process.execPath, args: [SPAWNED_PROXIES.agents],
     env: {
-       QUATI_AGENTS_TOOL_BRIDGE: "0",
+      QUATI_AGENTS_TOOL_BRIDGE: cfg.features?.agentsToolBridge === true && toolScopeForTurn(botId) === undefined ? "1" : "0",
       QUATI_HARNESS_URL: `http://127.0.0.1:${PORT}`,
       QUATI_BOT_ID: botId,
       QUATI_THREAD_ID: threadId,
@@ -2495,7 +2496,7 @@ function previewSystemPrompt(bot: BotRecord) {
     teamAvailabilityPart(agentsMounted && coordination ? peers : []),
     { id: "memory", label: "Memory", text: memorySystemPrompt(bot.id, { managedWrites: agentsMounted, fileTools: Boolean(privateWorkspace), enabled: bot.memoryEnabled !== false }) },
     { id: "skills", label: "Skills index", text: privateWorkspace ? skillsSystemPrompt(bot.id, skillsLibraryEnabled(cfg) ? bot.assignedSkills : undefined) : "" },
-  ], agentsMounted ? { env: { QUATI_AGENTS_TOOL_BRIDGE: "0" } } : undefined, { replyStyle: bot.replyStyle });
+  ], agentsMounted ? { env: { QUATI_AGENTS_TOOL_BRIDGE: cfg.features?.agentsToolBridge === true && toolScopeForTurn(bot.id) === undefined ? "1" : "0" } } : undefined, { replyStyle: bot.replyStyle });
   const totalBytes = built.sections.reduce((n, s) => n + s.bytes, 0);
   return {
     sections: built.sections,
@@ -4254,12 +4255,11 @@ const GROUP_GOAL_WAIT_MAX_MS = Math.max(1_000, Number(process.env.QUATI_GOAL_WAI
 const COMPUTER_WAIT_MAX_MS = Math.max(1_000, Number(process.env.QUATI_COMPUTER_WAIT_MAX_MS) || 30 * 60_000);
 const GROUP_GOAL_MAX_WAIT_EXHAUSTIONS = 3;
 const roomStallCompletions = new RoomTurnStallRegistry();
-const turnStops = new TurnStops();
 function stoppedTurnText(threadId: string, turnId: string | undefined, cause?: string, stopReason?: string | null): string {
   const stop = turnStops.read(threadId, turnId);
   const reason = cause ?? stop?.cause ?? stop?.error ?? `The turn did not complete (${stopReason?.trim() || "no reason given"})`;
-  const said = turnId ? store.messagesFor(threadId).findLast(message =>
-    message.role === "bot" && message.kind === "text" && message.turnId === turnId)?.text : undefined;
+  const said = stop?.partialText ?? (turnId ? store.messagesFor(threadId).findLast(message =>
+    message.role === "bot" && message.kind === "text" && message.turnId === turnId)?.text : undefined);
   return stoppedTurnOutcome({
     reason, activities: store.activePath(threadId), turnId,
     ...(said && said.trim() !== reason.trim() ? { said } : {}),
@@ -5237,7 +5237,6 @@ bus.subscribe((event: RuntimeEvent) => {
           });
           toolMessageByItem.delete(itemKey);
         }
-        // Only computer tools change the screen, and each capture competes with the agent for the Boat's command endpoint.
         if (bot) {
           const touches = screenTouchingTool(toolName);
           const surface = screenSurfaceForTool(toolName);
@@ -5468,6 +5467,7 @@ bus.subscribe((event: RuntimeEvent) => {
       }
       break;
     case "turn.completed": {
+      if (bot && !event.ok) markTaskContextExternallyUpdated(bot, event.threadId);
       settleWaitingOnPersonChips(event.threadId);
       const internal = isInternalTurn(event.threadId);
       clearInternalTurn(event.threadId);
@@ -5475,13 +5475,12 @@ bus.subscribe((event: RuntimeEvent) => {
       const generatedKey = turnAttachmentKey(event.threadId, event.turnId);
       const generated = turnAttachmentsByTurn.get(generatedKey) ?? [];
       turnAttachmentsByTurn.delete(generatedKey);
+      const audioCompleted = event.ok && event.stopReason !== "cancelled";
       for (const attachment of generated) {
-        if (event.ok || attachment.kind !== "audio") continue;
+        if (audioCompleted || attachment.kind !== "audio") continue;
         deleteAttachment(attachment.path);
       }
-      const settled = event.ok || !generated.length
-        ? generated
-        : generated.filter((attachment) => attachment.kind !== "audio");
+      const settled = generated.filter((attachment) => audioCompleted || attachment.kind !== "audio");
       if (settled.length) {
         const response = [...store.messagesFor(event.threadId)].reverse().find(
           (message) =>
@@ -6440,11 +6439,6 @@ function threadTitleGate(bot: Pick<BotRecord, "modelSelection">): { ok: true; in
   if (!llmThreadTitlesEnabled(cfg)) return { ok: false, refusal: "generated thread titles are turned off on this server" };
   const instance = registry.get(bot.modelSelection.instanceId);
   if (!instance?.generateText) return { ok: false, refusal: "this bot's model can't generate a title — rename the thread instead" };
-  try {
-
-  } catch (error) {
-    return { ok: false, refusal: error instanceof Error ? error.message : String(error) };
-  }
   return { ok: true, instance };
 }
 
@@ -6767,14 +6761,13 @@ async function startTurn(
           rewound,
           fresh: fresh || contextReset,
           externallyUpdated: Boolean(externalContextMarker) || handedStale,
-          replaysNatively: replaysNatively(instance.driverKind),
         });
         // Snapshot the cursor now: an external result can clear it during async setup.
         const resumeCursor = resume ? task.resumeCursors[instanceId] : undefined;
         // The driver may fall back to one fresh session when the provider no longer honours the cursor; this is what it sends there.
         const recoveryIsReplay = resumeCursor !== undefined && externalUpdate && transcript.length > 0;
         const recoveryText = resumeCursor === undefined ? undefined : recoveryIsReplay
-          ? buildTurnContext({ text: userTurnText, transcript: selection.inline, rewound: false, fresh: false, externallyUpdated: true, replaysNatively: false }).turnText
+          ? buildTurnContext({ text: userTurnText, transcript: selection.inline, rewound: false, fresh: false, externallyUpdated: true }).turnText
           : buildRecoveryText({ text: userTurnText, transcript: selection.inline });
         const carried = [...skipTranscript];
         const windowIds = selection.representedIds;
@@ -10349,10 +10342,6 @@ function connectorCards(threadId: string, resumeKey: string) {
   );
 }
 
-function credentialDesktopHandoff(label: string): string {
-  return `Securely provide the ${label} from the QuatiBot desktop app. It is never added to chat.`;
-}
-
 function secretMessage(botId: string, threadId: string, messageId: string): Message | null {
   const owner = connectorThread(botId, threadId);
   if (!owner) return null;
@@ -10990,10 +10979,7 @@ ROUTES.push(createBotPatchRoutes({
   checkedModelSelection, engineSwitchNeedsAsk, currentBrowserSession, interruptAllDirectThreads, cancelGroupTurnOperations,
   revokeInternalCapabilitiesForThread, runningTurnInstance, closeOpenApprovals, forgetTemporaryBrowser,
 }));
-ROUTES.push(createBotLifecycleRoutes({
-  store, routines: () => routines, interruptAllDirectThreads, cancelDirectTurnDispatch, revokeInternalCapabilitiesForThread,
-  activeGroupTurnForBot, cancelGroupTurnOperations, runningTurnInstance, closeOpenApprovals, deleteBotWithLifecycle,
-}));
+ROUTES.push(createBotLifecycleRoutes({ deleteBotWithLifecycle }));
 ROUTES.push(createBotSkillsRoutes({ store, cfg, listBotSkills, readBotSkillFile, stagedSkillListing }));
 ROUTES.push(createSkillShareRoutes({ enabled: () => skillsHost.mode() !== "off", botExists: (id) => Boolean(store.bot(id)),
   cardRefusal: (auth, threadId, requestId) => cardAnswerRefusal(auth, threadId, requestId, "allow"), shareFromReceipt: skillsHost.shareFromReceipt, shareFromBot: skillsHost.shareFromBot }));
@@ -13024,7 +13010,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
         const message = store.appendMessage(fromThreadId, {
           role: "bot",
           kind: "secret",
-          text: credentialDesktopHandoff(target.label),
+          text: `Securely provide the ${target.label} from QuatiBot on your phone or computer. It is never added to chat.`,
           ...(owner.group ? { from: { botId: from.id, name: from.name, color: from.color } } : {}),
           secret: {
             target: credentialId,

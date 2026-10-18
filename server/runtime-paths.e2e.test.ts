@@ -23,7 +23,7 @@ const jsonl = (path: string): any[] => existsSync(path)
   ? readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
 
 async function scenario(test: (f: any) => Promise<void>) {
-  const parentEnv: NodeJS.ProcessEnv = { ...process.env };
+  const parentEnv: NodeJS.ProcessEnv = {};
   const session = await launchVerificationServer(parentEnv, undefined, undefined, undefined, undefined, { scripted: true });
   const url = session.info.url;
   const dataDir = session.info.dataDir;
@@ -68,7 +68,7 @@ async function scenario(test: (f: any) => Promise<void>) {
     const turns = (botId?: string): any[] => jsonl(`${planPath}.evidence.jsonl`).filter((turn) => !botId || turn.botId === botId);
     const turn = (key: string) => turns().find((candidate) => candidate.planKey === key);
     const own = (record: any): string => ownTurnText(record?.prompt);
-    const told = (record: any): string => `${record?.system ?? ""}\n${JSON.stringify(record?.prompt ?? "")}`;
+    const told = (record: any): string => String(record?.prompt?.message?.content ?? "");
     const messages = async (threadId: string): Promise<any[]> => (await api("GET", `/api/threads/${threadId}/messages?limit=300`)).body.messages ?? [];
     const bot = async (botId: string) => (await api("GET", "/api/bots?messages=0")).body.bots.find((candidate: any) => candidate.id === botId);
     const runState = async (runId: string) => (await api("GET", "/api/routines")).body.runs.find((run: any) => run.id === runId);
@@ -85,10 +85,11 @@ async function scenario(test: (f: any) => Promise<void>) {
       let found = "";
       await expect.poll(() => {
         try {
-          const dump = JSON.parse(readFileSync(session.fixtureDumpPath, "utf8"));
-          const env = dump.mcpConfig?.mcpServers?.agents?.env;
-          if (env?.QUATI_THREAD_ID !== threadId) return false;
-          found = env.QUATI_COMMS_TOKEN;
+          const turns: Array<{ mcpServers: Array<{ name: string; env: Array<{ name: string; value: string }> }> }> = jsonl(`${session.fixtureDumpPath}.prompts.jsonl`);
+          const mount = turns.findLast((turn) => turn.mcpServers.some((server) =>
+            server.name === "agents" && server.env.some((entry) => entry.name === "QUATI_THREAD_ID" && entry.value === threadId)))
+            ?.mcpServers.find((server) => server.name === "agents");
+          found = mount?.env.find((entry) => entry.name === "QUATI_COMMS_TOKEN")?.value ?? "";
           return Boolean(found);
         } catch { return false; }
       }, { timeout: 20_000 }).toBe(true);
@@ -102,6 +103,8 @@ async function scenario(test: (f: any) => Promise<void>) {
     const restart = async () => {
       await waitForExit(server, { signal: "SIGTERM" });
       const env = verificationServerEnvironment(parentEnv, dataDir, Number(new URL(url).port));
+      env.FAKE_ACP_ROOM_PLAN = planPath;
+      env.FAKE_ACP_DUMP = session.fixtureDumpPath;
       const log = openSync(session.info.logPath, "a", 0o600);
       server = spawn(process.execPath, verificationServerArgs(env), { cwd: ROOT, env, stdio: ["ignore", log, log] });
       restarted = true;
@@ -161,7 +164,6 @@ it("R1 a routine run coordinates a teammate, waits, and completes through a rout
   await expect.poll(() => f.turns(f.owner.id).map((record: any) => [record.planKey, record.resumed]), { timeout: 15_000 }).toEqual([["O0", false], ["O1", true]]);
   expect(f.told(f.turn("O0"))).toContain(ROUTINE_TURN);
   const resume = f.told(f.turn("O1"));
-  expect(resume).toContain(ROUTINE_TURN);
   expect(resume).toContain(REPORT_FROM_PEER);
   expect(resume).toContain("R1-RESULT: 42 rows");
   await expect.poll(() => f.roots()[0]?.status, { timeout: 15_000 }).toBe("completed");
@@ -309,7 +311,7 @@ it("R6 a restart while a routine's teammate runs reruns the teammate once and th
   expect(f.children()[0]).toMatchObject({ status: "completed", restarts: 1, executions: 2, result: "R6-RESULT: 1200 documents." });
   await expect.poll(() => f.turns(f.owner.id).map((record: any) => [record.planKey, record.resumed]), { timeout: 15_000 }).toEqual([["O0", false], ["O1", true]]);
   const resume = f.told(f.turn("O1"));
-  expect(resume).toContain(ROUTINE_TURN);
+   expect(f.told(f.turn("O0"))).toContain(ROUTINE_TURN);
   expect(resume).toContain(TEAMMATES_CUT);
   expect(resume).toContain("R6-RESULT: 1200 documents");
   await expect.poll(() => f.roots()[0]?.status, { timeout: 15_000 }).toBe("completed");

@@ -1,5 +1,4 @@
-// The fixture's engine resumes its session (a CLI new enough for strictResume), so the press turn also shows what a resumed session is handed.
-import { mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -11,7 +10,7 @@ import { removeTempDir } from "./testing/cleanup.ts";
 it("shows, replaces and answers a widget on a bot's own conversation, once per press", async () => {
   const gates = mkdtempSync(join(tmpdir(), "quati-chat-widgets-"));
   const gate = join(gates, "finish");
-  const fixture = await launchVerificationServer({ FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: gate, FAKE_CLAUDE_VERSION: "2.1.270" });
+  const fixture = await launchVerificationServer({ FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: gate });
   const evidence: unknown[] = [];
   const api = async (method: string, path: string, body?: unknown, expected = 200, token?: string) => {
     const response = await fetch(fixture.info.url + path, {
@@ -29,10 +28,19 @@ it("shows, replaces and answers a widget on a bot's own conversation, once per p
     evidence.push({ command: args, result });
     return result;
   };
-  const dump = () => JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
+  const dump = () => {
+    const file = `${fixture.fixtureDumpPath}.prompts.jsonl`;
+    if (!existsSync(file)) return undefined;
+    const rows: Array<{ prompt: Array<{ text?: string }>; mcpServers: Array<{ name: string; env: Array<{ name: string; value: string }> }> }> =
+      readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
+    return rows.findLast(row => row.mcpServers.some(server => server.name === "agents"));
+  };
+  const nativeToken = () => {
+    const agents = dump()?.mcpServers.find(server => server.name === "agents");
+    return agents?.env.find(entry => entry.name === "QUATI_COMMS_TOKEN")?.value ?? "";
+  };
   const turnPrompt = (): string => {
-    const content = dump().prompt?.message?.content;
-    return Array.isArray(content) ? content.map((block: { text?: string }) => block.text ?? "").join("\n") : String(content ?? "");
+    return dump()?.prompt.map(block => block.text ?? "").join("\n") ?? "";
   };
   try {
     const bot = (await api("POST", "/api/bots", { name: "Scout" }, 201)).bot;
@@ -44,7 +52,7 @@ it("shows, replaces and answers a widget on a bot's own conversation, once per p
     await control("send", "--bot", bot.id, "--task", bot.threadId, "--text", "What is open?");
     let token = "";
     await expect.poll(() => {
-      try { token = dump().mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN; }
+      try { token = nativeToken(); }
       catch { return false; }
       return Boolean(token);
     }, { timeout: 15_000 }).toBe(true);
@@ -123,7 +131,7 @@ it("shows, replaces and answers a widget on a bot's own conversation, once per p
       expect(await api("POST", `/api/bots/${bot.id}/messages`, { threadId: bot.threadId, sendId: "widget-press-another-01", widgetAction }, 409))
         .toEqual({ error: "This was already answered." });
     }
-    token = dump().mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+    token = nativeToken();
     expect(await card({ tool: "update_widget", widget_id: draft.messageId, widget: WIDGET_SAMPLES.buildStatus }, 409, token))
       .toEqual({ error: "The person already answered that widget. Show a new one." });
     const next = await card({ tool: "show_widget", widget: WIDGET_SAMPLES.buildStatus, fallback_text: "  Build 25 is uploading.  " }, 201, token);

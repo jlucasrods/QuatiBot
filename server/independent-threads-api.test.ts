@@ -1,8 +1,6 @@
 // Gates are per model, so two tasks on one bot stay in flight until the test completes or stops each.
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { connect, type Socket } from "node:net";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -14,7 +12,6 @@ import { memoryDate } from "./workspace.ts";
 describe("independent bot tasks through the isolated control surface", () => {
   let session: VerificationServer;
   let models: string[];
-  const sockets: Socket[] = [];
   let evidence: Array<Record<string, unknown>>;
 
   const api = async (method: string, path: string, body?: unknown, fromApp = false) => {
@@ -51,46 +48,49 @@ describe("independent bot tasks through the isolated control surface", () => {
     await expect.poll(() => existsSync(modelFile(model, "json")), { timeout: 15_000 }).toBe(true);
     return JSON.parse(readFileSync(modelFile(model, "json"), "utf8"));
   };
+  const mcpEnvironment = (launched: { mcpServers: Array<{ name: string; env: Array<{ name: string; value: string }> }> }, name: string) => {
+    const server = launched.mcpServers.find((entry) => entry.name === name);
+    expect(server).toBeDefined();
+    return Object.fromEntries(server!.env.map(({ name, value }) => [name, value]));
+  };
   const permission = async (model: string, id: string, input: Record<string, unknown> = { command: "ls -la ./dist" }) => {
     const launched = await dump(model);
-    const socketPath = launched.mcpConfig.mcpServers.quati.args.at(-1);
-    const socket = connect(socketPath);
-    sockets.push(socket);
-    await new Promise<void>((resolve, reject) => {
-      socket.once("connect", resolve);
-      socket.once("error", reject);
-    });
-    const answers: any[] = [];
-    createInterface({ input: socket }).on("line", (line) => answers.push(JSON.parse(line)));
-    socket.write(`${JSON.stringify({ t: "ask", id, kind: "permission", tool: "Bash", input })}\n`);
-    return answers;
+    const threadId = mcpEnvironment(launched, "agents").QUATI_THREAD_ID;
+    writeFileSync(modelFile(model, "permission.json"), JSON.stringify({ key: id, input }));
+    const answer = () => {
+      const file = join(session.info.dataDir, `${id}.answer`);
+      return existsSync(file) ? readFileSync(file, "utf8") : undefined;
+    };
+    let requestId: string | undefined;
+    await expect.poll(async () => {
+      const messages = (await api("GET", `/api/threads/${threadId}/messages`)).body.messages;
+      const card = messages.find((message: any) => message.card?.requestId && !message.card.answered)?.card;
+      requestId = card?.requestId;
+      return requestId !== undefined || answer() !== undefined;
+    }, { timeout: 15_000 }).toBe(true);
+    return { requestId, answer };
   };
 
   beforeEach(async () => {
     // The approval deadline fires only on a marker file.
-    session = await launchVerificationServer({ ...process.env, QUATI_TEST_APPROVAL_CLOCK: "1" });
+    session = await launchVerificationServer({ QUATI_TEST_APPROVAL_CLOCK: "1" });
     evidence = [{ fixture: session.info }];
-    const wrapper = join(session.info.dataDir, "gated-claude.mjs");
-    const fake = pathToFileURL(join(process.cwd(), "server/testing/fake-claude-cli.ts")).href;
+    const wrapper = join(session.info.dataDir, "controlled-opencode.mjs");
+    const fake = pathToFileURL(join(process.cwd(), "server/testing/fake-acp-cli.ts")).href;
     writeFileSync(wrapper, [
       "#!/usr/bin/env node",
-      'import { join } from "node:path";',
-      'const at = process.argv.indexOf("--model");',
-      'const model = (at < 0 ? "probe" : process.argv[at + 1]).replace(/[^\\w-]/g, "_");',
-      'process.env.FAKE_CLAUDE_MODE = "slow";',
-      'process.env.QUATI_FIXTURE_CWD = process.cwd();',
-      `process.env.FAKE_CLAUDE_SLOW_FINISH_GATE = join(${JSON.stringify(session.info.dataDir)}, model + ".gate");`,
-      `process.env.FAKE_CLAUDE_DUMP = join(${JSON.stringify(session.info.dataDir)}, model + ".json");`,
+      'process.env.FAKE_ACP_MODE = "controlled";',
+      'process.env.FAKE_ACP_MODELS = "fixture/first,fixture/second,fixture/third";',
+      `process.env.FAKE_ACP_CONTROL_DIR = ${JSON.stringify(session.info.dataDir)};`,
       `await import(${JSON.stringify(fake)});`,
     ].join("\n"), { mode: 0o700 });
-    expect((await api("PATCH", "/api/instances/claude", { cli: wrapper })).status).toBe(200);
+    expect((await api("PATCH", "/api/instances/opencodeGo", { cli: wrapper })).status).toBe(200);
     const catalog = await tool("list_available_models", {});
-    models = catalog.instances.find((instance: any) => instance.instanceId === "claude").models.options.map((model: any) => model.id);
+    models = catalog.instances.find((instance: any) => instance.instanceId === "opencodeGo").models.options.map((model: any) => model.id);
     expect(models.length).toBeGreaterThanOrEqual(2);
   }, 30_000);
 
   afterEach(async () => {
-    for (const socket of sockets.splice(0)) socket.destroy();
     if (!session) return;
     const evidencePath = `${session.info.logPath}.json`;
     writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
@@ -99,8 +99,8 @@ describe("independent bot tasks through the isolated control surface", () => {
   });
 
   it("holds coordinated work behind a peer's approval only while that card holds its last slot, says so, and delivers it once", async () => {
-    const chief = (await tool("create_bot", { name: "Mailbox Chief", instance_id: "claude", model: models[0] })).bot;
-    const peer = (await tool("create_bot", { name: "Mailbox Peer", instance_id: "claude", model: models[1] })).bot;
+    const chief = (await tool("create_bot", { name: "Mailbox Chief", instance_id: "opencodeGo", model: models[0] })).bot;
+    const peer = (await tool("create_bot", { name: "Mailbox Peer", instance_id: "opencodeGo", model: models[1] })).bot;
     await api("PATCH", `/api/bots/${peer.id}/tasks/${peer.activeTaskId}`, { approvalMode: "ask" });
     await control(["send", "--bot", peer.id, "--text", "Hold this review until I approve the check."]);
     const answers = await permission(models[1], "mailbox-approval");
@@ -108,7 +108,7 @@ describe("independent bot tasks through the isolated control surface", () => {
     // One thread per bot: the card's thread holds the peer's only slot.
     expect((await api("PATCH", "/api/config", { threads: { maxConcurrentPerBot: 1 } })).status).toBe(200);
     await control(["send", "--bot", chief.id, "--text", "Ask the reviewer to check the release notes, then return the result here."]);
-    const token = (await dump(models[0])).mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+    const token = mcpEnvironment(await dump(models[0]), "agents").QUATI_COMMS_TOKEN;
     const roster = await internal(token, "GET", "/api/internal/agents");
     expect(roster.status).toBe(200);
     expect(roster.body.bots.find((bot: any) => bot.id === peer.id)).toMatchObject({
@@ -153,11 +153,11 @@ describe("independent bot tasks through the isolated control surface", () => {
     await expect.poll(() => handoff()?.status, { timeout: 10_000 }).toBe("running");
     const peerNow = (await api("GET", "/api/bots")).body.bots.find((bot: any) => bot.id === peer.id);
     expect(peerNow.tasks.find((task: any) => task.threadId === peer.activeTaskId)?.activity).toBe("waiting-on-you");
-    expect(answers).toEqual([]);
+    expect(answers.answer()).toBeUndefined();
     await control(["messages", "--bot", chief.id, "--limit", "10"]);
-    const allowed = await api("POST", `/api/threads/${peer.activeTaskId}/respond`, { requestId: "mailbox-approval", behavior: "allow" });
+    const allowed = await api("POST", `/api/threads/${peer.activeTaskId}/respond`, { requestId: answers.requestId, behavior: "allow" });
     expect(allowed.body.outcome).toBe("allowed-once");
-    await expect.poll(() => answers.some((answer) => answer.id === "mailbox-approval")).toBe(true);
+    await expect.poll(answers.answer).toBe("allow-once");
     writeFileSync(modelFile(models[1], "gate"), "finish");
     await expect.poll(async () => {
       const bots = (await api("GET", "/api/bots")).body.bots;
@@ -180,11 +180,11 @@ describe("independent bot tasks through the isolated control surface", () => {
   }, 60_000);
 
   it("tells the Chief what became of each teammate approval, and that an unanswered one did not run", async () => {
-    const chief = (await tool("create_bot", { name: "Release Chief", instance_id: "claude", model: models[0] })).bot;
-    const peer = (await tool("create_bot", { name: "Release Peer", instance_id: "claude", model: models[1] })).bot;
+    const chief = (await tool("create_bot", { name: "Release Chief", instance_id: "opencodeGo", model: models[0] })).bot;
+    const peer = (await tool("create_bot", { name: "Release Peer", instance_id: "opencodeGo", model: models[1] })).bot;
     expect((await api("PATCH", `/api/bots/${peer.id}`, { approvalMode: "ask" })).status).toBe(200);
     await control(["send", "--bot", chief.id, "--text", "Ask the reviewer to run the release checks, then report back."]);
-    const token = (await dump(models[0])).mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+    const token = mcpEnvironment(await dump(models[0]), "agents").QUATI_COMMS_TOKEN;
     const sent = await internal(token, "POST", "/api/internal/coordinate-bots", {
       botIds: [peer.id], message: "RELEASE_CHECKS: run the release checks.",
     });
@@ -201,33 +201,33 @@ describe("independent bot tasks through the isolated control surface", () => {
 
     const deniedAnswers = await permission(models[1], "denied-approval", { command: "git push --force" });
     await expect.poll(async () => (await chiefChips()).map((chip) => chip.tool.name)).toEqual(["Waiting on your approval in @Release Peer"]);
-    expect((await api("POST", `/api/threads/${workThread}/respond`, { requestId: "denied-approval", behavior: "deny" })).status).toBeLessThan(300);
-    await expect.poll(() => deniedAnswers.some((answer) => answer.id === "denied-approval" && answer.behavior === "deny")).toBe(true);
+    expect((await api("POST", `/api/threads/${workThread}/respond`, { requestId: deniedAnswers.requestId, behavior: "deny" })).status).toBeLessThan(300);
+    await expect.poll(deniedAnswers.answer).toBe("reject");
     await expect.poll(async () => (await chiefChips()).map((chip) => [chip.tool.name, chip.tool.ok]))
       .toEqual([["@Release Peer's request was denied", false]]);
 
     const unanswered = await permission(models[1], "unanswered-approval", { command: "npm run release-check" });
-    await expect.poll(async () => Boolean(await card("unanswered-approval"))).toBe(true);
+    await expect.poll(async () => Boolean(await card(unanswered.requestId!))).toBe(true);
     expect((await chiefChips()).at(-1).tool.name).toBe("Waiting on your approval in @Release Peer");
     const expiry = join(session.info.dataDir, "expire-approvals");
     writeFileSync(expiry, "expire");
-    await expect.poll(() => unanswered.find((answer) => answer.id === "unanswered-approval")).toMatchObject({ behavior: "deny", source: "timeout" });
+    await expect.poll(unanswered.answer).toBe("reject");
     rmSync(expiry, { force: true });
     await expect.poll(async () => (await chiefChips()).map((chip) => [chip.tool.name, chip.tool.ok])).toEqual([
       ["@Release Peer's request was denied", false],
       ["Nobody answered @Release Peer's approval in time — that step did not run", false],
     ]);
-    expect((await card("unanswered-approval")).card).toMatchObject({ answered: "deny", dismissed: true });
+    expect((await card(unanswered.requestId!)).card).toMatchObject({ answered: "deny", dismissed: true });
 
     const lint = await permission(models[1], "lint-approval", { command: "npm run lint" });
-    await expect.poll(async () => Boolean(await card("lint-approval"))).toBe(true);
+    await expect.poll(async () => Boolean(await card(lint.requestId!))).toBe(true);
     writeFileSync(expiry, "expire");
-    await expect.poll(() => lint.find((answer) => answer.id === "lint-approval")).toMatchObject({ behavior: "deny", source: "timeout" });
+    await expect.poll(lint.answer).toBe("reject");
     rmSync(expiry, { force: true });
     const retried = await permission(models[1], "lint-retry", { command: "npm run lint" });
-    await expect.poll(async () => Boolean(await card("lint-retry"))).toBe(true);
-    expect((await api("POST", `/api/threads/${workThread}/respond`, { requestId: "lint-retry", behavior: "allow" })).status).toBeLessThan(300);
-    await expect.poll(() => retried.find((answer) => answer.id === "lint-retry")).toMatchObject({ behavior: "allow" });
+    await expect.poll(async () => Boolean(await card(retried.requestId!))).toBe(true);
+    expect((await api("POST", `/api/threads/${workThread}/respond`, { requestId: retried.requestId, behavior: "allow" })).status).toBeLessThan(300);
+    await expect.poll(retried.answer).toBe("allow-once");
     await expect.poll(async () => (await chiefChips()).map((chip) => [chip.tool.name, chip.tool.ok])).toEqual([
       ["@Release Peer's request was denied", false],
       ["Nobody answered @Release Peer's approval in time — that step did not run", false],
@@ -238,19 +238,19 @@ describe("independent bot tasks through the isolated control surface", () => {
     writeFileSync(modelFile(models[1], "gate"), "finish");
     await expect.poll(() => handoff()?.status, { timeout: 20_000 }).toBe("completed");
     const result: string = handoff()!.result;
-    expect(result.startsWith("[QuatiBot: nobody answered the approval for “Bash: npm run release-check” in time, so it did not run. Do not report it as done;")).toBe(true);
-    expect(result).toContain("reply to:");
+    expect(result.startsWith("[QuatiBot: nobody answered the approval for “shell: npm run release-check” in time, so it did not run. Do not report it as done;")).toBe(true);
+    expect(result).toContain("echo:");
     expect(result).not.toContain("git push");
     expect(result).not.toContain("npm run lint");
     await expect.poll(async () => (await api("GET", `/api/threads/${chief.activeTaskId}/messages?limit=100`)).body.messages
       .find((message: any) => message.roomRequest?.id === requestId && message.roomRequest.phase === "result")?.tool?.output ?? "")
-      .toContain("nobody answered the approval for “Bash: npm run release-check”");
+      .toContain("nobody answered the approval for “shell: npm run release-check”");
     evidence.push({ requestId, result: result.slice(0, 400) });
   }, 60_000);
 
   it.each(["finish", "fail"] as const)("tells a delegating bot that its teammate's approval went unanswered, so the step did not run (turn ends: %s)", async (ending) => {
-    const chief = (await tool("create_bot", { name: "Delegating Chief", instance_id: "claude", model: models[0] })).bot;
-    const peer = (await tool("create_bot", { name: "Delegated Peer", instance_id: "claude", model: models[1] })).bot;
+    const chief = (await tool("create_bot", { name: "Delegating Chief", instance_id: "opencodeGo", model: models[0] })).bot;
+    const peer = (await tool("create_bot", { name: "Delegated Peer", instance_id: "opencodeGo", model: models[1] })).bot;
     expect((await api("PATCH", `/api/bots/${peer.id}`, { approvalMode: "ask" })).status).toBe(200);
     const routine = await api("POST", "/api/routines", {
       name: "Release checks", prompt: "Delegate the release checks to the reviewer.", botId: chief.id, enabled: false,
@@ -260,7 +260,7 @@ describe("independent bot tasks through the isolated control surface", () => {
     const run = (await api("POST", `/api/routines/${routine.body.routine.id}/run`)).body.run;
     const runThread = async () => (await api("GET", "/api/routines")).body.runs.find((candidate: any) => candidate.id === run.id)?.threadId as string | undefined;
     await expect.poll(runThread).toBeTruthy();
-    const token = (await dump(models[0])).mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+    const token = mcpEnvironment(await dump(models[0]), "agents").QUATI_COMMS_TOKEN;
     const delegated = await internal(token, "POST", "/api/internal/coordinate-bots", { botIds: [peer.id], message: "RELEASE_CHECKS: run the release checks." });
     expect(delegated.status).toBe(200);
     expect(delegated.body.receipts).toEqual([expect.objectContaining({ botId: peer.id, outcome: "queued", requestId: expect.any(String) })]);
@@ -272,7 +272,7 @@ describe("independent bot tasks through the isolated control surface", () => {
     const peerCard = async () => {
       for (const task of (await api("GET", "/api/bots")).body.bots.find((bot: any) => bot.id === peer.id).tasks as any[]) {
         const found = (await api("GET", `/api/threads/${task.threadId}/messages?limit=100`)).body.messages
-          .find((message: any) => message.card?.requestId === "unanswered-delegated");
+          .find((message: any) => message.card?.requestId === unanswered.requestId);
         if (found) return found;
       }
       return undefined;
@@ -280,12 +280,12 @@ describe("independent bot tasks through the isolated control surface", () => {
     await expect.poll(async () => Boolean(await peerCard()), { timeout: 15_000 }).toBe(true);
     const expiry = join(session.info.dataDir, "expire-approvals");
     writeFileSync(expiry, "expire");
-    await expect.poll(() => unanswered.find((answer) => answer.id === "unanswered-delegated")).toMatchObject({ behavior: "deny", source: "timeout" });
+    await expect.poll(unanswered.answer).toBe("reject");
     rmSync(expiry, { force: true });
     // whole, so the engine never reads the gate half-written
     writeFileSync(`${modelFile(models[1], "gate")}.tmp`, ending);
     renameSync(`${modelFile(models[1], "gate")}.tmp`, modelFile(models[1], "gate"));
-    const note = "[QuatiBot: nobody answered the approval for “Bash: npm run release-check” in time, so it did not run.";
+    const note = "[QuatiBot: nobody answered the approval for “shell: npm run release-check” in time, so it did not run.";
     const runMessages = async () => (await api("GET", `/api/threads/${await runThread()}/messages?limit=100`)).body.messages as any[];
     const reported = async () => (await runMessages()).find((message: any) => message.roomRequest?.id === requestId && message.roomRequest.phase === "result")?.tool;
     if (ending === "finish") {
@@ -297,17 +297,18 @@ describe("independent bot tasks through the isolated control surface", () => {
     } else {
       await expect.poll(reported, { timeout: 20_000 }).toBeTruthy();
       expect(await reported()).toMatchObject({ ok: false });
-      expect((await reported())!.name).toBe("Delegated Peer — failed: Fixture turn failed. Before it stopped it made 1 tool call: Bash ×1.");
+      expect((await reported())!.name).toContain("Delegated Peer — failed: Fixture turn failed.");
+      expect((await reported())!.name).not.toContain("made 1 tool call");
       await expect.poll(() => handoff()?.status, { timeout: 20_000 }).toBe("failed");
     }
     const woken = async () => JSON.stringify((await dump(models[0])).prompt);
     await expect.poll(woken, { timeout: 20_000 }).toContain("[QuatiBot report from @Delegated Peer on assignment");
-    expect(await woken()).toContain("nobody answered the approval for “Bash: npm run release-check” in time, so it did not run. Do not report it as done; it needs the person's approval.");
+    expect(await woken()).toContain("nobody answered the approval for “shell: npm run release-check” in time, so it did not run. Do not report it as done; it needs the person's approval.");
   }, 60_000);
 
   it("tells a room's coordinator that a member's approval went unanswered, so the step did not run", async () => {
-    const chief = (await tool("create_bot", { name: "Room Chief", instance_id: "claude", model: models[0] })).bot;
-    const peer = (await tool("create_bot", { name: "Room Peer", instance_id: "claude", model: models[1] })).bot;
+    const chief = (await tool("create_bot", { name: "Room Chief", instance_id: "opencodeGo", model: models[0] })).bot;
+    const peer = (await tool("create_bot", { name: "Room Peer", instance_id: "opencodeGo", model: models[1] })).bot;
     expect((await api("PATCH", `/api/bots/${peer.id}`, { approvalMode: "ask" })).status).toBe(200);
     const created = await api("POST", "/api/groups", {
       name: "Release room", memberIds: [chief.id, peer.id],
@@ -316,7 +317,7 @@ describe("independent bot tasks through the isolated control surface", () => {
     expect(created.status).toBe(201);
     const room = created.body.group;
     expect((await api("POST", `/api/groups/${room.id}/messages`, { threadId: room.threadId, text: "Have the reviewer run the release checks." })).status).toBe(202);
-    const token = (await dump(models[0])).mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+    const token = mcpEnvironment(await dump(models[0]), "agents").QUATI_COMMS_TOKEN;
     const sent = await internal(token, "POST", "/api/internal/coordinate-bots", { botIds: [peer.id], message: "RELEASE_CHECKS: run the release checks." });
     expect(sent.status).toBe(200);
     const requestId = sent.body.receipts[0].requestId;
@@ -325,19 +326,19 @@ describe("independent bot tasks through the isolated control surface", () => {
     writeFileSync(modelFile(models[0], "gate"), "finish");
     const unanswered = await permission(models[1], "unanswered-room", { command: "npm run release-check" });
     await expect.poll(async () => (await api("GET", `/api/threads/${room.threadId}/messages?limit=100`)).body.messages
-      .some((message: any) => message.card?.requestId === "unanswered-room"), { timeout: 15_000 }).toBe(true);
+      .some((message: any) => message.card?.requestId === unanswered.requestId), { timeout: 15_000 }).toBe(true);
     const expiry = join(session.info.dataDir, "expire-approvals");
     writeFileSync(expiry, "expire");
-    await expect.poll(() => unanswered.find((answer) => answer.id === "unanswered-room")).toMatchObject({ behavior: "deny", source: "timeout" });
+    await expect.poll(unanswered.answer).toBe("reject");
     rmSync(expiry, { force: true });
     writeFileSync(modelFile(models[1], "gate"), "finish");
     await expect.poll(() => handoff()?.status, { timeout: 20_000 }).toBe("completed");
-    expect(handoff()!.result.startsWith("[QuatiBot: nobody answered the approval for “Bash: npm run release-check” in time, so it did not run.")).toBe(true);
+    expect(handoff()!.result.startsWith("[QuatiBot: nobody answered the approval for “shell: npm run release-check” in time, so it did not run.")).toBe(true);
   }, 60_000);
 
   it("ends a one-way notice whose recipient thread was deleted before it started, without restarting the sender", async () => {
-    const sender = (await tool("create_bot", { name: "Independent sender", instance_id: "claude", model: models[0] })).bot;
-    const recipient = (await tool("create_bot", { name: "Independent recipient", instance_id: "claude", model: models[1] })).bot;
+    const sender = (await tool("create_bot", { name: "Independent sender", instance_id: "opencodeGo", model: models[0] })).bot;
+    const recipient = (await tool("create_bot", { name: "Independent recipient", instance_id: "opencodeGo", model: models[1] })).bot;
     // One slot, held by the recipient's own turn, so the notice queues.
     const capacity = (await api("GET", "/api/config")).body.threads?.maxConcurrentPerBot ?? 2;
     expect((await api("PATCH", "/api/config", { threads: { maxConcurrentPerBot: 1 } })).status).toBe(200);
@@ -346,7 +347,7 @@ describe("independent bot tasks through the isolated control surface", () => {
       await expect.poll(async () => (await botState(recipient.id)).busy, { timeout: 15_000 }).toBe(true);
       await control(["send", "--bot", sender.id, "--text", "Prepare independent work."]);
       const launched = await dump(models[0]);
-      const token = launched.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+      const token = mcpEnvironment(launched, "agents").QUATI_COMMS_TOKEN;
       const sent = await internal(token, "POST", "/api/internal/coordinate-bots", {
         botIds: [recipient.id], message: "Own this work.", thread: "new", reply: "none",
       });
@@ -376,7 +377,7 @@ describe("independent bot tasks through the isolated control surface", () => {
   }, 45_000);
 
   it("replaces the final worked thread with blank context but refuses to delete it while running", async () => {
-    const created = await tool("create_bot", { name: "Last thread fixture", instance_id: "claude", model: models[0] });
+    const created = await tool("create_bot", { name: "Last thread fixture", instance_id: "opencodeGo", model: models[0] });
     const botId = created.bot.id;
     const threadId = created.bot.activeTaskId;
     await control(["send", "--bot", botId, "--task", threadId, "--text", "LAST_THREAD_WORK"]);
@@ -412,7 +413,7 @@ describe("independent bot tasks through the isolated control surface", () => {
   }, 30_000);
 
   it("rejects blank memory replacements, caps new titles, and retains project files after deletion", async () => {
-    const created = await tool("create_bot", { name: "Release review fixture", instance_id: "claude", model: models[0] });
+    const created = await tool("create_bot", { name: "Release review fixture", instance_id: "opencodeGo", model: models[0] });
     const botId = created.bot.id;
     const task = await api("POST", `/api/bots/${botId}/tasks`, { title: `  ${"t".repeat(120)}  ` });
     expect(task.status).toBe(201);
@@ -420,7 +421,7 @@ describe("independent bot tasks through the isolated control surface", () => {
     const threadId = task.body.task.threadId;
     await control(["send", "--bot", botId, "--task", threadId, "--text", "REVIEW_MEMORY_OWNER"]);
     const launched = await dump(models[0]);
-    const token = launched.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+    const token = mcpEnvironment(launched, "agents").QUATI_COMMS_TOKEN;
     expect((await internal(token, "POST", "/api/internal/memory", { action: "append", text: "A unique saved fact." })).status).toBe(200);
     for (const text of ["", " \n\t "]) {
       expect((await internal(token, "POST", "/api/internal/memory", { action: "replace", oldText: "unique saved fact", text })).status).toBe(400);
@@ -437,7 +438,7 @@ describe("independent bot tasks through the isolated control surface", () => {
   }, 30_000);
 
   it("exposes background waiting threads and pins paired approval answers to the displayed request", async () => {
-    const created = await tool("create_bot", { name: "Phone approval fixture", instance_id: "claude", model: models[0] });
+    const created = await tool("create_bot", { name: "Phone approval fixture", instance_id: "opencodeGo", model: models[0] });
     const botId = created.bot.id;
     const threadA = created.bot.activeTaskId;
     await api("PATCH", `/api/bots/${botId}/tasks/${threadA}`, { approvalMode: "ask" });
@@ -446,7 +447,7 @@ describe("independent bot tasks through the isolated control surface", () => {
 
     const second = await tool("create_task", { target_type: "bot", target_id: botId, title: "Phone background B" });
     const threadB = second.task.taskId;
-    await control(["set-model", "--bot", botId, "--task", threadB, "--instance", "claude", "--model", models[1]]);
+    await control(["set-model", "--bot", botId, "--task", threadB, "--instance", "opencodeGo", "--model", models[1]]);
     await api("PATCH", `/api/bots/${botId}/tasks/${threadB}`, { approvalMode: "ask" });
     await control(["send", "--bot", botId, "--task", threadB, "--text", "Hold thread B for approval"]);
     const answersB = await permission(models[1], "phone-approval-b");
@@ -468,19 +469,19 @@ describe("independent bot tasks through the isolated control surface", () => {
     const bot = fleet.body.bots.find((candidate: any) => candidate.id === botId);
     expect(bot.threadId).toBe(threadA);
     expect(bot.tasks.find((task: any) => task.threadId === threadB)?.activity).toBe("waiting-on-you");
-    expect(bot.messages.some((message: any) => message.card?.requestId === "phone-approval-b")).toBe(false);
+    expect(bot.messages.some((message: any) => message.card?.requestId === answersB.requestId)).toBe(false);
     const background = await paired("GET", `/api/threads/${threadB}/messages?limit=50`);
-    expect(background.body.messages.some((message: any) => message.card?.requestId === "phone-approval-b" && !message.card.answered)).toBe(true);
+    expect(background.body.messages.some((message: any) => message.card?.requestId === answersB.requestId && !message.card.answered)).toBe(true);
 
-    const stale = await paired("POST", `/api/threads/${threadA}/respond`, { requestId: "phone-approval-b", behavior: "allow" });
+    const stale = await paired("POST", `/api/threads/${threadA}/respond`, { requestId: answersB.requestId, behavior: "allow" });
     expect(stale.body.outcome).toBe("unavailable");
-    expect(answersA).toEqual([]);
-    expect(answersB).toEqual([]);
-    const answered = await paired("POST", `/api/threads/${threadB}/respond`, { requestId: "phone-approval-b", behavior: "allow" });
+    expect(answersA.answer()).toBeUndefined();
+    expect(answersB.answer()).toBeUndefined();
+    const answered = await paired("POST", `/api/threads/${threadB}/respond`, { requestId: answersB.requestId, behavior: "allow" });
     expect(answered.status).toBe(200);
     expect(answered.body.outcome).toBe("allowed-once");
-    await expect.poll(() => answersB.some((answer) => answer.id === "phone-approval-b")).toBe(true);
-    expect(answersA).toEqual([]);
+    await expect.poll(answersB.answer).toBe("allow-once");
+    expect(answersA.answer()).toBeUndefined();
     expect((await botState(botId)).tasks.find((task: any) => task.taskId === threadA)?.activity).toBe("waiting-on-you");
     evidence.push({ phoneApproval: { botId, threadA, threadB, backgroundActivity: "waiting-on-you", staleOutcome: stale.body.outcome, displayedOutcome: answered.body.outcome } });
     await control(["interrupt", "--bot", botId, "--task", threadA]);
@@ -488,7 +489,7 @@ describe("independent bot tasks through the isolated control surface", () => {
   }, 45_000);
 
   it("keeps A and B independent across selection, models, approvals, and stopping A", async () => {
-    const created = await tool("create_bot", { name: "Independent fixture", instance_id: "claude", model: models[0] });
+    const created = await tool("create_bot", { name: "Independent fixture", instance_id: "opencodeGo", model: models[0] });
     const botId = created.bot.id;
     const taskA = created.bot.activeTaskId;
     expect((await api("PATCH", `/api/bots/${botId}/tasks/${taskA}`, { approvalMode: "ask" })).status).toBe(200);
@@ -497,23 +498,23 @@ describe("independent bot tasks through the isolated control surface", () => {
 
     const second = await tool("create_task", { target_type: "bot", target_id: botId, title: "Independent B" });
     const taskB = second.task.taskId;
-    await control(["set-model", "--bot", botId, "--task", taskB, "--instance", "claude", "--model", models[1]]);
+    await control(["set-model", "--bot", botId, "--task", taskB, "--instance", "opencodeGo", "--model", models[1]]);
     // This settings action models the trusted app's same-origin request.
     expect((await api("PATCH", `/api/bots/${botId}/tasks/${taskB}`, { approvalMode: "auto" })).status).toBe(409);
     expect((await api("PATCH", `/api/bots/${botId}/tasks/${taskB}`, { approvalMode: "auto" }, true)).status).toBe(200);
     await control(["send", "--bot", botId, "--task", taskB, "--text", "ONLY_B"]);
     const launchedB = await dump(models[1]);
     expect(launchedA.pid).not.toBe(launchedB.pid);
-    expect(launchedA.argv[launchedA.argv.indexOf("--model") + 1]).toBe(models[0]);
-    expect(launchedB.argv[launchedB.argv.indexOf("--model") + 1]).toBe(models[1]);
-    expect(launchedA.argv[launchedA.argv.indexOf("--permission-mode") + 1]).toBe("default");
-    expect(launchedB.argv[launchedB.argv.indexOf("--permission-mode") + 1]).toBe("auto");
+    expect(launchedA.model).toBe(models[0]);
+    expect(launchedB.model).toBe(models[1]);
+    expect(launchedA.nativePermissions ?? []).not.toContainEqual({ action: "*", resource: "*", effect: "allow" });
+    expect(launchedB.nativePermissions ?? []).not.toContainEqual({ action: "*", resource: "*", effect: "allow" });
     evidence.push({ providerSelections: [models[0], models[1]], distinctProcesses: true });
-    expect(launchedA.env.QUATI_FIXTURE_CWD).toBe(realpathSync(join(session.info.dataDir, "task-workspaces", botId, taskA)));
-    expect(launchedB.env.QUATI_FIXTURE_CWD).toBe(realpathSync(join(session.info.dataDir, "task-workspaces", botId, taskB)));
+    expect(launchedA.cwd).toBe(realpathSync(join(session.info.dataDir, "task-workspaces", botId, taskA)));
+    expect(launchedB.cwd).toBe(realpathSync(join(session.info.dataDir, "task-workspaces", botId, taskB)));
 
-    const tokenA = launchedA.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
-    const tokenB = launchedB.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+    const tokenA = mcpEnvironment(launchedA, "agents").QUATI_COMMS_TOKEN;
+    const tokenB = mcpEnvironment(launchedB, "agents").QUATI_COMMS_TOKEN;
     expect(tokenA).not.toBe(tokenB);
     const appended = await Promise.all([
       internal(tokenA, "POST", "/api/internal/memory", { botId, threadId: taskA, action: "append", text: "A remembers apples." }),
@@ -534,14 +535,14 @@ describe("independent bot tasks through the isolated control surface", () => {
     await tool("switch_task", { target_type: "bot", target_id: botId, task_id: taskB });
     expect((await botState(botId)).tasks.filter((task: any) => task.busy)).toHaveLength(2);
     expect((await control(["wait", "--bot", botId, "--task", taskA, "--timeout", "1"])).status).toBe("timed-out");
-    const changeBusy = await api("PATCH", `/api/bots/${botId}/tasks/${taskA}`, { modelSelection: { instanceId: "claude", model: models[1] } });
+    const changeBusy = await api("PATCH", `/api/bots/${botId}/tasks/${taskA}`, { modelSelection: { instanceId: "opencodeGo", model: models[1] } });
     expect(changeBusy.status).toBe(409);
 
     const answerA = await permission(models[0], "approval-a");
     await expect.poll(async () => (await botState(botId)).tasks.find((task: any) => task.taskId === taskA)?.activity).toBe("waiting-on-you");
     expect((await botState(botId)).tasks.find((task: any) => task.taskId === taskB)?.activity).toBe("working");
-    expect((await api("POST", `/api/bots/${botId}/respond`, { threadId: taskA, requestId: "approval-a", behavior: "allow" })).status).toBe(200);
-    await expect.poll(() => answerA.some((answer) => answer.id === "approval-a")).toBe(true);
+    expect((await api("POST", `/api/bots/${botId}/respond`, { threadId: taskA, requestId: answerA.requestId, behavior: "allow" })).status).toBe(200);
+    await expect.poll(answerA.answer).toBe("allow-once");
 
     await control(["interrupt", "--bot", botId, "--task", taskA]);
     await expect.poll(async () => (await botState(botId)).tasks.find((task: any) => task.taskId === taskA)?.busy).toBe(false);
@@ -563,14 +564,14 @@ describe("independent bot tasks through the isolated control surface", () => {
 
     await tool("switch_task", { target_type: "bot", target_id: botId, task_id: taskA });
     const legacyModel = models.at(-1)!;
-    expect((await api("PATCH", `/api/bots/${botId}`, { modelSelection: { instanceId: "claude", model: legacyModel } })).status).toBe(200);
+    expect((await api("PATCH", `/api/bots/${botId}`, { modelSelection: { instanceId: "opencodeGo", model: legacyModel } })).status).toBe(200);
     const final = await botState(botId);
     expect(final.tasks.find((task: any) => task.taskId === taskA).modelSelection.model).toBe(legacyModel);
     expect(final.tasks.find((task: any) => task.taskId === taskB).modelSelection.model).toBe(models[1]);
   }, 45_000);
 
   it("cancels a detached routine on its captured provider after an idle sibling changes the default", async () => {
-    const created = await tool("create_bot", { name: "Routine provider fixture", instance_id: "claude", model: models[0] });
+    const created = await tool("create_bot", { name: "Routine provider fixture", instance_id: "opencodeGo", model: models[0] });
     const botId = created.bot.id;
     const selectedThread = created.bot.activeTaskId;
     const routine = await api("POST", "/api/routines", {
@@ -597,7 +598,7 @@ describe("independent bot tasks through the isolated control surface", () => {
   }, 30_000);
 
   it("keeps a Group's profile model fixed while allowing independent idle task settings", async () => {
-    const created = await tool("create_bot", { name: "Group model fixture", instance_id: "claude", model: models[0] });
+    const created = await tool("create_bot", { name: "Group model fixture", instance_id: "opencodeGo", model: models[0] });
     const botId = created.bot.id;
     const threadId = created.bot.activeTaskId;
     const group = (await api("POST", "/api/groups", { name: "Captured Group provider", memberIds: [botId] })).body.group;
@@ -606,7 +607,7 @@ describe("independent bot tasks through the isolated control surface", () => {
     })).status).toBe(200);
     expect((await api("POST", `/api/groups/${group.id}/messages`, { text: "GROUP_MODEL_OWNER" })).status).toBe(202);
     await dump(models[0]);
-    const selection = { instanceId: "claude", model: models[1] };
+    const selection = { instanceId: "opencodeGo", model: models[1] };
     expect((await api("PATCH", `/api/bots/${botId}/tasks/${threadId}`, { modelSelection: selection })).status).toBe(200);
     expect((await api("PATCH", `/api/bots/${botId}/model`, selection)).status).toBe(409);
     expect((await api("PATCH", `/api/bots/${botId}`, { modelSelection: selection })).status).toBe(409);
@@ -622,19 +623,19 @@ describe("independent bot tasks through the isolated control surface", () => {
   }, 30_000);
 
   it("runs a second engine of the same bot in the selected project folder at the same time", async () => {
-    const created = await tool("create_bot", { name: "Shared project fixture", instance_id: "claude", model: models[0] });
+    const created = await tool("create_bot", { name: "Shared project fixture", instance_id: "opencodeGo", model: models[0] });
     const botId = created.bot.id;
     const taskA = created.bot.activeTaskId;
     const cwd = join(session.info.dataDir, "selected-project");
     mkdirSync(cwd);
     expect((await api("PATCH", `/api/bots/${botId}`, { cwd })).status).toBe(200);
     await control(["send", "--bot", botId, "--task", taskA, "--text", "PROJECT_A"]);
-    expect((await dump(models[0])).env.QUATI_FIXTURE_CWD).toBe(realpathSync(cwd));
+    expect((await dump(models[0])).cwd).toBe(realpathSync(cwd));
     const second = await tool("create_task", { target_type: "bot", target_id: botId, title: "Project sibling" });
     const taskB = second.task.taskId;
-    await control(["set-model", "--bot", botId, "--task", taskB, "--instance", "claude", "--model", models[1]]);
+    await control(["set-model", "--bot", botId, "--task", taskB, "--instance", "opencodeGo", "--model", models[1]]);
     await control(["send", "--bot", botId, "--task", taskB, "--text", "PROJECT_B_PARALLEL"]);
-    expect((await dump(models[1])).env.QUATI_FIXTURE_CWD).toBe(realpathSync(cwd));
+    expect((await dump(models[1])).cwd).toBe(realpathSync(cwd));
     const both = await botState(botId);
     expect(both.tasks.find((task: any) => task.taskId === taskA)?.busy).toBe(true);
     expect(both.tasks.find((task: any) => task.taskId === taskB)?.busy).toBe(true);
@@ -644,51 +645,8 @@ describe("independent bot tasks through the isolated control surface", () => {
     evidence.push({ parallelThreadsInOneProjectFolder: true, botId, taskA, taskB });
   }, 45_000);
 
-  it.skipIf(process.platform !== "darwin")("claims the shared computer only on first use and keeps a sibling stop from releasing it", async () => {
-    // The fake provider only receives this inert descriptor; no UI driver is launched.
-    const descriptorDir = join(session.info.dataDir, "Library", "Application Support", "QuatiBot");
-    mkdirSync(descriptorDir, { recursive: true });
-    writeFileSync(join(descriptorDir, "cua-connection.json"), JSON.stringify({
-      mode: "embedded", socketPath: join(session.info.dataDir, "never-used.sock"),
-      mcpCommand: join(session.info.dataDir, "never-launched-computer"), mcpArgs: ["mcp"], mcpEnv: {},
-    }));
-    const created = await tool("create_bot", { name: "Computer lease fixture", instance_id: "claude", model: models[0] });
-    const botId = created.bot.id;
-    const taskA = created.bot.activeTaskId;
-    expect((await api("PATCH", `/api/bots/${botId}`, { computer: "local" })).status).toBe(200);
-    await control(["send", "--bot", botId, "--task", taskA, "--text", "COMPUTER_A"]);
-    const launchedA = await dump(models[0]);
-    const second = await tool("create_task", { target_type: "bot", target_id: botId, title: "Computer sibling" });
-    const taskB = second.task.taskId;
-    await control(["set-model", "--bot", botId, "--task", taskB, "--instance", "claude", "--model", models[1]]);
-    await control(["send", "--bot", botId, "--task", taskB, "--text", "COMPUTER_B"]);
-    const launchedB = await dump(models[1]);
-    const gate = (launched: any) => {
-      const env = launched.mcpConfig.mcpServers.computer.env;
-      const url = new URL(env.QUATI_CONTROL_URL);
-      expect(url.origin).toBe(session.info.url);
-      return internal(env.QUATI_CONTROL_TOKEN, "GET", `${url.pathname}${url.search}`);
-    };
-    expect((await gate(launchedB)).body.held).toBe(false);
-    const waitingA = gate(launchedA);
-    await expect.poll(async () => ((await api("GET", `/api/threads/${taskA}/messages`)).body.messages as any[])
-      .some((message) => String(message.tool?.name ?? "").startsWith("Waiting for its turn on this computer")), { timeout: 15_000 }).toBe(true);
-    await control(["interrupt", "--bot", botId, "--task", taskA]);
-    expect((await waitingA).body.held).toBe(true);
-    expect((await gate(launchedA)).status).toBe(401);
-    expect((await gate(launchedB)).body.held).toBe(false);
-    await control(["interrupt", "--bot", botId, "--task", taskB]);
-    expect((await gate(launchedB)).status).toBe(401);
-
-    await control(["send", "--bot", botId, "--task", taskA, "--text", "COMPUTER_A_NEW_GENERATION"]);
-    await expect.poll(async () => (await dump(models[0])).pid !== launchedA.pid).toBe(true);
-    const relaunchedA = await dump(models[0]);
-    expect((await gate(relaunchedA)).body.held).toBe(false);
-    await control(["interrupt", "--bot", botId, "--task", taskA]);
-  }, 45_000);
-
   it("runs an unattended task in the bot's own level, still carding what the provider asks, while a sibling runs attended", async () => {
-    const created = await tool("create_bot", { name: "Unattended fixture", instance_id: "claude", model: models[0] });
+    const created = await tool("create_bot", { name: "Unattended fixture", instance_id: "opencodeGo", model: models[0] });
     const botId = created.bot.id;
     expect((await api("PATCH", `/api/bots/${botId}`, { approvalMode: "auto" })).status).toBe(200);
     const hook = await api("POST", "/api/webhooks", { name: "Fixture event", prompt: "UNATTENDED_ONLY", botId, runOn: "quati" });
@@ -704,18 +662,18 @@ describe("independent bot tasks through the isolated control surface", () => {
     const unattendedLaunch = await dump(models[0]);
     const second = await tool("create_task", { target_type: "bot", target_id: botId, title: "Attended sibling" });
     const attendedTask = second.task.taskId;
-    await control(["set-model", "--bot", botId, "--task", attendedTask, "--instance", "claude", "--model", models[1]]);
+    await control(["set-model", "--bot", botId, "--task", attendedTask, "--instance", "opencodeGo", "--model", models[1]]);
     await control(["send", "--bot", botId, "--task", attendedTask, "--text", "ATTENDED_ONLY"]);
     const attendedLaunch = await dump(models[1]);
-    expect(unattendedLaunch.argv[unattendedLaunch.argv.indexOf("--permission-mode") + 1]).toBe("auto");
-    expect(attendedLaunch.argv[attendedLaunch.argv.indexOf("--permission-mode") + 1]).toBe("auto");
+    expect(unattendedLaunch.nativePermissions ?? []).not.toContainEqual({ action: "*", resource: "*", effect: "allow" });
+    expect(attendedLaunch.nativePermissions ?? []).not.toContainEqual({ action: "*", resource: "*", effect: "allow" });
 
     const unattendedAnswers = await permission(models[0], "unattended-permission");
     expect((await control(["wait", "--bot", botId, "--task", unattendedTask, "--timeout", "5"])).status).toBe("needs-user");
     const card = (await api("GET", `/api/threads/${unattendedTask}/messages`)).body.messages
-      .find((message: any) => message.card?.requestId === "unattended-permission");
+      .find((message: any) => message.card?.requestId === unattendedAnswers.requestId);
     expect(card.card.heldCode).toBe("approval.held.native");
-    expect(unattendedAnswers).toEqual([]);
+    expect(unattendedAnswers.answer()).toBeUndefined();
     expect((await botState(botId)).tasks.find((task: any) => task.taskId === attendedTask)?.activity).toBe("working");
     await control(["interrupt", "--bot", botId, "--task", attendedTask]);
     expect((await botState(botId)).tasks.find((task: any) => task.taskId === unattendedTask)?.activity).toBe("waiting-on-you");

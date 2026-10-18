@@ -4,19 +4,12 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 
 import type { Bot, InstanceInfo } from "@/state/store";
 
-// Hook-by-call-order harness: useState is held by call order (the picker's own hooks first, children after), effects
-// never run, and handlers are read off the element tree.
 const fixture = vi.hoisted(() => {
   vi.stubGlobal("window", {});
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   return {
-    values: [] as unknown[],
-    index: 0,
-    own: 0,
-    instances: [] as InstanceInfo[],
-    dispatch: (() => {}) as (...args: unknown[]) => void,
-    refreshInstances: (() => Promise.resolve()) as () => Promise<void>,
-    refreshModels: ((_id: string) => Promise.resolve()) as (instanceId: string) => Promise<void>,
+    values: [] as unknown[], index: 0, own: 0, instances: [] as InstanceInfo[],
+    dispatch: vi.fn(), refreshInstances: vi.fn(), refreshModels: vi.fn<() => Promise<void>>(),
   };
 });
 vi.mock("react", async (original) => ({
@@ -30,24 +23,17 @@ vi.mock("react", async (original) => ({
   },
   useEffect: () => {},
 }));
-// This hook fixture does not emulate React's render-time state retries.
 vi.mock("./MenuMotion", () => ({ useMenuMotion: (open: boolean) => ({ shown: open, closing: false, className: "" }) }));
-vi.mock("@/state/store", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/state/store")>()),
+vi.mock("@/state/store", async (original) => ({
+  ...await original<typeof import("@/state/store")>(),
   useStore: () => ({
     state: { instances: fixture.instances, bots: [], modelVariantSessions: {} },
-    dispatch: fixture.dispatch,
-    refreshInstances: fixture.refreshInstances,
-    refreshModels: fixture.refreshModels,
+    dispatch: fixture.dispatch, refreshInstances: fixture.refreshInstances, refreshModels: fixture.refreshModels,
   }),
 }));
-
-// These cases cover the full picker; Simple mode has its own file.
 vi.mock("@/lib/interface-mode", () => ({ useAdvancedMode: () => true, setAdvancedMode: () => {} }));
 
-const { LOCAL_PROBE_TIMEOUT_MS, ModelEngineRail, ModelPicker, offersLocalModels, probeLocalModels } = await import("./ModelPicker");
-
-afterAll(() => vi.unstubAllGlobals());
+const { LOCAL_PROBE_TIMEOUT_MS, ModelPicker, offersLocalModels, probeLocalModels } = await import("./ModelPicker");
 
 type Node = ReactElement<Record<string, unknown> & { children?: ReactNode }>;
 function nodes(value: ReactNode): Node[] {
@@ -58,39 +44,19 @@ function nodes(value: ReactNode): Node[] {
   });
 }
 
-const official = [{ id: "claude-opus-5-5", label: "Opus 5.5" }, { id: "claude-sonnet-5", label: "Sonnet 5" }];
-const qwen = { id: "ollama::qwen3", label: "qwen3 (Ollama)", custom: true };
-const claudeInstall = {
-  command: { darwin: "npm install -g @anthropic-ai/claude-code", linux: "npm install -g @anthropic-ai/claude-code", win32: "npm install -g @anthropic-ai/claude-code" },
-  signInCommand: "claude",
-};
-const claude = (snapshot: InstanceInfo["snapshot"], options: InstanceInfo["models"]["options"] = official): InstanceInfo => ({
-  instanceId: "claude", driverKind: "claudeAgent", displayName: "Claude", access: "subscription", snapshot,
-  models: { default: "claude-opus-5-5", options }, install: claudeInstall,
-  authentication: { method: "paste-code", signOut: true },
-});
-const signedOut = () => claude({ state: "available", version: "2.1.300", authenticated: false });
-const signedIn = () => claude({ state: "available", version: "2.1.300", authenticated: true });
-const notFound = () => claude({ state: "unavailable", reason: "`claude` CLI not found" });
-const codex: InstanceInfo = {
-  instanceId: "codex", driverKind: "codex", displayName: "Codex", access: "subscription",
-  snapshot: { state: "available", version: "1.0.0", authenticated: true },
-  models: { default: "gpt-5.6", options: [{ id: "gpt-5.6", label: "GPT-5.6" }] },
+const official = { id: "fixture/test", label: "Fixture model" };
+const local = { id: "ollama/qwen3", label: "qwen3 (Ollama)", custom: true };
+const bot: Bot = {
+  id: "atlas", threadId: "thread-atlas", name: "Atlas", title: "", description: "", notifications: true,
+  color: "green", unread: false, modelSelection: { instanceId: "opencodeGo", model: official.id }, messages: [],
 };
 
-function bot(instanceId: string, model: string): Bot {
-  return {
-    id: "atlas", threadId: "thread-atlas", name: "Atlas", title: "", description: "", notifications: true,
-    color: "green", unread: false, modelSelection: { instanceId, model }, messages: [],
-  };
-}
-
-function render(forBot: Bot) {
+function render() {
   fixture.values.length = Math.min(fixture.values.length, fixture.own);
   let tree: ReactNode = null;
   function Capture() {
     fixture.index = 0;
-    tree = ModelPicker({ bot: forBot, threadId: forBot.threadId });
+    tree = ModelPicker({ bot, threadId: bot.threadId });
     fixture.own = fixture.index;
     return tree;
   }
@@ -98,19 +64,11 @@ function render(forBot: Bot) {
   return { html, nodes: nodes(tree) };
 }
 
-function open(forBot: Bot) {
-  const trigger = render(forBot).nodes.find((node) => node.props["data-tour"] === "model")!;
+function open() {
+  const trigger = render().nodes.find((node) => node.props["data-tour"] === "model")!;
   (trigger.props.onClick as () => void)();
-  return render(forBot);
+  return render();
 }
-
-function rail(rendered: ReturnType<typeof render>) {
-  return rendered.nodes.find((node) => node.type === ModelEngineRail) as ReactElement<{ instances: InstanceInfo[]; onSelect: (instance: InstanceInfo) => void }> | undefined;
-}
-
-const menu = (html: string) => html.slice(html.indexOf("data-model-picker-content"));
-
-const flush = async () => { for (let index = 0; index < 20; index++) await Promise.resolve(); };
 
 beforeEach(() => {
   fixture.values = [];
@@ -119,171 +77,68 @@ beforeEach(() => {
   fixture.dispatch = vi.fn();
   fixture.refreshInstances = vi.fn(() => Promise.resolve());
   fixture.refreshModels = vi.fn(() => Promise.resolve());
+  fixture.instances = [{
+    instanceId: "opencodeGo", driverKind: "opencodeGo", displayName: "OpenCode", access: "subscription",
+    snapshot: { state: "available", version: "2.0.31", authenticated: true },
+    models: { default: official.id, options: [official, local] },
+  }];
 });
 afterEach(() => vi.useRealTimers());
+afterAll(() => vi.unstubAllGlobals());
 
-describe("ModelPicker with a signed-out or missing Claude", () => {
-  it("keeps an empty ChatGPT plan catalog on the cloud rail so sign-in is reachable", () => {
-    const plan: InstanceInfo = { ...codex, instanceId: "chatgpt", displayName: "ChatGPT plan", snapshot: { state: "available", authenticated: false, chatgptPlan: true }, models: { default: "", options: [] }, authentication: { method: "browser-pkce" }, install: { signInCommand: "codex login" } };
-    fixture.instances = [codex, plan];
-    const forBot = bot("codex", "gpt-5.6");
-    const opened = open(forBot);
-    expect(rail(opened)!.props.instances.map((instance) => instance.instanceId)).toContain("chatgpt");
-    rail(opened)!.props.onSelect(plan);
-    const html = menu(render(forBot).html);
-    expect(html).toContain("Continue with ChatGPT");
-    expect(html).toContain("Available models appear after");
-    expect(html).not.toContain("codex login");
-    expect(html).not.toContain("Local models will appear");
-  });
+describe("OpenCode model picker", () => {
+  it.each(["signed out", "unavailable"])("shows OpenCode-owned setup when %s", (state) => {
+    fixture.instances[0].snapshot = state === "signed out"
+      ? { state: "available", authenticated: false }
+      : { state: "unavailable", reason: "OpenCode CLI not found" };
 
-  it("keeps a signed-out Claude on the rail and shows its sign-in card instead of pickable cloud models", () => {
-    fixture.instances = [codex, signedOut()];
-    const onCodex = bot("codex", "gpt-5.6");
-    const opened = open(onCodex);
-    expect(rail(opened)!.props.instances.map((instance) => instance.instanceId)).toEqual(["codex", "claude"]);
-    expect(opened.html).toContain('aria-label="Claude"');
-
-    (rail(opened)!.props.onSelect as (instance: InstanceInfo) => void)(fixture.instances[1]);
-    const browsing = menu(render(onCodex).html);
-    expect(browsing).toContain("Sign in to Claude");
-    expect(browsing).toContain("data-claude-sign-in");
-    expect(browsing).toContain("2 models will appear after setup.");
-    expect(browsing).not.toContain(">Opus 5.5<");
-    expect(browsing).not.toContain(">Sonnet 5<");
-    expect(browsing).not.toContain("No model providers are available.");
+    const { html } = open();
+    expect(html).toContain("OpenCode V2");
+    expect(html).toContain("Models and credentials are managed by OpenCode");
+    expect(html).toContain("opencode auth login");
+    expect(html.slice(html.indexOf("data-model-picker-content"))).not.toContain(">Fixture model<");
     expect(fixture.dispatch).not.toHaveBeenCalled();
   });
 
-  it("opens on the sign-in card when the bot's own Claude is signed out", () => {
-    fixture.instances = [signedOut()];
-    const html = menu(open(bot("claude", "claude-opus-5-5")).html);
-    expect(html).toContain("Sign in to Claude");
-    expect(html).not.toContain(">Opus 5.5<");
-    expect(html).not.toContain("No model providers are available.");
-  });
-
-  it("keeps the bot's own Claude with its install card when the CLI is not found", () => {
-    fixture.instances = [codex, notFound()];
-    const html = open(bot("claude", "claude-opus-5-5")).html;
-    expect(html).toContain('aria-label="Claude"');
-    expect(html).toContain("Set up Claude");
-    expect(html).toContain("`claude` CLI not found");
-    expect(html).toContain("npm install -g @anthropic-ai/claude-code");
-    expect(html).not.toContain("data-model-local-entry");
-  });
-
-  it("leaves a Claude that is not found and not in use in Settings", () => {
-    fixture.instances = [codex, notFound()];
-    const opened = open(bot("codex", "gpt-5.6"));
-    expect(rail(opened)!.props.instances.map((instance) => instance.instanceId)).toEqual(["codex"]);
-    expect(opened.html).not.toContain('aria-label="Claude"');
-    expect(opened.html).toContain("Model providers and accounts");
-  });
-});
-
-describe("the way into API keys", () => {
-  it("opens Settings on the API keys section from the picker footer", () => {
-    fixture.instances = [codex];
-    const opened = open(bot("codex", "gpt-5.6"));
-    const entry = opened.nodes.find((node) => node.props["data-model-add-api-keys"]);
-    expect(opened.html).toContain("Add API keys");
-    (entry!.props.onClick as () => void)();
-    expect(fixture.dispatch).toHaveBeenCalledWith({ type: "toggleAppSettings", open: true, section: "connections" });
-  });
-
-  it("says the shortcut changes keys too once a key is saved", () => {
-    const openai: InstanceInfo = {
-      instanceId: "openai", driverKind: "openai-compat", displayName: "OpenAI", access: "api",
-      snapshot: { state: "available", authenticated: true, version: null },
-      models: { default: "gpt-5", options: [{ id: "gpt-5", label: "GPT-5" }] },
-    };
-    fixture.instances = [codex, openai];
-    const opened = open(bot("codex", "gpt-5.6"));
-    expect(opened.html).toContain("Add or change API keys");
-    expect(opened.html).not.toContain(">Add API keys<");
-  });
-
-  it("ends the rail's API keys group with a way to add one", () => {
-    fixture.instances = [codex];
-    const opened = open(bot("codex", "gpt-5.6"));
-    expect(opened.html).toContain(">API keys<");
-    const add = rail(opened)!.props as { onAddApiKeys?: () => void };
-    add.onAddApiKeys!();
-    expect(fixture.dispatch).toHaveBeenCalledWith({ type: "toggleAppSettings", open: true, section: "connections" });
-  });
-});
-
-describe("the way into local models", () => {
-  it.each([["signed in", signedIn], ["signed out", signedOut]])("shows for a %s Claude with no local models found yet, and re-probes when opened", async (_state, make) => {
-    fixture.instances = [make()];
-    let answer!: () => void;
-    fixture.refreshModels = vi.fn(() => new Promise<void>((resolve) => { answer = resolve; }));
-    const onClaude = bot("claude", "claude-opus-5-5");
-    const opened = open(onClaude);
-    const entry = opened.nodes.find((node) => node.props["data-model-local-entry"]);
-    expect(entry?.props["aria-label"]).toBe("Use a local model");
-    expect(entry?.props.disabled).toBe(false);
-
-    (entry!.props.onClick as () => void)();
-    expect(fixture.refreshModels).toHaveBeenCalledExactlyOnceWith("claude");
-    const looking = render(onClaude).html;
-    expect(looking).toContain("Looking for local models…");
-    expect(looking).toContain('role="status"');
-    expect(looking).not.toContain("No local models found");
-
-    fixture.instances = [make()];
-    fixture.instances[0].models.options = [...official, qwen];
-    answer();
-    await flush();
-    const found = render(onClaude).html;
-    expect(found).not.toContain("Looking for local models…");
-    expect(found).toContain(">qwen3 (Ollama)<");
-  });
-
-  it("says nothing was found once the probe settles empty", async () => {
-    fixture.instances = [signedIn()];
-    const onClaude = bot("claude", "claude-opus-5-5");
-    const entry = open(onClaude).nodes.find((node) => node.props["data-model-local-entry"])!;
+  it("selects a local model discovered by OpenCode for this conversation", () => {
+    const entry = open().nodes.find((node) => node.props["data-model-local-entry"])!;
     (entry.props.onClick as () => void)();
-    await flush();
-    const html = render(onClaude).html;
-    expect(html).not.toContain("Looking for local models…");
-    expect(html).toContain("No local models found");
-  });
+    const row = render().nodes.find((node) => (node.props.option as { id?: string } | undefined)?.id === local.id)!;
+    (row.props.onPick as () => void)();
 
-  it("lets a signed-out Claude run a local model it already found", () => {
-    fixture.instances = [claude({ state: "available", authenticated: false }, [...official, qwen])];
-    const onClaude = bot("claude", "claude-opus-5-5");
-    const entry = open(onClaude).nodes.find((node) => node.props["data-model-local-entry"])!;
-    expect(entry.props["aria-label"]).toBe("Use a local model (1 available)");
-    (entry.props.onClick as () => void)();
-    const local = render(onClaude);
-    const row = local.nodes.find((node) => (node.props.option as { id?: string } | undefined)?.id === qwen.id) as ReactElement<{ onPick: () => void }>;
-    row.props.onPick();
     expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({
-      type: "setModel", botId: "atlas", threadId: "thread-atlas", selection: { instanceId: "claude", model: qwen.id },
+      type: "setModel", botId: "atlas", threadId: "thread-atlas", selection: { instanceId: "opencodeGo", model: local.id },
     }));
   });
 
-  it("is offered by Claude whenever its CLI is present, and by other engines once they list a local model", () => {
-    expect(offersLocalModels(signedIn(), 0)).toBe(true);
-    expect(offersLocalModels(signedOut(), 0)).toBe(true);
-    expect(offersLocalModels(notFound(), 0)).toBe(false);
-    expect(offersLocalModels({ ...signedIn(), policy: { organizationName: "Fixture", reason: "Not allowed" } }, 0)).toBe(false);
-    expect(offersLocalModels(codex, 0)).toBe(false);
-    expect(offersLocalModels(codex, 2)).toBe(true);
-    expect(offersLocalModels(undefined, 0)).toBe(false);
+  it("re-probes local models and reports an empty result", async () => {
+    let answer!: () => void;
+    fixture.refreshModels = vi.fn(() => new Promise<void>((resolve) => { answer = resolve; }));
+    const entry = open().nodes.find((node) => node.props["data-model-local-entry"])!;
+    (entry.props.onClick as () => void)();
+    expect(fixture.refreshModels).toHaveBeenCalledExactlyOnceWith("opencodeGo");
+    expect(render().html).toContain("Looking for local models…");
+
+    fixture.instances[0].models.options = [official];
+    answer();
+    for (let index = 0; index < 20; index++) await Promise.resolve();
+    expect(render().html).toContain("No local models found");
+    expect(render().html).not.toContain("Looking for local models…");
   });
 
-  it("stops looking after a short timeout and never throws", async () => {
+  it.each([0, 1])("offers local models only when OpenCode lists them (%i)", (count) => {
+    expect(offersLocalModels(fixture.instances[0], count)).toBe(count > 0);
+    expect(offersLocalModels(undefined, count)).toBe(false);
+  });
+
+  it("bounds a stalled refresh and contains a rejected refresh", async () => {
     vi.useFakeTimers();
     let settled = false;
-    void probeLocalModels("claude", () => new Promise(() => {})).then(() => { settled = true; });
+    void probeLocalModels("opencodeGo", () => new Promise(() => {})).then(() => { settled = true; });
     await vi.advanceTimersByTimeAsync(LOCAL_PROBE_TIMEOUT_MS - 1);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect(settled).toBe(true);
-    await expect(probeLocalModels("claude", () => Promise.reject(new Error("offline")))).resolves.toBeUndefined();
+    await expect(probeLocalModels("opencodeGo", () => Promise.reject(new Error("offline")))).resolves.toBeUndefined();
   });
 });

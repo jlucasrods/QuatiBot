@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { SessionRegistry } from "./sessions.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
@@ -73,13 +74,15 @@ function openStream() {
 
 posixOnly("a routine run's task on the event stream", () => {
   beforeAll(async () => {
-    chmodSync(FAKE_CLI, 0o755);
     home = mkdtempSync(join(tmpdir(), "quati-routine-broadcast-"));
     const data = join(home, ".quatibot");
     mkdirSync(data, { recursive: true });
+    mkdirSync(join(data, "providers", "opencode", "discovery"), { recursive: true });
+    writeFileSync(join(data, "providers", "opencode", "discovery", ".quati-project"), "fixture");
     writeFileSync(join(data, "config.json"), JSON.stringify({
       signIn: { admins: [OWNER], members: [] },
-      instances: { grok: { driver: "grokAgent", config: { cli: FAKE_CLI, fullAuto: false } } },
+      instances: { opencodeGo: { driver: "opencodeGo", config: { cli: FAKE_CLI, fullAuto: false } } },
+      defaultModelSelection: { instanceId: "opencodeGo", model: "fixture/test" },
     }));
     const registry = new SessionRegistry({ file: join(data, "sessions.json"), emailScopes: () => ["admin", "client"] });
     token = registry.issue({ label: "Owner's laptop", email: OWNER, scopes: ["admin", "client"] }).token;
@@ -88,8 +91,10 @@ posixOnly("a routine run's task on the event stream", () => {
     child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
       env: {
-        ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-        HOME: home, QUATI_PORT: String(PORT), QUATI_WEBHOOK_PORT: String(PORT + 1),
+        ...verificationServerEnvironment({}, data, PORT),
+        HOME: home,
+        FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31",
+        FAKE_ACP_AGENT_NAME: "OpenCode", FAKE_ACP_MODELS: "fixture/test",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -103,6 +108,10 @@ posixOnly("a routine run's task on the event stream", () => {
       }
     }, 20_000);
     if (!up) throw new Error(`server never came up:\n${log}`);
+    const ready = await waitFor(async () => (await api("GET", "/api/instances")).body.instances
+      .some((instance: { models?: { options?: Array<{ id: string }> } }) =>
+        instance.models?.options?.some((model) => model.id === "fixture/test")));
+    if (!ready) throw new Error(`model discovery never finished:\n${log}`);
   }, 40_000);
 
   afterAll(async () => {
@@ -115,7 +124,7 @@ posixOnly("a routine run's task on the event stream", () => {
     const created = await api("POST", "/api/bots", { name: "Report Otter" });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const bot = created.body.bot as { id: string; threadId: string };
-    expect((await api("PATCH", `/api/bots/${bot.id}`, { modelSelection: { instanceId: "grok", model: "fake-model" } })).status).toBe(200);
+    expect((await api("PATCH", `/api/bots/${bot.id}`, { modelSelection: { instanceId: "opencodeGo", model: "fixture/test" } })).status).toBe(200);
     // Something in the active conversation for the frame to have carried.
     expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "Summarise the week", threadId: bot.threadId })).status).toBe(202);
     const replied = await waitFor(async () => {

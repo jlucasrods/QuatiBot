@@ -13,12 +13,12 @@ const transcript = [
 
 describe("buildTurnContext", () => {
   it("passes text through untouched on a plain resumed turn", () => {
-    const out = buildTurnContext({ text: "hi", transcript, rewound: false, fresh: false, externallyUpdated: false, replaysNatively: false });
+    const out = buildTurnContext({ text: "hi", transcript, rewound: false, fresh: false, externallyUpdated: false });
     expect(out).toEqual({ turnText: "hi", resume: true });
   });
 
   it("replays inline on rewind, exactly like the existing behaviour", () => {
-    const out = buildTurnContext({ text: "hi", transcript, rewound: true, fresh: false, externallyUpdated: false, replaysNatively: false });
+    const out = buildTurnContext({ text: "hi", transcript, rewound: true, fresh: false, externallyUpdated: false });
     expect(out.resume).toBe(false);
     expect(out.turnText).toContain("rewound this conversation");
     expect(out.turnText).toContain("User: my dog is named Biscuit");
@@ -26,7 +26,7 @@ describe("buildTurnContext", () => {
   });
 
   it("replays inline for a fresh engine with prior history — the model-switch fix", () => {
-    const out = buildTurnContext({ text: "hi", transcript, rewound: false, fresh: true, externallyUpdated: false, replaysNatively: false });
+    const out = buildTurnContext({ text: "hi", transcript, rewound: false, fresh: true, externallyUpdated: false });
     expect(out.resume).toBe(false);
     expect(out.turnText).toContain("joining this conversation");
     expect(out.turnText).not.toContain("rewound");
@@ -34,20 +34,8 @@ describe("buildTurnContext", () => {
     expect(out.turnText.endsWith("hi")).toBe(true);
   });
 
-  it("never wraps for native-replay drivers — they get history via SendTurnInput.transcript", () => {
-    for (const flags of [
-      { rewound: true, fresh: false, externallyUpdated: false },
-      { rewound: false, fresh: true, externallyUpdated: false },
-      { rewound: false, fresh: false, externallyUpdated: true },
-    ]) {
-      const out = buildTurnContext({ text: "hi", transcript, ...flags, replaysNatively: true });
-      expect(out.turnText).toBe("hi");
-      expect(out.resume).toBe(false);
-    }
-  });
-
   it("does not wrap a fresh engine on an empty thread — nothing to replay", () => {
-    const out = buildTurnContext({ text: "hi", transcript: [], rewound: false, fresh: true, externallyUpdated: false, replaysNatively: false });
+    const out = buildTurnContext({ text: "hi", transcript: [], rewound: false, fresh: true, externallyUpdated: false });
     expect(out).toEqual({ turnText: "hi", resume: false });
   });
 
@@ -62,7 +50,6 @@ describe("buildTurnContext", () => {
       rewound: false,
       fresh: false,
       externallyUpdated: true,
-      replaysNatively: false,
     });
     expect(out.resume).toBe(false);
     expect(out.turnText).toContain("received an update outside your provider session");
@@ -150,7 +137,7 @@ describe("tool history in an inline replay", () => {
   const plain = history.map(({ role, text }) => ({ role, text }));
   const replay = (settings: { replayToolHistory?: boolean } | undefined, env = NO_ENV) =>
     selectReplay(history, { tools: replayToolCalls(thread, settings, env) });
-  const flags = { rewound: false, fresh: false, externallyUpdated: false, replaysNatively: false };
+  const flags = { rewound: false, fresh: false, externallyUpdated: false };
   const rebuilds = [{ rewound: true }, { fresh: true }, { externallyUpdated: true }];
   const conversation = [
     "User: run the tests",
@@ -198,16 +185,6 @@ describe("tool history in an inline replay", () => {
 
   it("leaves a turn that resumes its session untouched", () => {
     expect(buildTurnContext({ text: "and now?", transcript: replay(ON).inline, ...flags })).toEqual({ turnText: "and now?", resume: true });
-  });
-
-  it("leaves natively replaying drivers untouched: no wrapper, and a text-only transcript", () => {
-    for (const rebuild of rebuilds) {
-      const out = buildTurnContext({ text: "and now?", transcript: replay(ON).inline, ...flags, ...rebuild, replaysNatively: true });
-      expect(out).toEqual({ turnText: "and now?", resume: false });
-    }
-    // what SendTurnInput.transcript carries is the selection's own transcript
-    expect(replay(ON).transcript).toEqual(history);
-    expect(replay(ON).transcript).toEqual(replay(undefined).transcript);
   });
 
   it("leaves the fresh-engine decision untouched", () => {

@@ -17,7 +17,7 @@ const enabled = process.env.QUATI_UI_E2E === "1" || Boolean(resolveAgentBrowserB
   const planPath = join(temporary, "plan.json");
   writeFileSync(planPath, "{}");
   const child = spawn(process.execPath, ["--experimental-strip-types", "scripts/control-quati.ts", "ui", "launch"], {
-    cwd: ROOT, env: { ...process.env, FAKE_CLAUDE_ROOM_PLAN: planPath }, stdio: ["ignore", "pipe", "pipe"],
+    cwd: ROOT, env: { ...process.env, FAKE_ACP_ROOM_PLAN: planPath }, stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
   let error = "";

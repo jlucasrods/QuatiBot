@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   AttachedFileChips,
@@ -165,30 +165,19 @@ describe("attachment preview surfaces", () => {
   });
 });
 
-describe("Show in folder for a file outside the workspace", () => {
+describe("files outside the workspace", () => {
   const render = (filePath: string) => renderToStaticMarkup(createElement(OutsideWorkspaceFile, { filePath }));
 
-  it("offers the reveal only for an absolute local path, and only in the local desktop app", () => {
-    vi.stubGlobal("window", { quati: { revealInFolder: vi.fn(), remoteClient: { active: false } } });
-    try {
-      expect(render("/Users/quati/_draft/ollama-gen.js")).toContain("Show in folder");
-      expect(render("C:\\Users\\Quati\\_draft\\ollama-gen.js")).toContain("Show in folder");
-      for (const filePath of ["_draft/ollama-gen.js", "\\\\server\\share\\ollama-gen.js"]) {
-        expect(render(filePath)).not.toContain("Show in folder");
-        expect(render(filePath)).toContain(`>${filePath}</code>`);
-      }
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("gives a remote client the path, since the file is not on its computer", () => {
-    vi.stubGlobal("window", { quati: { revealInFolder: vi.fn(), remoteClient: { active: true } } });
-    try {
-      expect(render("/Users/quati/_draft/ollama-gen.js")).toContain(">/Users/quati/_draft/ollama-gen.js</code>");
-    } finally {
-      vi.unstubAllGlobals();
-    }
+  it.each([
+    "/home/quati/_draft/output.js",
+    "C:\\Users\\Quati\\_draft\\output.js",
+    "_draft/output.js",
+    "\\\\server\\share\\output.js",
+  ])("shows the path %s without offering host access", filePath => {
+    const html = render(filePath);
+    expect(html).toContain(`>${filePath}</code>`);
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("<a ");
   });
 });
 

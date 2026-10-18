@@ -14,7 +14,7 @@ import { toolDetailPreview } from "./tool-summary.ts";
 
 describe("the catalog's names", () => {
   it("are every tool a turn could be given, whoever may call it, and neither of the bridge's own", () => {
-    for (const tool of ["coordinate_bots", "list_routines", "vm_exec", "create_bot", "shared_computer", "skill_manage", "send_voice_note", "create_options_card", "memory_log"]) {
+    for (const tool of ["coordinate_bots", "list_routines", "vm_exec", "create_bot", "skill_manage", "send_voice_note", "create_options_card", "memory_log"]) {
       expect(CATALOG_TOOL_NAMES.has(tool), tool).toBe(true);
     }
     expect(CATALOG_TOOL_NAMES.has(FIND_TOOL)).toBe(false);

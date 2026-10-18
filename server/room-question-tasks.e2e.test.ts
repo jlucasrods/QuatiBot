@@ -1,12 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, writeFileSync } from "node:fs";
-import { connect, type Socket } from "node:net";
+import { closeSync, existsSync, mkdtempSync, openSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { z } from "zod";
 
 import { launchVerificationServer, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import type { GroupTask, WireBot, WireGroup, WireMessage } from "../shared/wire.ts";
@@ -15,11 +12,10 @@ import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 it("keeps live room questions fenced but allows task changes after their turn settles and restarts", async () => {
   const gates = mkdtempSync(join(tmpdir(), "quati-room-question-gates-"));
   const finishGate = join(gates, "finish");
-  const env = { FAKE_CLAUDE_MODE: "hang", FAKE_CLAUDE_FINISH_GATE: finishGate };
+  const env = { FAKE_ACP_MODE: "question", FAKE_ACP_QUESTION_END_FILE: finishGate };
   const fixture = await launchVerificationServer(env);
   const evidence: unknown[] = [{ fixture: fixture.info }];
   let restarted: ChildProcess | undefined;
-  let questionSocket: Socket | undefined;
   const api = async <T = unknown>(method: string, path: string, body?: unknown) => {
     const response = await fetch(`${fixture.info.url}${path}`, {
       method, headers: { "content-type": "application/json" },
@@ -46,32 +42,14 @@ it("keeps live room questions fenced but allows task changes after their turn se
     expect((await api("POST", `/api/groups/${room.id}/messages`, {
       threadId: room.threadId, text: "Ask one question and finish without its answer.",
     })).status).toBe(202);
-    await expect.poll(() => existsSync(fixture.fixtureDumpPath), { timeout: 10_000 }).toBe(true);
-    const dump = z.object({ mcpConfig: z.object({ mcpServers: z.object({
-      quati: z.object({ args: z.array(z.string()) }),
-    }) }) }).parse(JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")));
-    questionSocket = connect(dump.mcpConfig.mcpServers.quati.args[1]!);
-    let socketBuffer = "";
-    let providerReply: unknown;
-    questionSocket.on("data", (chunk) => {
-      socketBuffer += chunk.toString();
-      const newline = socketBuffer.indexOf("\n");
-      if (newline !== -1) providerReply = JSON.parse(socketBuffer.slice(0, newline));
-    });
-    await new Promise<void>((resolve, reject) => {
-      questionSocket!.once("connect", resolve);
-      questionSocket!.once("error", reject);
-    });
-    const requestId = randomUUID();
-    questionSocket.write(JSON.stringify({
-      t: "ask", kind: "question", id: requestId, tool: "AskUserQuestion",
-      input: { questions: [{ question: "Which file?", options: [{ label: "README" }, { label: "Guide" }] }] },
-    }) + "\n");
+    let requestId: string | undefined;
     const question = async () => (await api<{ messages: WireMessage[] }>("GET", `/api/threads/${room.threadId}/messages`)).body.messages
-      .find((message) => message.card?.requestId === requestId)?.card;
+      .find((message) => message.card?.requestType === "question" && (!requestId || message.card.requestId === requestId))?.card;
     const roomState = async () => (await api<{ groups: WireGroup[] }>("GET", "/api/bots?messages=0")).body.groups
       .find((group) => group.id === room.id)!;
-    await expect.poll(question, { timeout: 5_000 }).toMatchObject({ requestType: "question", requestId });
+    await expect.poll(question, { timeout: 5_000 }).toMatchObject({ requestType: "question" });
+    requestId = (await question())!.requestId;
+    expect(requestId).toBeTruthy();
     expect((await roomState()).working).toBe(true);
     const changes: Array<[string, string, unknown?]> = [
       ["POST", `/api/groups/${room.id}/tasks`, { title: "New task" }],
@@ -99,7 +77,6 @@ it("keeps live room questions fenced but allows task changes after their turn se
 
     writeFileSync(finishGate, "finish");
     await expect.poll(async () => (await roomState()).working, { timeout: 5_000 }).toBe(false);
-    await expect.poll(() => providerReply, { timeout: 5_000 }).toMatchObject({ behavior: "answer" });
     expect(await question()).toMatchObject({ requestType: "question", requestId });
     expect((await question())!.answered).toBeUndefined();
     expect((await question())!.dismissed).toBeUndefined();
@@ -113,8 +90,6 @@ it("keeps live room questions fenced but allows task changes after their turn se
     expect((await api("DELETE", `/api/groups/${room.id}/tasks/${settledTask.body.task.threadId}`)).status).toBe(200);
 
     await waitForExit(fixture.child, { signal: "SIGTERM" });
-    questionSocket.destroy();
-    questionSocket = undefined;
     const log = openSync(fixture.info.logPath, "a", 0o600);
     restarted = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
       cwd: fileURLToPath(new URL("../", import.meta.url)),
@@ -134,11 +109,10 @@ it("keeps live room questions fenced but allows task changes after their turn se
     expect((await question())!.answered).toBeUndefined();
     expect((await question())!.dismissed).toBeUndefined();
     expect((await api("POST", `/api/threads/${room.threadId}/respond`, {
-      requestId, behavior: "answer", message: "README",
+      requestId, behavior: "answer", message: "Blue",
     }))).toMatchObject({ status: 200, body: { ok: true, outcome: "answered", late: true } });
-    await expect.poll(question, { timeout: 5_000 }).toMatchObject({ answered: "answer", answeredText: "README", dismissed: false });
+    await expect.poll(question, { timeout: 5_000 }).toMatchObject({ answered: "answer", answeredText: "Blue", dismissed: false });
   } finally {
-    questionSocket?.destroy();
     if (restarted) await waitForExit(restarted, { signal: "SIGTERM" });
     await fixture.close();
     await removeTempDir(gates);

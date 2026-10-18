@@ -1,180 +1,68 @@
-// The fake Claude CLI in `slow` mode holds the turn behind a gate; the test drives the broker directly, as the permission proxy does. POSIX-gated.
-import { spawn, type ChildProcess } from "node:child_process";
-import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { connect, type Socket } from "node:net";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { expect, it } from "vitest";
 
-import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
-import { freePortBlock } from "./testing/ports.ts";
+import { launchVerificationServer } from "../scripts/control-quati.ts";
 
-const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
-const posixOnly = describe.skipIf(process.platform === "win32");
-
-let child: ChildProcess;
-let home = "";
-let base = "";
-let stderr = "";
-let finishGate = "";
-
-const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
-  const res = await fetch(`${base}${path}`, {
-    method,
-    headers: body ? { "content-type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return { status: res.status, body: await res.json() };
-};
-const getBot = async (id: string) => (await api("GET", "/api/bots?messages=0")).body.bots.find((b: { id: string }) => b.id === id);
-const threadMessages = async (threadId: string): Promise<Array<{ kind: string; card?: { requestId?: string; answered?: string } }>> =>
-  (await api("GET", `/api/threads/${threadId}/messages`)).body.messages ?? [];
-
-/** Duplicated, not imported: DATA_DIR there is fixed at import time from this process's HOME. Keep in lockstep with claude.ts. */
-function brokerCandidates(threadId: string, botId: string): string[] {
-  const dataDir = join(home, ".quatibot");
-  const prefix = threadId.replace(/[^\w-]/g, "").slice(0, 4);
-  const digest = createHash("sha256").update(`${botId}\0${threadId}`).digest("hex").slice(0, 4);
-  const scope = createHash("sha256").update(`${dataDir}\0${child.pid}\0${botId}\0${threadId}`).digest("hex").slice(0, 16);
-  return [join(dataDir, `perm-${prefix}${digest}.sock`), join(tmpdir(), `quati-perm-${scope}.sock`)];
-}
-
-async function connectBroker(threadId: string, botId: string): Promise<Socket> {
-  await expect.poll(() => brokerCandidates(threadId, botId).some((path) => existsSync(path)), { timeout: 20_000 }).toBe(true);
-  for (const path of brokerCandidates(threadId, botId)) {
-    if (!existsSync(path)) continue;
-    const socket = await new Promise<Socket | null>((resolve) => {
-      const conn = connect(path);
-      conn.once("connect", () => resolve(conn));
-      conn.once("error", () => resolve(null));
+it("a queued self-POST does not lift the running webhook's unattended mark", async () => {
+  const fixture = await launchVerificationServer();
+  const api = async (method: string, path: string, body?: unknown) => {
+    const response = await fetch(`${fixture.info.url}${path}`, {
+      method,
+      headers: { "content-type": "application/json", origin: fixture.info.url },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    if (socket) return socket;
-  }
-  throw new Error(`no broker socket among ${brokerCandidates(threadId, botId).join(", ")}`);
-}
+    return { status: response.status, body: JSON.parse(await response.text()) };
+  };
 
-function ask(conn: Socket, id: string, command: string): { answered: () => boolean } {
-  let answered = false;
-  conn.on("data", (chunk: Buffer) => {
-    for (const line of chunk.toString().split("\n")) {
-      if (!line) continue;
-      try {
-        const msg = JSON.parse(line);
-        if (msg.t === "answer" && msg.id === id) answered = true;
-      } catch {
-      }
-    }
-  });
-  conn.write(JSON.stringify({ t: "ask", id, kind: "permission", tool: "Bash", input: { command } }) + "\n");
-  return { answered: () => answered };
-}
+  try {
+    const cli = join(fixture.info.dataDir, "unattended-opencode.mjs");
+    writeFileSync(cli, [
+      "#!/usr/bin/env node",
+      'process.env.FAKE_ACP_MODE = "controlled";',
+      'process.env.FAKE_ACP_CONTROL_KEY = "thread";',
+      `process.env.FAKE_ACP_CONTROL_DIR = ${JSON.stringify(fixture.info.dataDir)};`,
+      `await import(${JSON.stringify(pathToFileURL(join(process.cwd(), "server/testing/fake-acp-cli.ts")).href)});`,
+    ].join("\n"), { mode: 0o700 });
+    expect((await api("PATCH", "/api/instances/opencodeGo", { cli })).status).toBe(200);
 
-posixOnly("a steered message does not lift the unattended mark on its own", () => {
-  beforeAll(async () => {
-    chmodSync(FAKE_CLAUDE, 0o755);
-    home = mkdtempSync(join(tmpdir(), "quati-steer-unattended-"));
-    const data = join(home, ".quatibot");
-    mkdirSync(data, { recursive: true });
-    finishGate = join(home, "finish.gate");
-    writeFileSync(join(data, "config.json"), JSON.stringify({
-      instances: {
-        claude: {
-          driver: "claudeAgent",
-          environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: finishGate },
-          // acceptEdits: permission asks reach the broker, where a real tool call's ask would arrive.
-          config: { cli: FAKE_CLAUDE, permissionMode: "acceptEdits" },
-        },
-      },
-    }));
-    const port = await freePortBlock([0, 1]);
-    base = `http://127.0.0.1:${port}`;
-    child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
-      cwd: join(SERVER_DIR, ".."),
-      env: {
-        ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-        HOME: home,
-        USERPROFILE: home,
-        QUATI_PORT: String(port),
-        QUATI_WEBHOOK_PORT: String(port + 1),
-        // Under a deep HOME the broker falls back to os.tmpdir(); the child has to agree with this process about where that is.
-        TMPDIR: tmpdir(),
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    child.stderr!.on("data", (chunk) => (stderr += chunk));
-    const deadline = Date.now() + 20_000;
-    for (;;) {
-      if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}: ${stderr}`);
-      try {
-        if ((await fetch(`${base}/api/health`)).ok) break;
-      } catch {
-      }
-      if (Date.now() > deadline) throw new Error(`server never came up. stderr:\n${stderr}`);
-      await new Promise((resolve) => setTimeout(resolve, 150));
-    }
-  }, 40_000);
-
-  afterAll(async () => {
-    writeFileSync(finishGate, "finish");
-    await waitForExit(child, { signal: "SIGTERM" });
-    await removeTempDir(home);
-  });
-
-  it("keeps asking after the turn POSTs into itself with no session", async () => {
     const bot = (await api("GET", "/api/bots?messages=0")).body.bots[0];
-    // auto mode ON: an attended turn would sail straight through
     expect((await api("PATCH", `/api/bots/${bot.id}`, {
-      autoApprove: true,
-      modelSelection: { instanceId: "claude", model: "claude-fake" },
+      approvalMode: "auto", modelSelection: { instanceId: "opencodeGo", model: "fixture/default" },
     })).status).toBe(200);
     const hook = await api("POST", "/api/webhooks", {
-      name: "Nightly build",
-      prompt: "Handle the incoming build event",
-      botId: bot.id,
-      runOn: "quati",
+      name: "Nightly build", prompt: "Handle the incoming build event", botId: bot.id, runOn: "quati",
     });
     expect(hook.status).toBe(201);
     const delivered = await fetch(hook.body.credential.url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ status: "failed" }),
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "failed" }),
     });
     expect(delivered.status).toBe(202);
-    const { runId } = (await delivered.json()) as { runId: string };
+    const { runId } = JSON.parse(await delivered.text());
 
-    // A webhook run activates its task, so the live turn and the default POST target are the same thread.
-    let runThreadId = "";
+    let threadId = "";
     await expect.poll(async () => {
-      const run = ((await api("GET", "/api/routines")).body.runs ?? []).find((r: { id: string }) => r.id === runId);
-      runThreadId = run?.threadId ?? "";
-      return Boolean(runThreadId);
-    }, { timeout: 20_000 }).toBe(true);
-    await expect.poll(async () => (await getBot(bot.id))?.busy === true && (await getBot(bot.id))?.threadId === runThreadId, {
-      timeout: 20_000,
-    }).toBe(true);
+      const run = (await api("GET", "/api/routines")).body.runs.find((candidate: { id: string }) => candidate.id === runId);
+      threadId = run?.threadId ?? "";
+      return threadId && existsSync(join(fixture.info.dataDir, `${threadId}.json`));
+    }, { timeout: 20_000 }).toBeTruthy();
 
-    const conn = await connectBroker(runThreadId, bot.id);
-    try {
-      const steer = await api("POST", `/api/bots/${bot.id}/messages`, { text: "continue" });
-      expect(steer.status).toBe(202);
-      expect(steer.body.steered).toBe(true);
+    const queued = await api("POST", `/api/bots/${bot.id}/messages`, { threadId, text: "continue" });
+    expect(queued.status).toBe(202);
+    expect(queued.body).toMatchObject({ queued: true, threadId });
+    expect(queued.body.steered).toBeUndefined();
 
-      // An ordinary command on purpose: the destructive guard would card `rm -rf` whatever the mark said.
-      const second = ask(conn, "ask-after-steer", "ls -la ./dist");
-      await expect.poll(
-        async () => (await threadMessages(runThreadId)).some((m) => m.kind === "options" && m.card?.requestId === "ask-after-steer"),
-        { timeout: 20_000 },
-      ).toBe(true);
-      const card = (await threadMessages(runThreadId)).find((m) => m.card?.requestId === "ask-after-steer");
-      expect(card?.card?.answered, "the steered turn auto-approved — the self-POST lifted the unattended mark").toBeUndefined();
-      expect(second.answered()).toBe(false);
-    } finally {
-      conn.destroy();
-      writeFileSync(finishGate, "finish");
-      await api("POST", `/api/bots/${bot.id}/interrupt`, {}).catch(() => undefined);
-    }
-  }, 60_000);
-});
+    const key = "unattended-after-queued-post";
+    writeFileSync(join(fixture.info.dataDir, `${threadId}.permission.json`), JSON.stringify({ key, input: { command: "ls -la ./dist" } }));
+    const messages = async () => (await api("GET", `/api/threads/${threadId}/messages`)).body.messages;
+    await expect.poll(async () => (await messages()).some((message: { card?: { requestId?: string } }) => message.card?.requestId), { timeout: 20_000 }).toBe(true);
+    const card = (await messages()).find((message: { card?: { requestId?: string } }) => message.card?.requestId);
+    expect(card.card.answered).toBeUndefined();
+    expect(existsSync(join(fixture.info.dataDir, `${key}.answer`))).toBe(false);
+    expect((await api("DELETE", `/api/bots/${bot.id}/queue/${queued.body.queueId}`, { threadId })).status).toBe(200);
+    expect((await api("POST", `/api/bots/${bot.id}/interrupt`, { threadId })).status).toBe(200);
+  } finally {
+    await fixture.close();
+  }
+}, 60_000);

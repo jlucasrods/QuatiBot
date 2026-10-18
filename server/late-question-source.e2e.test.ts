@@ -1,11 +1,8 @@
-import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { connect, type Socket } from "node:net";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
 
 it("does not retarget a deleted room asker's late answer to the current speaker", async () => {
-  const fixture = await launchVerificationServer({ ...process.env, FAKE_CLAUDE_MODE: "hang" });
+  const fixture = await launchVerificationServer({ FAKE_ACP_MODE: "question" });
   const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
     const response = await fetch(`${fixture.info.url}${path}`, {
       method,
@@ -15,7 +12,6 @@ it("does not retarget a deleted room asker's late answer to the current speaker"
     return { status: response.status, body: await response.json() };
   };
   const cli = (...args: string[]) => runControlQuati(args, { env: { QUATIBOT_URL: fixture.info.url } }) as Promise<any>;
-  let socket: Socket | undefined;
   console.log(`late-question source fixture: ${fixture.info.logPath}`);
   try {
     const original = (await cli("new-bot", "--name", "Original asker")).bot;
@@ -32,25 +28,10 @@ it("does not retarget a deleted room asker's late answer to the current speaker"
       text: "@Original asker: Ask a question", threadId,
     })).status).toBe(202);
     await expect.poll(speaker, { timeout: 15_000 }).toBe(original.id);
-    await expect.poll(() => {
-      try { return JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).mcpConfig?.mcpServers?.quati?.args[1]; }
-      catch { return undefined; }
-    }, { timeout: 5_000 }).toEqual(expect.any(String));
-    const dump = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
-    socket = connect(dump.mcpConfig.mcpServers.quati.args[1]);
-    socket.on("error", () => {});
-    await new Promise<void>((resolve, reject) => {
-      socket!.once("connect", resolve);
-      socket!.once("error", reject);
-    });
-    const requestId = randomUUID();
-    socket.write(JSON.stringify({
-      t: "ask", kind: "question", id: requestId, tool: "AskUserQuestion",
-      input: { questions: [{ question: "Which file should I update?", options: [{ label: "README" }, { label: "Guide" }] }] },
-    }) + "\n");
-    await expect.poll(async () => (await messages()).find(message => message.card?.requestId === requestId),
+    await expect.poll(async () => (await messages()).find(message => message.from?.botId === original.id && message.card?.requestId && !message.card.answered),
       { timeout: 5_000 }).toBeTruthy();
-    const question = (await messages()).find(message => message.card?.requestId === requestId)!;
+    const question = (await messages()).find(message => message.from?.botId === original.id && message.card?.requestId && !message.card.answered)!;
+    const requestId = question.card.requestId;
     expect(question.from.botId).toBe(original.id);
     expect((await api("POST", `/api/groups/${room.id}/interrupt`, {})).status).toBe(200);
     await expect.poll(working, { timeout: 5_000 }).toBe(false);
@@ -62,7 +43,7 @@ it("does not retarget a deleted room asker's late answer to the current speaker"
     })).status).toBe(202);
     await expect.poll(speaker, { timeout: 15_000 }).toBe(current.id);
     const answer = await api("POST", `/api/threads/${threadId}/respond`, {
-      requestId, behavior: "answer", message: "README",
+      requestId, behavior: "answer", message: "Blue",
     });
     expect(answer).toMatchObject({
       status: 409, body: { error: "the bot that asked this question is no longer available" },
@@ -75,7 +56,6 @@ it("does not retarget a deleted room asker's late answer to the current speaker"
     await expect.poll(working, { timeout: 5_000 }).toBe(false);
     expect((await messages()).some(message => message.role === "user" && message.replyToId === question.id)).toBe(false);
   } finally {
-    socket?.destroy();
     await fixture.close();
   }
 }, 45_000);

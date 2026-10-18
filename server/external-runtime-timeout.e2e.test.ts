@@ -13,7 +13,7 @@ it("answers an external caller's long ask at once and lets it poll the slow peer
   const gate = join(scratch, "finish-peer");
   let fixture: VerificationServer | undefined;
   try {
-    fixture = await launchVerificationServer({ ...process.env, FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: gate });
+    fixture = await launchVerificationServer({ FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: gate });
     const session = fixture;
     const control = (...args: string[]) => runControlQuati([...args, "--url", session.info.url]) as Promise<any>;
     const api = async (method: string, path: string, body?: unknown, runtime = false): Promise<any> => {

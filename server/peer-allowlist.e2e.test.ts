@@ -2,16 +2,17 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SERVER_DIR, "..");
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
+const FAKE_ACP = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 const REFUSED = "not an allowed peer";
 const TEST_CAPABILITY_KEY = "peer-allowlist-fixture-capability";
 
@@ -36,12 +37,18 @@ const api = async (
   return { status: response.status, body: await response.json() };
 };
 
-const fixture = (displayName: string, dump?: string) => ({
-  driver: "claudeAgent",
-  displayName,
-  environment: { FAKE_CLAUDE_MODE: "happy", ...(dump ? { FAKE_CLAUDE_DUMP: dump } : {}) },
-  config: { cli: FAKE_CLAUDE },
-});
+const fixture = (displayName: string, dump?: string, mode = "happy") => {
+  const cli = join(home, `${displayName.replace(/\W+/g, "-")}.mjs`);
+  const environment = {
+    FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_AGENT_NAME: "OpenCode",
+    FAKE_ACP_MODELS: "fixture/test", FAKE_ACP_MODE: mode, ...(dump ? { FAKE_ACP_DUMP: dump } : {}),
+  };
+  writeFileSync(cli, ["#!/usr/bin/env node",
+    ...Object.entries(environment).map(([key, value]) => `process.env[${JSON.stringify(key)}] = ${JSON.stringify(value)};`),
+    `await import(${JSON.stringify(pathToFileURL(FAKE_ACP).href)});`,
+  ].join("\n"), { mode: 0o700 });
+  return { driver: "opencodeGo", displayName, config: { cli } };
+};
 
 beforeAll(async () => {
   home = mkdtempSync(join(tmpdir(), "quati-peer-allowlist-"));
@@ -52,19 +59,15 @@ beforeAll(async () => {
   writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>Peer allow-list test</title>");
   askerDump = join(home, "asker-dump.json");
   boundDump = join(home, "bound-dump.json");
+  const discovery = join(data, "providers", "opencode", "discovery");
+  mkdirSync(discovery, { recursive: true });
+  writeFileSync(join(discovery, ".quati-project"), "fixture");
   writeFileSync(join(data, "config.json"), JSON.stringify({
     instances: {
       plain: fixture("Plain fixture"),
-      // The dump is the only place a test can read the real per-turn comms token and a bot's assembled system prompt.
       asker: fixture("Asker fixture", askerDump),
       bound: fixture("Allow-listed fixture", boundDump),
-      // Never finishes: a bot held mid-turn, the one moment its own shell could be the caller behind a loopback PATCH.
-      stuck: {
-        driver: "claudeAgent",
-        displayName: "Stuck fixture",
-        environment: { FAKE_CLAUDE_MODE: "hang" },
-        config: { cli: FAKE_CLAUDE },
-      },
+      stuck: fixture("Stuck fixture", undefined, "hang"),
     },
   }));
   const port = await freePortBlock([0, 1]);
@@ -72,12 +75,7 @@ beforeAll(async () => {
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: ROOT,
     env: {
-      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-      HOME: home,
-      USERPROFILE: home,
-      QUATI_PORT: String(port),
-      QUATI_WEBHOOK_PORT: String(port + 1),
+      ...verificationServerEnvironment({}, data, port), HOME: home,
       QUATI_STATIC_DIR: staticDir,
       QUATI_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,
     },
@@ -95,6 +93,13 @@ beforeAll(async () => {
     if (Date.now() >= deadline) throw new Error(`server never became healthy: ${stderr}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  for (;;) {
+    const instances = (await api("GET", "/api/instances")).body.instances;
+    if (["plain", "asker", "bound", "stuck"].every((id) =>
+      instances.find((instance: { instanceId: string }) => instance.instanceId === id)?.models.options.some((option: { id: string }) => option.id === "fixture/test"))) break;
+    if (Date.now() >= deadline) throw new Error(`Fixture models unavailable: ${JSON.stringify(instances)}`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
 }, 30_000);
 
 afterAll(async () => {
@@ -105,13 +110,15 @@ afterAll(async () => {
 const createBot = async (name: string, instanceId: string) =>
   (await api("POST", "/api/bots", {
     name,
-    modelSelection: { instanceId, model: "claude-sonnet-5" },
+    modelSelection: { instanceId, model: "fixture/test" },
     requireAvailableModel: true,
   })).body.bot;
 
-const readDump = (path: string) => (): { systemPrompt?: string; mcpConfig?: any } | undefined => {
+type NativeTurn = { prompt: Array<{ text?: string }>; mcpServers: Array<{ name: string; env?: Array<{ name: string; value: string }> }> };
+const readDump = (path: string) => (): NativeTurn | undefined => {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    const turns: NativeTurn[] = readFileSync(`${path}.prompts.jsonl`, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    return turns.findLast((turn) => turn.mcpServers.some((server) => server.name === "agents"));
   } catch {
     return undefined;
   }
@@ -240,12 +247,12 @@ describe("peer allow-list", () => {
     const patch = await createBot("Patch", "plain");
 
     try {
-      rmSync(askerDump, { force: true });
+      rmSync(`${askerDump}.prompts.jsonl`, { force: true });
       expect((await api("POST", `/api/bots/${asker.id}/messages`, { text: "Warm up" })).status).toBe(202);
-      await expect.poll(() => readDump(askerDump)()?.systemPrompt, { timeout: 10_000 }).toBeTruthy();
+      await expect.poll(() => readDump(askerDump)()?.prompt.length, { timeout: 10_000 }).toBeTruthy();
       const dump = readDump(askerDump)()!;
 
-      const systemPrompt = String(dump.systemPrompt);
+      const systemPrompt = dump.prompt.map((block) => block.text ?? "").join("\n");
       expect(systemPrompt).toContain("[TEAM ROSTER]");
       expect(systemPrompt).toContain(`- Quill — General assistant [id: ${quill.id}]`);
       expect(systemPrompt).toContain(`- Patch — General assistant [id: ${patch.id}]`);
@@ -256,9 +263,9 @@ describe("peer allow-list", () => {
       expect(systemPrompt).not.toContain("Use delegate_bot");
       expect(systemPrompt).not.toContain("use ask_bot");
       expect(systemPrompt).not.toContain("create_bot");
-      expect(systemPrompt).toContain("[/TEAM ROSTER] If a supported API key is missing");
+      expect(systemPrompt).toContain("[/TEAM ROSTER] If a supported auxiliary API key is missing");
 
-      const providerToken = String(dump.mcpConfig?.mcpServers?.agents?.env?.QUATI_COMMS_TOKEN ?? "");
+      const providerToken = dump.mcpServers.find((server) => server.name === "agents")?.env?.find((entry) => entry.name === "QUATI_COMMS_TOKEN")?.value ?? "";
       expect(providerToken).toMatch(/^[a-f0-9]{48}$/);
       await expect.poll(() => botBusy(asker.id)).toBe(false);
       const token = await mintCapability(asker.id, asker.threadId);
@@ -328,9 +335,9 @@ describe("peer allow-list", () => {
     try {
       expect((await api("PATCH", `/api/bots/${bound.id}`, { peers: [near.id] })).status).toBe(200);
       expect((await api("POST", `/api/bots/${bound.id}/messages`, { text: "Warm up" })).status).toBe(202);
-      await expect.poll(() => readDump(boundDump)()?.systemPrompt, { timeout: 10_000 }).toBeTruthy();
+      await expect.poll(() => readDump(boundDump)()?.prompt.length, { timeout: 10_000 }).toBeTruthy();
 
-      const systemPrompt = String(readDump(boundDump)()!.systemPrompt);
+      const systemPrompt = readDump(boundDump)()!.prompt.map((block) => block.text ?? "").join("\n");
       expect(systemPrompt).toContain(`- Near — General assistant [id: ${near.id}]`);
       expect(systemPrompt).not.toContain("Farside");
     } finally {
@@ -348,10 +355,10 @@ describe("peer allow-list", () => {
     const helper = await createBot("Hedge", "plain");
 
     try {
-      rmSync(askerDump, { force: true });
+      rmSync(`${askerDump}.prompts.jsonl`, { force: true });
       await warmUp(asker.id);
-      await expect.poll(() => readDump(askerDump)()?.mcpConfig, { timeout: 10_000 }).toBeTruthy();
-      const providerToken = String(readDump(askerDump)()!.mcpConfig?.mcpServers?.agents?.env?.QUATI_COMMS_TOKEN ?? "");
+      await expect.poll(() => readDump(askerDump)()?.mcpServers.length, { timeout: 10_000 }).toBeTruthy();
+      const providerToken = readDump(askerDump)()!.mcpServers.find((server) => server.name === "agents")?.env?.find((entry) => entry.name === "QUATI_COMMS_TOKEN")?.value ?? "";
       expect(providerToken).toMatch(/^[a-f0-9]{48}$/);
       const token = await mintCapability(asker.id, asker.threadId);
       expect((await api("PATCH", `/api/bots/${asker.id}`, { approvePeerComms: true, approvalMode: "ask" })).status).toBe(200);

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
@@ -23,19 +23,7 @@ it("boots and reports an interrupted routine back to its source room", async () 
       botId: bot.id, target: "bot", runOn: "quati", sourceThreadId: channel.activeTaskId,
       status: "running", prompt: "Report once", createdAt: Date.now(), scheduledFor: Date.now(),
     }] }));
-    const env: NodeJS.ProcessEnv = {};
-    for (const key of ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"]) {
-      if (process.env[key]) env[key] = process.env[key];
-    }
-    Object.assign(env, {
-      HOME: dataDir, USERPROFILE: dataDir, QUATI_DATA_DIR: dataDir,
-      APPDATA: join(dataDir, "AppData", "Roaming"), LOCALAPPDATA: join(dataDir, "AppData", "Local"),
-      XDG_CONFIG_HOME: join(dataDir, ".config"), XDG_CACHE_HOME: join(dataDir, ".cache"),
-      XDG_DATA_HOME: join(dataDir, ".local", "share"), HERMES_HOME: join(dataDir, ".hermes"),
-      TEMP: join(dataDir, "tmp"), TMP: join(dataDir, "tmp"), TMPDIR: join(dataDir, "tmp"),
-      QUATI_PORT: new URL(url).port, QUATI_WEBHOOK_PORT: String(Number(new URL(url).port) + 1),
-      PATH: dirname(process.execPath), FAKE_CLAUDE_MODE: "happy",
-    });
+    const env = verificationServerEnvironment({}, dataDir, Number(new URL(url).port));
     const log = openSync(logPath, "a", 0o600);
     restarted = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
       cwd: fileURLToPath(new URL("..", import.meta.url)), env, stdio: ["ignore", log, log],
@@ -83,7 +71,7 @@ it("keeps a routine waiting through a restart, reruns its cut teammate once, and
     const log = openSync(logPath, "a", 0o600);
     restarted = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
       cwd: fileURLToPath(new URL("..", import.meta.url)),
-      env: { ...verificationServerEnvironment(process.env, dataDir, Number(new URL(url).port)), FAKE_CLAUDE_MODE: "happy" },
+      env: verificationServerEnvironment({}, dataDir, Number(new URL(url).port)),
       stdio: ["ignore", log, log],
     });
     closeSync(log);
@@ -97,11 +85,11 @@ it("keeps a routine waiting through a restart, reruns its cut teammate once, and
     expect(await run()).toMatchObject({ status: "waiting" });
     expect((await run()).error).toBeUndefined();
     await expect.poll(() => nodes().find((n: any) => n.id === "cut-work")?.status, { timeout: 20_000 }).toBe("completed");
-    expect(nodes().find((n: any) => n.id === "cut-work")).toMatchObject({ restarts: 1, executions: 1, result: expect.stringContaining("hello from fake claude") });
+    expect(nodes().find((n: any) => n.id === "cut-work")).toMatchObject({ restarts: 1, executions: 1, result: expect.stringContaining("hello from fake acp") });
     const mates = (await request(`/api/threads/${mate.activeTaskId}/messages`, {}, url) as any).messages as any[];
     expect(mates.filter((m) => m.tool?.name === "Resuming after a restart")).toHaveLength(1);
     await expect.poll(async () => (await run())?.status, { timeout: 30_000 }).toBe("completed");
-    expect((await run()).output).toContain("hello from fake claude");
+    expect((await run()).output).toBe("woke after delegation: saw the result");
     await expect.poll(() => nodes().find((n: any) => n.id === "cut-root")?.status, { timeout: 15_000 }).toBe("completed");
     const chiefs = (await request(`/api/threads/${chief.activeTaskId}/messages`, {}, url) as any).messages as any[];
     expect(chiefs.some((m) => m.tool?.name === "Mira was cut off by a restart; resuming")).toBe(true);

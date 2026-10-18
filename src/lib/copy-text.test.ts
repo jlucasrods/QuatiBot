@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { COPY_FEEDBACK_MS, WEB_WRITE_TIMEOUT_MS, copyText, createCopyFeedback, type CopyFeedback, type CopyResult } from "./copy-text";
 
-const setEnv = (writeText: ((t: string) => Promise<void>) | undefined, bridge?: (t: string) => Promise<boolean>) => {
+const setEnv = (writeText: ((t: string) => Promise<void>) | undefined) => {
   vi.stubGlobal("navigator", writeText ? { clipboard: { writeText } } : {});
-  vi.stubGlobal("window", { quati: bridge ? { copyText: bridge } : undefined });
 };
 
 afterEach(() => {
@@ -12,48 +11,28 @@ afterEach(() => {
 });
 
 describe("copyText", () => {
-  it("awaits the web clipboard and reports success without touching the bridge", async () => {
+  it("awaits the web clipboard and reports success", async () => {
     const writeText = vi.fn(async () => {});
-    const bridge = vi.fn(async () => true);
-    setEnv(writeText, bridge);
+    setEnv(writeText);
     expect(await copyText("hello")).toBe("copied");
     expect(writeText).toHaveBeenCalledWith("hello");
-    expect(bridge).not.toHaveBeenCalled();
   });
 
-  it("falls back to the Electron bridge when the web clipboard rejects", async () => {
-    const bridge = vi.fn(async () => true);
-    setEnv(async () => { throw new DOMException("denied", "NotAllowedError"); }, bridge);
-    expect(await copyText("hello")).toBe("copied");
-    expect(bridge).toHaveBeenCalledWith("hello");
-  });
-
-  it("falls back to the bridge when navigator.clipboard is absent (insecure context)", async () => {
-    const bridge = vi.fn(async () => true);
-    setEnv(undefined, bridge);
-    expect(await copyText("hello")).toBe("copied");
-  });
-
-  it("reports failure when the web clipboard rejects and no bridge exists", async () => {
-    setEnv(async () => { throw new Error("denied"); });
+  it.each([
+    { reason: "missing clipboard", writeText: undefined },
+    { reason: "permission denied", writeText: async () => { throw new DOMException("denied", "NotAllowedError"); } },
+    { reason: "write rejected", writeText: async () => { throw new Error("denied"); } },
+  ])("reports failure for $reason", async ({ writeText }) => {
+    setEnv(writeText);
     expect(await copyText("hello")).toBe("failed");
-  });
-
-  it("reports failure when the bridge declines or throws", async () => {
-    setEnv(async () => { throw new Error("denied"); }, async () => false);
-    expect(await copyText("x")).toBe("failed");
-    setEnv(async () => { throw new Error("denied"); }, async () => { throw new Error("ipc"); });
-    expect(await copyText("x")).toBe("failed");
   });
 
   it("treats empty or blank text as empty and writes nothing", async () => {
     const writeText = vi.fn(async () => {});
-    const bridge = vi.fn(async () => true);
-    setEnv(writeText, bridge);
+    setEnv(writeText);
     expect(await copyText("")).toBe("empty");
     expect(await copyText("  \n ")).toBe("empty");
     expect(writeText).not.toHaveBeenCalled();
-    expect(bridge).not.toHaveBeenCalled();
   });
 });
 
@@ -141,20 +120,7 @@ describe("a web write that never settles", () => {
     return { writeText, resolveLate: () => resolveLate(), rejectLate: (error: Error) => rejectLate(error) };
   };
 
-  it("times out and uses the bridge", async () => {
-    const web = hung();
-    const bridge = vi.fn(async () => true);
-    setEnv(web.writeText, bridge);
-    const result = copyText("hello");
-    await vi.advanceTimersByTimeAsync(WEB_WRITE_TIMEOUT_MS - 1);
-    expect(bridge).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
-    expect(await result).toBe("copied");
-    expect(bridge).toHaveBeenCalledWith("hello");
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it("times out to failed when there is no bridge", async () => {
+  it("times out to failed", async () => {
     const web = hung();
     setEnv(web.writeText);
     const result = copyText("hello");
@@ -165,7 +131,7 @@ describe("a web write that never settles", () => {
 
   it("keeps the settled outcome when the web write resolves or rejects late", async () => {
     const web = hung();
-    setEnv(web.writeText, async () => false);
+    setEnv(web.writeText);
     const states: CopyFeedback[] = [];
     const feedback = createCopyFeedback({ copy: copyText, onChange: (s) => states.push(s) });
     const click = feedback.click("hello");
@@ -187,24 +153,24 @@ describe("a web write that never settles", () => {
 
   it("a second click while the hung write is pending is busy, and works after it settles", async () => {
     const web = hung();
-    setEnv(web.writeText, async () => true);
+    setEnv(web.writeText);
     const states: CopyFeedback[] = [];
     const feedback = createCopyFeedback({ copy: copyText, onChange: (s) => states.push(s) });
     const first = feedback.click("a");
     expect(await feedback.click("a")).toBe("busy");
     expect(web.writeText).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(WEB_WRITE_TIMEOUT_MS);
-    expect(await first).toBe("copied");
-    expect(states).toEqual(["copied"]);
+    expect(await first).toBe("failed");
+    expect(states).toEqual(["failed"]);
     const again = feedback.click("a"); // not stuck busy: a new attempt starts (and times out the same way)
     expect(web.writeText).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(WEB_WRITE_TIMEOUT_MS);
-    expect(await again).toBe("copied");
+    expect(await again).toBe("failed");
   });
 
   it("dispose during the timeout means no late onChange", async () => {
     const web = hung();
-    setEnv(web.writeText, async () => true);
+    setEnv(web.writeText);
     const states: CopyFeedback[] = [];
     const feedback = createCopyFeedback({ copy: copyText, onChange: (s) => states.push(s) });
     const click = feedback.click("a");

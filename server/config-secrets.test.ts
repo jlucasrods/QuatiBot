@@ -24,6 +24,21 @@ it("persists encrypted auxiliary credentials without touching an old desktop vau
   }
 });
 
+it.each([
+  { before: undefined, after: "first", changed: true },
+  { before: undefined, after: "", changed: false },
+  { before: "first", after: "first", changed: false },
+  { before: "first", after: "second", changed: true },
+  { before: "first", after: "", changed: true },
+])("reports changed credential field paths for $before → $after without their values", ({ before, after, changed }) => {
+  const home = mkdtempSync(join(tmpdir(), "quati-server-secrets-"));
+  homes.push(home);
+  if (before !== undefined) saveConfigSecrets(home, { imageGen: { key: before } });
+
+  expect(saveConfigSecrets(home, { imageGen: { key: after } })).toEqual(changed ? ["imageGen.key"] : []);
+  expect(readConfigSecrets(home)).toEqual({ imageGen: { key: after } });
+});
+
 it.each(["missing", "wrong", "malformed"])("refuses reads and writes with a %s vault key", (key) => {
   const home = mkdtempSync(join(tmpdir(), "quati-server-secrets-"));
   homes.push(home);

@@ -44,6 +44,7 @@ afterAll(() => waitForExit(child, { signal: "SIGINT", graceMs: 30_000 }));
 
   const startupBox = `document.querySelector('input[aria-label="Also run when QuatiBot starts"]')`;
 
+  await evaluate("localStorage.setItem('quati-advanced-mode', '1'); window.dispatchEvent(new StorageEvent('storage', { key: 'quati-advanced-mode' })); true");
   await click("Routines"); await click("New routine");
   await fill('input[placeholder="Add title"]', "Monthly close");
   await fill('textarea[placeholder="What should the bot do?"]', "Summarize this fixture only.");
@@ -54,8 +55,7 @@ afterAll(() => waitForExit(child, { signal: "SIGINT", graceMs: 30_000 }));
   for (const choice of ["monthly", "yearly", "cron"]) expect(callOptions).not.toContain(choice);
   await click("Routine");
   expect(await evaluate("document.body.innerText")).toContain("Bot’s current setup");
-  expect(await evaluate("document.body.innerText")).toContain("Runs the whole job on the bot's cloud computer");
-  expect(await evaluate("document.body.innerText")).toContain("including a self-hosted VPS");
+  expect(await evaluate("document.body.innerText")).toContain("Keeps its model and configured computer.");
   expect(await repeatOptions()).toEqual(expect.arrayContaining(["monthly", "yearly", "cron"]));
   // A one-time routine has no schedule to run beside, so it isn't offered.
   expect(await evaluate(`${startupBox} === null`)).toBe(true);
@@ -82,7 +82,7 @@ afterAll(() => waitForExit(child, { signal: "SIGINT", graceMs: 30_000 }));
   await click("Schedule routine");
   await expect.poll(routines).toHaveLength(1);
   const monthly = (await routines())[0];
-  expect(monthly).toMatchObject({ name: "Monthly close", overlap: "queue", runOnStartup: true, prompt: "Summarize this fixture only.", schedule: { type: "cron", expression: "0 9 L * *", timeZone: "UTC" } });
+  expect(monthly).toMatchObject({ name: "Monthly close", runOn: "quati", overlap: "queue", runOnStartup: true, prompt: "Summarize this fixture only.", schedule: { type: "cron", expression: "0 9 L * *", timeZone: "UTC" } });
   await click("List");
   await evaluate("document.querySelector('article[aria-label=\"Monthly close\"] button').click()");
   await click("Edit");

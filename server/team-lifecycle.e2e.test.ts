@@ -1,9 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
+import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 
 it("retains empty teams, moves existing bots, and keeps legacy imports additive through restart", async () => {
@@ -75,19 +75,7 @@ it("retains empty teams, moves existing bots, and keeps legacy imports additive 
     await api("/api/sidebar-sections?section=missing", "DELETE", undefined, 404);
 
     await waitForExit(fixture.child, { signal: "SIGTERM" });
-    const env: NodeJS.ProcessEnv = {};
-    for (const key of ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"]) {
-      if (process.env[key]) env[key] = process.env[key];
-    }
-    Object.assign(env, {
-      HOME: dataDir, USERPROFILE: dataDir, QUATI_DATA_DIR: dataDir,
-      APPDATA: join(dataDir, "AppData", "Roaming"), LOCALAPPDATA: join(dataDir, "AppData", "Local"),
-      XDG_CONFIG_HOME: join(dataDir, ".config"), XDG_CACHE_HOME: join(dataDir, ".cache"),
-      XDG_DATA_HOME: join(dataDir, ".local", "share"), HERMES_HOME: join(dataDir, ".hermes"),
-      TEMP: join(dataDir, "tmp"), TMP: join(dataDir, "tmp"), TMPDIR: join(dataDir, "tmp"),
-      QUATI_PORT: new URL(url).port, QUATI_WEBHOOK_PORT: String(Number(new URL(url).port) + 1),
-      PATH: dirname(process.execPath), FAKE_CLAUDE_MODE: "happy",
-    });
+    const env = verificationServerEnvironment({}, dataDir, Number(new URL(url).port));
     const restartFixture = async () => {
       const log = openSync(logPath, "a", 0o600);
       restarted = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
@@ -98,6 +86,9 @@ it("retains empty teams, moves existing bots, and keeps legacy imports additive 
         if (restarted?.exitCode !== null) throw new Error(readFileSync(logPath, "utf8"));
         return fetch(url + "/api/health").then(response => response.ok).catch(() => false);
       }, { timeout: 15_000, interval: 150 }).toBe(true);
+      await expect.poll(async () => (await api("/api/instances")).instances
+        .find((instance: { instanceId: string }) => instance.instanceId === "opencodeGo")?.models?.options
+        ?.some((model: { id: string }) => model.id === "fixture/default"), { timeout: 15_000 }).toBe(true);
     };
     await restartFixture();
     const state = await api("/api/bots?messages=0");

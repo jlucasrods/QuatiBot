@@ -5,10 +5,8 @@ vi.hoisted(() => vi.stubGlobal("window", {}));
 const { activityPreview, botEngine, failedTurnCause, signedOutEngine } = await import("./failed-turn");
 
 const engine = (patch: Partial<InstanceInfo> = {}, snapshot: Partial<InstanceInfo["snapshot"]> = {}): InstanceInfo => ({
-  instanceId: "claude", driverKind: "claudeAgent", displayName: "Claude",
-  install: { command: { darwin: "x", linux: "x", win32: "x" }, signInCommand: "claude /login", server: { package: "@anthropic-ai/claude-code" } },
-  authentication: { method: "paste-code" },
-  models: { default: "sonnet", options: [] },
+  instanceId: "opencodeGo", driverKind: "opencodeGo", displayName: "OpenCode",
+  models: { default: "fixture/test", options: [] },
   ...patch,
   snapshot: { state: "available", authenticated: false, ...snapshot },
 } as InstanceInfo);
@@ -24,24 +22,12 @@ describe("failed turn text", () => {
   it("says a signed-out engine is signed out instead of the CLI's /login instruction", () => {
     const claude = engine();
     expect(signedOutEngine(loginRow, claude)).toBe(claude);
-    expect(activityPreview(loginRow, engine())).toBe("Claude isn't signed in");
-  });
-
-  it("says Grok Build is signed out through the same rule, now that its card is the in-app code", () => {
-    const grokRow = { name: "error: Grok is not signed in to your grok.com account — choose Sign in to Grok in engine setup", ok: false, setup: true };
-    const grok = engine({
-      instanceId: "grok", driverKind: "grokAgent", displayName: "Grok", authentication: { method: "device-code" },
-      install: { command: { darwin: "curl -fsSL https://x.ai/cli/install.sh | bash", linux: "curl -fsSL https://x.ai/cli/install.sh | bash" }, signInCommand: "grok login" },
-    } as Partial<InstanceInfo>);
-    expect(signedOutEngine(grokRow, grok)).toBe(grok);
-    expect(activityPreview(grokRow, grok)).toBe("Grok isn't signed in");
-    const missing = { ...grok, snapshot: { state: "unavailable" as const, reason: "`grok` CLI not found" } };
-    expect(signedOutEngine(grokRow, missing)).toBeUndefined();
+    expect(activityPreview(loginRow, engine())).toBe("OpenCode isn't signed in");
   });
 
   it("keeps the engine's words when there is no sign-in to offer", () => {
     expect(activityPreview(loginRow, engine({}, { authenticated: true }))).toBe("Not logged in · Please run /login");
-    const keyed = engine({ driverKind: "opencode", access: "api" } as Partial<InstanceInfo>, { version: "1" });
+    const keyed = engine({}, { state: "unavailable" });
     expect(activityPreview({ ...loginRow, name: "error: Add your key in Settings → API keys" }, keyed)).toBe("Add your key in Settings → API keys");
     expect(signedOutEngine(loginRow, keyed)).toBeUndefined();
     expect(activityPreview({ name: "error: rate limited", ok: false }, engine())).toBe("rate limited");
@@ -83,7 +69,7 @@ describe("failed turn text", () => {
 
   it("finds the engine a bot's turns ran on", () => {
     const claude = engine();
-    const bot = { modelSelection: { instanceId: "claude", model: "sonnet" } } as Bot;
+    const bot = { modelSelection: { instanceId: "opencodeGo", model: "fixture/test" } } as Bot;
     expect(botEngine(bot, [claude])).toBe(claude);
     expect(botEngine(undefined, [claude])).toBeUndefined();
   });

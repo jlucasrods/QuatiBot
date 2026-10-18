@@ -22,12 +22,8 @@ import {
   type LogSignal, type ProcessSample, type QuietState,
 } from "./quiet-status.ts";
 import { readSessionReport } from "./session-reports.ts";
-
-/** A catalog can contain credential-bearing native configuration, including late replies. */
-export function acpNativeIncomingLogMessage(message: any, privateResponses: ReadonlySet<number>): unknown {
-  if (!privateResponses.has(message?.id)) return message;
-  return { jsonrpc: message.jsonrpc, id: message.id, ...(message.error !== undefined ? { error: "[MCP catalog error omitted]" } : { result: "[MCP catalog omitted]" }) };
-}
+import { acpNativeIncomingLogMessage, sanitizeAcpToolMessage } from "./native-log.ts";
+export { acpNativeIncomingLogMessage } from "./native-log.ts";
 
 import type {
   DriverCreateInput,
@@ -62,6 +58,9 @@ import { sessionIdlePolicy } from "../session-idle.ts";
 import { classifyError } from "../retry.ts";
 import { narrowsNativeTools, parseToolScope } from "../../../shared/tool-scope.ts";
 import { turnStdioMcpServers } from "../turn-mcp.ts";
+import { agentsToolBridged } from "../agents-bridge.ts";
+import { bridgedCallName } from "../../agents-bridge-names.ts";
+import { isClientCancellation } from "../../../shared/client-cancel.ts";
 
 /** Failures fixed on the provider account, not by retrying; the reporting process stays pooled. */
 export type AccountErrorCode = Extract<ProviderErrorCode,
@@ -87,7 +86,9 @@ function acpRpcError(value: any, method: string): Error {
     typeof data?.service === "string" ? `service: ${data.service}` : "",
     typeof data?.errorName === "string" ? data.errorName : "",
   ].filter(Boolean).join(", ");
-  const diagnostic = `${detail && detail !== message ? `${message}: ${detail}` : message} (${context})`;
+  const diagnostic = isClientCancellation(message) && (!detail || detail === message)
+    ? message
+    : `${detail && detail !== message ? `${message}: ${detail}` : message} (${context})`;
   const error = new Error(redactSecretsInText(diagnostic).slice(0, 1500));
   return Object.assign(error, { code: value?.code, data,
     // -32603 is JSON-RPC's internal error; invalid params, unsupported methods and auth refusals keep the session.
@@ -163,6 +164,7 @@ interface AcpSession {
   authenticated: boolean;
   idleTimer: ReturnType<typeof setTimeout> | null;
   closing: boolean;
+  stopping: Promise<boolean> | null;
   dead: boolean;
   stderr: string;
   current: AcpTurn | null;
@@ -382,8 +384,6 @@ function acpVariantOption(result: any): { configId: string; options: ModelVarian
     ...(typeof option.currentValue === "string" ? { currentValue: option.currentValue } : {}),
   };
 }
-const TOOL_LOG_TEXT_LIMIT = 64_000;
-
 export function offeredModels(result: any, configId: string): string[] {
   const option = (Array.isArray(result?.configOptions) ? result.configOptions : []).find(
     (entry: any) => entry?.id === configId,
@@ -406,39 +406,6 @@ async function readAcpImageBlocks(images: readonly TurnImageInput[]) {
     data: (await readFile(image.path)).toString("base64"),
     mimeType: image.mime,
   })));
-}
-
-function sanitizeToolLogValue(value: unknown, budget: { nodes: number; text: number }, depth = 0): unknown {
-  if (depth > 12 || budget.nodes-- <= 0) return undefined;
-  if (typeof value === "string") {
-    if (/^data:image\//iu.test(value) || budget.text <= 0) return undefined;
-    const limit = Math.min(TOOL_LOG_TEXT_LIMIT, budget.text);
-    const text = value.length <= limit ? value : `[Earlier output truncated]\n\n${value.slice(-limit)}`;
-    budget.text -= text.length;
-    return text;
-  }
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => {
-      const sanitized = sanitizeToolLogValue(entry, budget, depth + 1);
-      return sanitized === undefined ? [] : [sanitized];
-    });
-  }
-  if (!value || typeof value !== "object") return value;
-  const record = value as Record<string, unknown>;
-  return Object.fromEntries(Object.entries(record).flatMap(([key, entry]) => {
-    if ((record.type === "image" && (key === "data" || key === "blob")) ||
-      (key === "blob" && typeof record.mimeType === "string" && record.mimeType.startsWith("image/"))) return [];
-    const sanitized = sanitizeToolLogValue(entry, budget, depth + 1);
-    return sanitized === undefined ? [] : [[key, sanitized]];
-  }));
-}
-
-function sanitizeAcpToolMessage(message: any): unknown {
-  const isToolUpdate = message?.method === "session/update"
-    && ["tool_call", "tool_call_update"].includes(message?.params?.update?.sessionUpdate);
-  const isPermission = message?.method === "session/request_permission";
-  if (!isToolUpdate && !isPermission) return message;
-  return sanitizeToolLogValue(message, { nodes: 512, text: TOOL_LOG_TEXT_LIMIT });
 }
 
 function decodeAcpConfig(defaultCli: string) {
@@ -572,6 +539,9 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         const session = sessions.get(threadId);
         if (!session || session.closing) return;
         session.closing = true;
+        if (["stop", "cancel-timeout", "stopAll", "dispose"].includes(why)) {
+          session.stopping = retireChild(threadId, session.child);
+        }
         if (session.idleTimer) clearTimeout(session.idleTimer);
         appendNative(threadId, { dir: "out", source: SOURCE, msg: { close: why } });
         sessions.delete(threadId);
@@ -580,6 +550,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         try {
           session.child.stdin.end();
         } catch {}
+        if (session.stopping) return;
         if (support.restartOnMcpChange) void retireChild(threadId, session.child);
         else {
           const kill = setTimeout(() => {
@@ -732,6 +703,14 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
       const settle = (threadId: string, session: AcpSession, ok: boolean, stopReason: string | null) => {
         const current = session.current;
         if (!current || current.state.settled) return;
+        if (session.stopping) {
+          void session.stopping.then((stopped) => {
+            if (!stopped) return;
+            session.stopping = null;
+            settle(threadId, session, ok, stopReason);
+          });
+          return;
+        }
         current.state.settled = true;
         current.acknowledge();
         current.stopQuietWatch?.();
@@ -746,6 +725,10 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
       // and still answer end_turn.
         let finalOk = ok;
         let finalStopReason = stopReason;
+        if (current.state.stopped) {
+          finalOk = true;
+          finalStopReason = "cancelled";
+        }
         if (finalOk && finalStopReason === null && !current.state.producedItem) {
           finalOk = false;
           finalStopReason = "empty_turn";
@@ -1120,12 +1103,14 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             case "tool_call": {
               current.flushAssistantText();
               trackRunningTool(current, u, "pending");
+              const title = u.kind === "execute" ? "shell" : String(u.rawInput?.command ?? u.title ?? "tool").slice(0, 80);
               emit({
                 ...base(threadId, current.turnId),
                 type: "item.started",
                 itemType: "tool",
                 itemId: (typeof u.toolCallId === "string" && u.toolCallId) ? u.toolCallId : nextUnkeyedToolId(current),
-                title: String(u.rawInput?.command ?? u.title ?? "tool").slice(0, 80),
+                title: agentsToolBridged(current.turn.integrations?.agents) && current.turn.toolScope === undefined
+                  ? bridgedCallName(title, u.rawInput, { serverNamed: true }) : title,
                 summary: commandSummary(u.rawInput),
                 input: toolDetailPreview(u.rawInput),
               });
@@ -1178,6 +1163,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           authenticated: false,
           idleTimer: null,
           closing: false,
+          stopping: null,
           dead: false,
           stderr: "",
           current: null,
@@ -1243,6 +1229,10 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           session.dead = true;
           const current = session.current;
           if (!current) return;
+          if (current.state.stopped) {
+            settle(threadId, session, true, "cancelled");
+            return;
+          }
           emit({ ...base(threadId, current.turnId), type: "runtime.error", ...describeSpawnFailure(e, launch.command, cwd) });
           settle(threadId, session, false, "spawn_error");
         });
@@ -1250,11 +1240,13 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           session.dead = true;
           const current = session.current;
           if (current) {
-            emit({
-              ...base(threadId, current.turnId),
-              type: "runtime.error",
-              message: `${DRIVER_KIND} exited ${code} before the prompt result${session.stderr ? `: ${session.stderr.trim().slice(-300)}` : ""}`,
-            });
+            if (!current.state.stopped) {
+              emit({
+                ...base(threadId, current.turnId),
+                type: "runtime.error",
+                message: `${DRIVER_KIND} exited ${code} before the prompt result${session.stderr ? `: ${session.stderr.trim().slice(-300)}` : ""}`,
+              });
+            }
             settle(threadId, session, false, "exit_before_result");
           } else if (sessions.get(threadId) === session) {
             // The identity check keeps an old child's exit from unlinking its replacement.
@@ -1447,6 +1439,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         };
 
         const interrupt = () => {
+          if (state.stopped) return;
           state.stopped = true;
           if (session.sessionId) {
             session.acp.send({ jsonrpc: "2.0", method: "session/cancel", params: { sessionId: session.sessionId } });
@@ -1820,6 +1813,10 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             }
             if (!state.settled) {
               const message = e instanceof Error ? e.message : String(e);
+              if (state.stopped) {
+                settle(threadId, session, true, "cancelled");
+                return;
+              }
               const code = support.classifyError?.(e);
               const needsAuth = code === "invalid_credentials" || code === "inactive_subscription"
                 || code === "insufficient_funds" || message === support.loginNote;

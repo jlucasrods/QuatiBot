@@ -302,10 +302,10 @@ it("times out an upstream that never answers the handshake", async () => {
   expect((await open()).status).toBe(502);
 }, 13_000);
 
-it("preserves local desktop URLs and removes passwords from paired viewer links", () => {
+it("uses authenticated viewer links without passwords for local and paired clients", () => {
   const original = { target_key: targets[1].key, viewer_url: "http://127.0.0.1:49152/vnc.html#password=secret" };
   const local: RequestAuth = { kind: "loopback", scopes: ["admin", "client"] };
-  expect(localVmViewerStatus(original, local)).toBe(original);
+  expect(localVmViewerStatus(original, local).viewer_url).toBe(desktopViewerUrl(viewerTargetId(targets[1])));
   const remote: RequestAuth = { kind: "session", session: sessions.authenticate(admin.token)!, via: "cookie", scopes: admin.session.scopes };
   expect(localVmViewerStatus(original, remote).viewer_url).toBe(desktopViewerUrl(viewerTargetId(targets[1])));
 });

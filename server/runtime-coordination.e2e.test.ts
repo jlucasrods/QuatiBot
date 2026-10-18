@@ -44,7 +44,7 @@ function readRuntimeDb(dataDir: string): RuntimeDb {
 const chipText = (message: any): string => [message.tool?.name, message.tool?.output, message.text].filter(Boolean).join("\n");
 
 async function scenario(test: (f: any) => Promise<void>) {
-  const parentEnv: NodeJS.ProcessEnv = { ...process.env };
+  const parentEnv: NodeJS.ProcessEnv = {};
   const session = await launchVerificationServer(parentEnv, undefined, undefined, undefined, undefined, { scripted: true });
   const url = session.info.url;
   const dataDir = session.info.dataDir;
@@ -84,7 +84,7 @@ async function scenario(test: (f: any) => Promise<void>) {
     const turns = (botId?: string): any[] => jsonl(`${planPath}.evidence.jsonl`).filter((turn) => !botId || turn.botId === botId);
     const turn = (key: string) => turns().find((candidate) => candidate.planKey === key);
     const own = (record: any): string => ownTurnText(record?.prompt);
-    const body = (record: any): string => own(record).replace(/^\s*Current time when this message was sent:[^\n]*\n+/, "");
+    const body = (record: any): string => own(record).replace(/^[\s\S]*?Current time when this message was sent:[^\n]*\n+/, "");
     const told = (record: any): string => `${record?.system ?? ""}\n${JSON.stringify(record?.prompt ?? "")}`;
     const messages = async (threadId: string): Promise<any[]> => (await api("GET", `/api/threads/${threadId}/messages?limit=300`)).body.messages ?? [];
     const chips = async (threadId: string, text: string) => (await messages(threadId)).filter((message) => chipText(message).includes(text));
@@ -103,6 +103,7 @@ async function scenario(test: (f: any) => Promise<void>) {
     const restart = async (signal: NodeJS.Signals) => {
       await waitForExit(server, { signal });
       const env = verificationServerEnvironment(parentEnv, dataDir, Number(new URL(url).port));
+      env.FAKE_ACP_ROOM_PLAN = planPath;
       const log = openSync(session.info.logPath, "a", 0o600);
       server = spawn(process.execPath, verificationServerArgs(env), { cwd: ROOT, env, stdio: ["ignore", log, log] });
       restarted = true;

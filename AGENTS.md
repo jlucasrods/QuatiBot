@@ -4,6 +4,16 @@ Before claiming a server or conversation change works, follow
 [`docs/verification/README.md`](docs/verification/README.md). Always launch an
 isolated fixture; never verify mutations against the user's live app or data.
 
+## Before every commit
+
+Run `pnpm ci:local` from the repository root before committing. It forces a fresh
+TypeScript check and runs four application-test shards in parallel, offline evals, packaged smoke
+and real UI/browser checks in disposable environments. Linux, Node.js 24+, pnpm,
+Chrome and `xvfb-run` are required. Browser fixtures may download their pinned tools.
+Do not substitute an incremental typecheck or silently skip unavailable checks.
+Report failures or missing dependencies explicitly; never claim the run passed
+when it did not. No Docker, publication or paid model inference is part of this command.
+
 ## Comments
 
 Write a comment only for what the code cannot say:

@@ -21,7 +21,6 @@ const code = ts.transpileModule([
   section("async function interruptDirectThread(", "/** Stop left teammates"),
   section("async function interruptParkedTurn(", "async function interruptAllDirectThreads("),
   section("function releaseTurnResources(", "async function bindTurnComputer("),
-  section("async function stopCompanyInstances(", "async function persistProviderInstance("),
 ].join("\n"), { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
 const reloadProvidersCode = ts.transpileModule(
   section("/** The engine a bot's process in a conversation runs on", "// Config writes replace the engines they change."),
@@ -63,7 +62,7 @@ function fixture(kind: "direct" | "group", threadIds = ["first"]) {
     started.set(threadId, deferred()); interrupted.set(threadId, deferred());
   }
   const context = vm.createContext({
-    companyShutdown: false, providerInstancesChanging: new Set(),
+    providerInstancesChanging: new Set(),
     providerAuthSessions: { clearInstance() {} }, bus: { detach: (id: string) => detached.push(id) },
     liveTurnByThread: new Map(), stoppedTurnText: (_threadId: string, _turnId: string | undefined, cause: string) => cause,
     turnStops: { stopping: (threadId: string, _turnId: string | undefined, cause: string) => causes.push({ threadId, cause, interrupted: interruptCalls.includes(threadId) }) },
@@ -105,14 +104,13 @@ function fixture(kind: "direct" | "group", threadIds = ["first"]) {
     settleDirectFollowup: (generation: string) => settled.push(generation),
   });
   context.runningTurnInstance = (bot: Bot) => context.registry.get(bot.modelSelection.instanceId);
-  vm.runInContext(code, context, { filename: "index.ts (Company cleanup ownership fixture)" });
+  vm.runInContext(code, context, { filename: "index.ts (turn cleanup ownership fixture)" });
   return {
     bots, tasks, groups, owners, directBots, speakers, vmLeases, approvals, screens, watched,
     autoVmClaims,
     interruptCalls, cancelled, revoked, messages, settled, detached, roomStops, causes,
     directRequestOwners, stopAwaiting, patched,
     context,
-    stop: () => context.stopCompanyInstances(["company"]) as Promise<void>,
     interrupt: (threadId: string) => context.interruptDirectThread(threadId, threadId) as Promise<void>,
     park: (threadId: string) => context.interruptParkedTurn(threadId, threadId) as Promise<void>,
     started: (threadId: string) => started.get(threadId)!.promise,
@@ -140,92 +138,11 @@ function expectPersonalResources(f: ReturnType<typeof fixture>, threadId: string
   expect(f.messages).not.toContain(threadId);
 }
 
-it("preserves a personal direct turn started while a slower Company sibling is stopping", async () => {
-  const f = fixture("direct", ["first", "slow"]);
-  const stopping = f.stop();
-  await Promise.all([f.started("first"), f.started("slow")]);
-  f.finish("first");
-  // Let the first thread's interrupt finish while the batch's second adapter stays pending.
-  for (let count = 0; count < 5; count++) await Promise.resolve();
-  f.replace("first");
-  f.finish("slow"); await stopping;
-  expectPersonalResources(f, "first");
-  expect(f.directBots.get("first")?.modelSelection.instanceId).toBe("personal");
-  expect(f.tasks.get("first")?.busy).toBe(true);
-  expect(f.tasks.get("slow")?.busy).toBe(false);
-  expect(f.owners.has("slow")).toBe(false);
-  expect(f.settled).toContain("company-first");
-  expect(f.detached).toEqual(["company"]);
-});
-
 it("interruptDirectThread cannot close a replacement generation's approval after awaiting its adapter", async () => {
   const f = fixture("direct"), interrupted = f.interrupt("first");
   await f.started("first"); f.replace("first"); f.finish("first"); await interrupted;
   expectPersonalResources(f, "first");
 });
-
-it("preserves a group replacement's speaker, resources and busy state after the old interrupt resolves", async () => {
-  const f = fixture("group"), stopping = f.stop();
-  await f.started("first"); f.replace("first");
-  const speaker = f.speakers.get("first");
-  f.finish("first"); await stopping;
-  expectPersonalResources(f, "first");
-  expect(f.speakers.get("first")).toBe(speaker);
-  expect(f.groups.get("first")?.busyBotId).toBe("first");
-  expect(f.bots.get("first")?.busy).toBe(true);
-});
-
-it("skips a later snapshot entry replaced while an earlier group interrupt is pending", async () => {
-  const f = fixture("group", ["first", "later"]), stopping = f.stop();
-  await f.started("first"); f.replace("later"); f.finish("first"); await stopping;
-  expectPersonalResources(f, "later");
-  expect(f.interruptCalls).toEqual(["first"]);
-  expect(f.cancelled).toEqual(["first"]);
-  expect(f.revoked).toEqual(["first"]);
-  expect(f.speakers.get("later")?.name).toBe("Personal turn");
-});
-
-it("stops a Company room turn with the cause, not as the person's Stop", async () => {
-  const f = fixture("group"), stopping = f.stop();
-  await f.started("first"); f.finish("first"); await stopping;
-  expect(f.roomStops).toEqual([{ threadId: "first", status: "stopped", detail: "turn interrupted — the Company connection changed", byHarness: true }]);
-});
-
-it("notes the Company cause for each direct turn before interrupting it", async () => {
-  const f = fixture("direct", ["first", "second"]), stopping = f.stop();
-  await Promise.all([f.started("first"), f.started("second")]); f.finish("first"); f.finish("second"); await stopping;
-  expect(f.causes).toEqual(["first", "second"].map(threadId => ({ threadId, cause: "turn interrupted — the Company connection changed", interrupted: false })));
-});
-
-it("also fences group resource-generation changes when the speaker object is unchanged", async () => {
-  const f = fixture("group"), stopping = f.stop();
-  await f.started("first"); f.replace("first", false); f.finish("first"); await stopping;
-  expectPersonalResources(f, "first");
-  expect(f.speakers.has("first")).toBe(true);
-  expect(f.groups.get("first")?.busyBotId).toBe("first");
-});
-
-for (const kind of ["direct", "group"] as const) {
-  it(`still releases the original ${kind} turn when no replacement has claimed it`, async () => {
-    const f = fixture(kind), stopping = f.stop();
-    await f.started("first"); f.finish("first"); await stopping;
-    expect(f.owners.has("first")).toBe(false);
-    expect(f.vmLeases.has("first")).toBe(false);
-    expect(f.autoVmClaims.has("first")).toBe(false);
-    expect(f.approvals.has("first")).toBe(false);
-    expect(f.watched.has("first")).toBe(false);
-    if (kind === "direct") {
-      expect(f.directBots.has("first")).toBe(false);
-      expect(f.tasks.get("first")?.busy).toBe(false);
-      expect(f.messages).toEqual(["first"]);
-    } else {
-      expect(f.speakers.has("first")).toBe(false);
-      expect(f.groups.get("first")?.busyBotId).toBe(null);
-      expect(f.bots.get("first")?.busy).toBe(false);
-    }
-    expect(f.detached).toEqual(["company"]);
-  });
-}
 
 it("interruptParkedTurn ends the engine's turn without stopping the request or its teammates", async () => {
   const f = fixture("direct");
@@ -255,16 +172,6 @@ it("interruptParkedTurn cannot close a replacement generation's approval after a
   expectPersonalResources(f, "first");
 });
 
-it("quitting disposes Company instances without interrupting turns or writing connection-changed cards", async () => {
-  const f = fixture("direct");
-  f.context.companyShutdown = true;
-  await f.stop();
-  expect(f.interruptCalls).toEqual([]);
-  expect(f.messages).toEqual([]);
-  expect(f.detached).toEqual(["company"]);
-  expect(f.tasks.get("first")?.busy).toBe(true);
-});
-
 function reloadFixture() {
   type Thread = { botId: string; threadId: string; engine: string; busy: boolean };
   const threads: Thread[] = [
@@ -273,9 +180,9 @@ function reloadFixture() {
     { botId: "eli", threadId: "eli-idle", engine: "compat", busy: false },
     { botId: "mira", threadId: "mira-idle", engine: "claude", busy: false },
   ];
-  let configs: Record<string, { driver: string; environment?: Record<string, string> }> = {
-    compat: { driver: "openai-compat", environment: { OPENAI_COMPAT_API_KEY: "k1" } },
-    claude: { driver: "claudeAgent" },
+  let configs: Record<string, { driver: string; config: { cli: string } }> = {
+    compat: { driver: "opencodeGo", config: { cli: "first-opencode" } },
+    claude: { driver: "opencodeGo", config: { cli: "second-opencode" } },
   };
   // Two rooms, each with a member speaking on one engine and holding a bearer in each.
   const rooms = new Map([["room-compat", { botId: "eli", engine: "compat" }], ["room-claude", { botId: "mira", engine: "claude" }]]);
@@ -351,9 +258,9 @@ it("saving the same provider settings again interrupts no turn and replaces no e
   expect(f.threads.filter(thread => thread.busy).map(thread => thread.threadId)).toEqual(["eli-work", "mira-work"]);
 });
 
-it("a changed key replaces only its engine and tells only that engine's requesters why", async () => {
+it("a changed OpenCode CLI replaces only its instance and tells only its requesters why", async () => {
   const f = reloadFixture();
-  await f.save({ ...f.configs(), compat: { driver: "openai-compat", environment: { OPENAI_COMPAT_API_KEY: "k2" } } });
+  await f.save({ ...f.configs(), compat: { driver: "opencodeGo", config: { cli: "updated-opencode" } } });
   expect(f.log.filter(line => line.includes("claude") || line.includes("mira"))).toEqual([]);
   expect(f.revoked).toEqual(["eli-work", "room-compat"]);
   expect(f.held()).toEqual({

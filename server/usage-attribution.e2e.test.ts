@@ -1,26 +1,20 @@
-// POSIX-gated like the other CLI e2es: the fakes are shebang scripts.
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
+import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
 const FAKE_ACP = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
-const FAKE_CODEX = join(SERVER_DIR, "testing", "fake-codex-app-server.ts");
-const PORT = 18800 + Math.floor(Math.random() * 10_000);
-const BASE = `http://127.0.0.1:${PORT}`;
-const posixOnly = describe.skipIf(process.platform === "win32");
+let BASE: string;
 
-posixOnly("usage attribution e2e", () => {
+describe("usage attribution e2e", () => {
   let child: ChildProcess;
   let home: string;
   let stderr = "";
-  let finishGate: string;
-  let codexSteerGate: string;
-  let costState: string;
 
   type Reply = { status: number; body: any };
   const request = async (headers: Record<string, string>, method: string, path: string, body?: unknown): Promise<Reply> => {
@@ -59,51 +53,45 @@ posixOnly("usage attribution e2e", () => {
     return readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((row) => row.botId === botId);
   };
   const newBot = async (instanceId: string, model: string) => {
-    const created = (await api("POST", "/api/bots")).body.bot;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId, model } });
-    return created as { id: string; threadId: string };
+    const created = await api("POST", "/api/bots", { modelSelection: { instanceId, model } });
+    expect(created.status).toBe(201);
+    return created.body.bot as { id: string; threadId: string };
   };
   const owner = { kind: "owner" };
   const person = { kind: "user", label: PERSON };
 
   beforeAll(async () => {
-    for (const fake of [FAKE_CLAUDE, FAKE_ACP, FAKE_CODEX]) chmodSync(fake, 0o755);
     home = mkdtempSync(join(tmpdir(), "quati-attribution-"));
     mkdirSync(join(home, ".quatibot"), { recursive: true });
-    finishGate = join(home, "finish-steered-turn.gate");
-    codexSteerGate = join(home, "codex-steer-refused.gate");
-    costState = join(home, "claude-cost-state");
-    mkdirSync(costState);
+    const discovery = join(home, ".quatibot", "providers", "opencode", "discovery");
+    mkdirSync(discovery, { recursive: true });
+    writeFileSync(join(discovery, ".quati-project"), "Verification fixture\n");
+    const instances: Record<string, { driver: string; config: { cli: string } }> = {};
+    for (const [instanceId, mode] of [["acp", "hang"], ["acpHappy", "happy"], ["questions", "question"]] as const) {
+      const cli = join(home, `${instanceId}-opencode.mjs`);
+      writeFileSync(cli, [
+        "#!/usr/bin/env node",
+        `process.env.FAKE_ACP_MODE = ${JSON.stringify(mode)};`,
+        `await import(${JSON.stringify(pathToFileURL(FAKE_ACP).href)});`,
+      ].join("\n"), { mode: 0o700 });
+      instances[instanceId] = { driver: "opencodeGo", config: { cli } };
+    }
     writeFileSync(
       join(home, ".quatibot", "config.json"),
       JSON.stringify({
-        instances: {
-          claude: { driver: "claudeAgent", config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" } },
-          // restores a session's running cost on --resume, like the real CLI
-          claudeResumed: {
-            driver: "claudeAgent",
-            environment: { FAKE_CLAUDE_COST_STATE: costState },
-            config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
-          },
-          claudeSlow: {
-            driver: "claudeAgent",
-            environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: finishGate },
-            config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
-          },
-          acp: { driver: "grokAgent", environment: { FAKE_ACP_MODE: "hang" }, config: { cli: FAKE_ACP, fullAuto: true } },
-          // reports tokens (10 in, 5 out) but no price, like every engine but Claude
-          acpHappy: { driver: "grokAgent", config: { cli: FAKE_ACP, fullAuto: true } },
-          codexRace: {
-            driver: "codex",
-            environment: { FAKE_CODEX_MODE: "question", FAKE_CODEX_ASK_HOLD: "1", FAKE_CODEX_STEER_ERROR_FILE: codexSteerGate },
-            config: { cli: FAKE_CODEX },
-          },
-        },
+        instances,
+        defaultModelSelection: { instanceId: "acpHappy", model: "fixture/unpriced" },
       }),
     );
+    const port = await freePortBlock([0, 1]);
+    BASE = `http://127.0.0.1:${port}`;
     child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
-      env: { ...(process.env.PATH ? { PATH: process.env.PATH } : {}), HOME: home, USERPROFILE: home, QUATI_PORT: String(PORT) },
+      env: {
+        ...verificationServerEnvironment({}, join(home, ".quatibot"), port), HOME: home,
+        FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_AGENT_NAME: "OpenCode",
+        FAKE_ACP_MODELS: "x-ai/grok-4.7,fixture/unpriced",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     child.stderr!.on("data", (c) => (stderr += c));
@@ -117,6 +105,10 @@ posixOnly("usage attribution e2e", () => {
       if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}. stderr:\n${stderr}`);
       await new Promise((r) => setTimeout(r, 150));
     }
+    await waitFor(async () => {
+      const snapshots = (await api("GET", "/api/instances")).body.instances;
+      return snapshots.length === 3 && snapshots.every((instance: { models: { options: Array<{ id: string }> } }) => instance.models.options.some((model) => model.id === "fixture/unpriced"));
+    }, "OpenCode fixture models", 15_000);
   }, 30_000);
 
   afterAll(async () => {
@@ -130,15 +122,14 @@ posixOnly("usage attribution e2e", () => {
   });
 
   it("books an engine that reports tokens but no price at an estimate, and an unlisted model as unpriced", async () => {
-    const listed = await newBot("acpHappy", "grok-4.7");
+    const listed = await newBot("acpHappy", "x-ai/grok-4.7");
     expect((await api("POST", `/api/bots/${listed.id}/messages`, { text: "priced from the list" })).status).toBe(202);
     await waitFor(() => ledger(listed.id).length === 1, "the listed model's turn to be booked");
     const row = ledger(listed.id)[0];
-    expect(row).toMatchObject({ driverKind: "grokAgent", model: "grok-4.7", input: 10, output: 5, costSource: "estimated" });
-    // xAI's list price for grok-4.7: $2 in, $6 out per million tokens
-    expect(row.costUsd).toBeCloseTo((10 * 2 + 5 * 6) / 1_000_000, 12);
+    expect(row).toMatchObject({ driverKind: "opencodeGo", model: "x-ai/grok-4.7", input: 10, output: 5, costSource: "estimated" });
+    expect(row.costUsd).toBeCloseTo((10 * 1.6 + 5 * 4.8) / 1_000_000, 12);
 
-    const unlisted = await newBot("acpHappy", "fake-model");
+    const unlisted = await newBot("acpHappy", "fixture/unpriced");
     expect((await api("POST", `/api/bots/${unlisted.id}/messages`, { text: "no known price" })).status).toBe(202);
     await waitFor(() => ledger(unlisted.id).length === 1, "the unlisted model's turn to be booked");
     expect(ledger(unlisted.id)[0].costUsd).toBeNull();
@@ -153,7 +144,7 @@ posixOnly("usage attribution e2e", () => {
   }, 40_000);
 
   it("a queued message leaves the running turn with its starter, and its own turn is booked to its sender", async () => {
-    const bot = await newBot("acp", "fake-model");
+    const bot = await newBot("acp", "fixture/unpriced");
     expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "owner's work" })).status).toBe(202);
     await waitFor(async () => (await getBot(bot.id)).busy === true, "the owner's turn to start");
     const asPaired = await asPerson();
@@ -171,57 +162,28 @@ posixOnly("usage attribution e2e", () => {
     await waitFor(async () => (await getBot(bot.id)).busy === false, "the bot to go idle");
   }, 40_000);
 
-  it("words steered into a running turn do not re-book it", async () => {
-    rmSync(finishGate, { force: true });
-    const bot = await newBot("claudeSlow", "claude-fake");
-    expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "first" })).status).toBe(202);
-    await waitFor(async () => (await getBot(bot.id)).messages.some((m: any) => m.kind === "activity"), "the tool chip");
-    const asPaired = await asPerson();
-    let steered: Reply;
-    try {
-      steered = await asPaired("POST", `/api/bots/${bot.id}/messages`, { text: "and also this" });
-    } finally {
-      writeFileSync(finishGate, "finish");
-    }
-    expect(steered.body.steered).toBe(true);
-    await waitFor(() => ledger(bot.id).length === 1, "the steered turn to be booked");
-    expect(ledger(bot.id)[0]).toMatchObject({ trigger: owner, costUsd: 0.01, costSource: "reported" });
-  }, 40_000);
-
-  it("books each Claude turn at its own cost when the next turn resumes the session in a new process", async () => {
-    // Every turn gets a fresh comms token, so the next relaunches the CLI with --resume, whose first total counts the earlier turn.
-    const bot = await newBot("claudeResumed", "claude-fake");
-    expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "first turn" })).status).toBe(202);
-    await waitFor(() => ledger(bot.id).length === 1, "the first turn to be booked");
-    await waitFor(async () => (await getBot(bot.id)).busy === false, "the first turn to settle");
-    expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "second turn" })).status).toBe(202);
-    await waitFor(() => ledger(bot.id).length === 2, "the second turn to be booked");
-    const [session] = readdirSync(costState).filter((name) => name.endsWith(".json"));
-    expect(JSON.parse(readFileSync(join(costState, session!), "utf8")).total).toBe(0.02);
-    expect(ledger(bot.id).map((row) => [row.costUsd, row.costSource])).toEqual([[0.01, "reported"], [0.01, "reported"]]);
-    await waitFor(async () => (await getBot(bot.id)).busy === false, "the second turn to settle");
-  }, 40_000);
-
-  it("pressing Steer on a queued message does not re-book the running turn", async () => {
-    writeFileSync(codexSteerGate, "refuse live steers until the test clears this gate");
-    const model = (await api("GET", "/api/instances")).body.instances.find((i: any) => i.instanceId === "codexRace").models.default;
-    const bot = await newBot("codexRace", model);
-    expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "owner's codex turn" })).status).toBe(202);
+  it("pressing Steer without native support keeps the queued sender and never re-books the running turn", async () => {
+    const bot = await newBot("questions", "fixture/unpriced");
+    expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "owner's turn" })).status).toBe(202);
     await waitFor(async () => (await getBot(bot.id)).messages.some((m: any) => m.card), "the question card");
     const asPaired = await asPerson();
     const queued = await asPaired("POST", `/api/bots/${bot.id}/messages`, { text: "steer these words" });
     expect(queued.body.queued).toBe(true);
-    rmSync(codexSteerGate, { force: true });
     const steered = await asPaired("POST", `/api/bots/${bot.id}/queue/${queued.body.queueId}/steer`, { threadId: bot.threadId });
-    expect(steered.body.steered).toBe(true);
+    expect(steered.body.queued).toBe(true);
+    expect(steered.body.steered).toBeUndefined();
 
     await api("POST", `/api/bots/${bot.id}/interrupt`);
-    await waitFor(() => ledger(bot.id).length === 1, "the steered codex turn to be booked");
+    await waitFor(() => ledger(bot.id).length === 1, "the original turn to be booked");
     expect(ledger(bot.id)[0].trigger).toEqual(owner);
+    await waitFor(async () => (await getBot(bot.id)).messages.some((message: { text?: string }) => message.text === "steer these words"), "the paired follow-up to arrive");
+    await api("POST", `/api/bots/${bot.id}/interrupt`);
+    await waitFor(() => ledger(bot.id).length === 2, "the paired turn to be booked");
+    expect(ledger(bot.id)[1].trigger).toEqual(person);
   }, 40_000);
 
   it("a room's queued message leaves the running room turn with its starter", async () => {
-    const bot = await newBot("acp", "fake-model");
+    const bot = await newBot("acp", "fixture/unpriced");
     const room = (await api("POST", "/api/groups", {
       name: "Attribution room",
       memberIds: [bot.id],
@@ -246,7 +208,7 @@ posixOnly("usage attribution e2e", () => {
   it("a guarded relay books the turn to the person it names; without one it is this machine's", async () => {
     const health = await api("GET", "/api/health");
     expect(health.body.capabilities.guardedOnBehalfOf).toBe(1);
-    const bot = await newBot("claude", "claude-fake");
+    const bot = await newBot("acpHappy", "fixture/unpriced");
     const send = async (sendId: string, extra: Record<string, unknown> = {}) => {
       const page = await api("GET", `/api/threads/${bot.threadId}/messages?limit=0`);
       return api("POST", `/api/bots/${bot.id}/messages/guarded`, {

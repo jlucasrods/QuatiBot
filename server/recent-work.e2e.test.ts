@@ -33,21 +33,14 @@ it("carries a bot's recent 1:1 work into a room turn, tells the room, logs the t
     expect(response.ok, JSON.stringify(result)).toBe(true);
     return result;
   };
-  const dump = () => {
-    try {
-      // SAFETY: the fake CLI writes exactly this shape; a missing or partial file reads as no dump yet
-      return JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")) as { systemPrompt?: string; prompt?: unknown };
-    } catch {
-      return undefined;
-    }
-  };
-  // A warm process keeps its launch-time instructions; a part that changed since arrives in the turn's own message.
   const given = () => {
-    const sent = dump();
-    const content = (sent?.prompt as { message?: { content?: unknown } } | undefined)?.message?.content;
-    const text = typeof content === "string" ? content
-      : Array.isArray(content) ? content.map((part: { text?: unknown }) => typeof part?.text === "string" ? part.text : "").join("\n") : "";
-    return `${sent?.systemPrompt ?? ""}\n${text}`;
+    try {
+      const line = readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8").trim().split("\n").at(-1)!;
+      const sent = JSON.parse(line) as { prompt: Array<{ text?: string }> };
+      return sent.prompt.map((part) => part.text ?? "").join("\n");
+    } catch {
+      return "";
+    }
   };
   try {
     // SAFETY: control-quati returns the created bot record under `bot`
@@ -70,10 +63,7 @@ it("carries a bot's recent 1:1 work into a room turn, tells the room, logs the t
       setup: { bulletin: "", defaultResponder: { kind: "member", botId: lead.id } },
     }) as { group: { id: string; threadId: string } };
     await api("POST", `/api/groups/${group.id}/messages`, { text: "Lead, what did you do today?" });
-    await expect.poll(() => {
-      const text = dump()?.systemPrompt ?? "";
-      return text.includes("Reply to the conversation above as") || JSON.stringify(dump()?.prompt ?? "").includes("Reply to the conversation above as");
-    }, { timeout: 30_000 }).toBe(true);
+    await expect.poll(() => given().includes("Reply to the conversation above as"), { timeout: 30_000 }).toBe(true);
     await runControlQuati(["wait", "--bot", lead.id, "--timeout", "30"], { env });
     const room = given();
     expect(room).toContain("Your recent work");

@@ -129,10 +129,6 @@ describe("Settings → Appearance", () => {
     expect(fixture.dispatch).not.toHaveBeenCalled();
   });
 
-  it("keeps the Advanced mode switch reachable from a paired remote client", () => {
-    vi.stubGlobal("window", { quati: { remoteClient: { active: true } } });
-    expect(render()).toContain('aria-label="Advanced mode"');
-  });
 
   it("does not repeat the Advanced mode switch in Appearance on this computer", () => {
     expect(render()).not.toContain('aria-label="Advanced mode"');
@@ -331,22 +327,6 @@ describe("Settings → Appearance", () => {
     expect(html).not.toContain('aria-label="Choose sidebar density"');
     expect(html).not.toContain('aria-label="Show tool calls in chat"');
     expect(html).not.toContain("Midnight");
-  });
-
-  it("makes local appearance available remotely without exposing server settings", () => {
-    vi.stubGlobal("window", { quati: { remoteClient: { active: true } } });
-    const html = render();
-    expect(html).toContain('<option value="appearance" selected="">Appearance</option>');
-    expect(html).toContain('<option value="remoteAccess">Remote access</option>');
-    expect(html).not.toContain('<option value="general">');
-    expect(html).not.toContain('<option value="connections">');
-    expect(html).not.toContain('<option value="engines">');
-    expect(html).not.toContain('<option value="backups">');
-    expect(html).toContain("Midnight");
-    expect(html).toContain('aria-label="Show threads"');
-    expect(html).toContain('aria-label="Notification sounds"');
-    expect(html).toContain('aria-label="Choose sidebar density"');
-    expect(html).not.toContain('aria-label="Show tool calls in chat"');
   });
 
   it("offers full backups in local Settings", () => {

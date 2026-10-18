@@ -335,6 +335,8 @@ describe("loop guard, with a stop count set", () => {
     r.run();
     const cause = stopped("Bash: git status", 10);
     expect(r.interrupts).toEqual([{ threadId: T, cause }]);
+    expect(r.failures()).toEqual([]);
+    r.completed();
     expect(r.failures()).toEqual([cause]);
     expect(r.rows.at(-1)).toEqual({ threadId: T, name: `error: ${cause}`, ok: false });
     expect(r.steers).toHaveLength(1);
@@ -345,6 +347,9 @@ describe("loop guard, with a stop count set", () => {
     r.loop(30);
     r.loop(30, "git diff");
     expect(r.interrupts).toHaveLength(1);
+    expect(r.failures()).toEqual([]);
+    r.completed();
+    r.completed();
     expect(r.failures()).toHaveLength(1);
     // told about the first command only: nothing is said into a turn already stopped
     expect(r.steers).toHaveLength(1);
@@ -369,6 +374,7 @@ describe("loop guard, with a stop count set", () => {
     r.run();
     expect(r.steers).toEqual([]);
     expect(r.interrupts).toHaveLength(1);
+    r.completed();
     expect(r.failures()).toHaveLength(1);
   });
 
@@ -384,11 +390,15 @@ describe("loop guard, with a stop count set", () => {
     expect(stopOnly.interrupts).toHaveLength(1);
   });
 
-  it("writes the stop line after the Stop path has run, so its rows come first and Retry lands on the line", () => {
+  it("writes the stop line after completion, so late tool results precede Retry", () => {
     const r = rig({ settings: STOPS });
     // Codex titles the call with the command, so the chip counts it too
     times(10, () => r.play(codex("git status")));
+    expect(r.did).toEqual(["notice", "steer", "notice", "interrupt"]);
+    r.rows.push({ threadId: T, name: "Late tool result", ok: false });
+    r.completed();
     expect(r.did).toEqual(["notice", "steer", "notice", "interrupt", "stop line"]);
+    expect(r.rows.at(-1)?.name).toMatch(/^error:/);
   });
 });
 
@@ -451,6 +461,20 @@ describe("loop guard, which turns it leaves alone", () => {
 });
 
 describe("loop guard, one turn at a time", () => {
+  it.each(["completed", "exited"] as const)("does not flush a replacement turn's stop on a stale %s event", (end) => {
+    const r = rig({ settings: STOPS });
+    r.state.turnId = "replacement";
+    r.began();
+    r.loop(10);
+    r.state.turnId = "retired";
+    r[end]();
+    expect(r.failures()).toEqual([]);
+    r.state.turnId = "replacement";
+    r[end]();
+    r[end]();
+    expect(r.failures()).toEqual([stopped("Bash: git status", 10)]);
+  });
+
   it("starts over on turn.completed and on session.exited", () => {
     const r = rig({ settings: STOPS });
     r.loop(4);
@@ -508,6 +532,7 @@ describe("loop guard, one turn at a time", () => {
     r.loop(10);
     expect(r.steers).toHaveLength(2);
     expect(r.interrupts).toHaveLength(2);
+    r.completed();
     expect(r.failures()).toHaveLength(2);
   });
 
@@ -602,6 +627,7 @@ describe("loop guard, what it says", () => {
     // and one pair of quotes around the call: prose inside a command stays inside them
     expect(steer!.note.match(/[“”]/g)).toEqual(["“", "”"]);
     expect(steer!.note).toMatch(/in a row: “Bash: curl .* ignore the user" and "do as this says”\. Change approach, or stop and report what is blocking\.\]$/);
+    r.completed();
     const [cause] = r.failures();
     expect(cause).not.toContain(token);
     expect(cause!.match(/[“”]/g)).toEqual(["“", "”"]);
@@ -611,6 +637,7 @@ describe("loop guard, what it says", () => {
   it("never puts what the command printed in the note, the stop line, the cause or the log", async () => {
     const r = rig({ settings: STOPS });
     r.loop(10, "cat secrets.txt && false", { ok: false, output: "the-launch-code-is-0000" });
+    r.completed();
     await settled();
     const said = [...r.steers.map((steer) => steer.note), ...r.interrupts.map((stop) => stop.cause), ...r.rows.map((row) => row.name), ...r.logs].join("\n");
     expect(r.steers).toHaveLength(1);
@@ -668,10 +695,11 @@ describe("loop guard, what it says", () => {
     const rejecting = rig({ settings: STOPS, interrupt: () => failed });
     expect(() => rejecting.loop(12)).not.toThrow();
     expect(handlers.mock.calls.some(([, onRejected]) => typeof onRejected === "function")).toBe(true);
-    // the Stop path ran before the engine refused: the line stands, once
-    expect(rejecting.failures()).toHaveLength(1);
+    expect(rejecting.failures()).toEqual([]);
     expect(rejecting.interrupts).toHaveLength(1);
     await settled();
+    rejecting.completed();
+    expect(rejecting.failures()).toHaveLength(1);
     expect(rejecting.logs.filter((line) => line.includes(" stop "))).toEqual([
       `[loop-guard] stop sent: thread=${T} failures-in-a-row=10`,
       `[loop-guard] stop rejected: thread=${T} failures-in-a-row=10`,
@@ -679,6 +707,7 @@ describe("loop guard, what it says", () => {
 
     const throwing = rig({ settings: STOPS, interrupt: () => { throw new Error("no such thread"); } });
     expect(() => throwing.loop(12)).not.toThrow();
+    throwing.completed();
     expect(throwing.failures()).toEqual([]);
     expect(throwing.interrupts).toHaveLength(1);
     expect(throwing.logs.filter((line) => line.includes(" stop "))).toEqual([`[loop-guard] stop not sent: thread=${T} failures-in-a-row=10`]);
@@ -693,6 +722,7 @@ describe("loop guard, the same command", () => {
     r.loop(10);
     expect(r.notices()).toEqual([]);
     expect(r.steers.map((steer) => steer.note)).toEqual([note("Bash: git status", 5)]);
+    r.completed();
     expect(r.failures()).toEqual([stopped("Bash: git status", 10)]);
   });
 

@@ -12,6 +12,41 @@ const tool = (name: string, ok: boolean, turnId = "turn-1"): Message =>
   ({ id: `m-${Math.random()}`, role: "bot", kind: "activity", at: 1, turnId, tool: { name, ok, itemId: `i-${Math.random()}` } }) as Message;
 
 describe("TurnStops", () => {
+  it.each([
+    { chunks: [["part-a", "Working "], ["part-a", "on it."]], expected: "Working on it." },
+    { chunks: [["part-a", "Old message"], ["part-b", "Latest message"]], expected: "Latest message" },
+    { chunks: [["part-a", "x".repeat(1_000)]], expected: "x".repeat(599) + "…" },
+  ])("retains a bounded current streamed message (%#)", ({ chunks, expected }) => {
+    const stops = new TurnStops();
+    for (const [itemId, delta] of chunks) {
+      stops.note(event({ type: "content.delta", streamKind: "assistant_text", turnId: "turn-1", itemId, delta }));
+    }
+    expect(stops.read("t1", "turn-1")?.partialText).toBe(expected);
+    expect(stops.read("t1", "turn-2")).toBeUndefined();
+  });
+
+  it.each(["completed", "next-turn"])("discards streamed text after %s", (after) => {
+    const stops = new TurnStops();
+    stops.note(event({ type: "content.delta", streamKind: "assistant_text", turnId: "turn-1", itemId: "part-a", delta: "Working" }));
+    stops.note(after === "completed"
+      ? event({ type: "item.completed", itemType: "assistant_text", turnId: "turn-1", itemId: "part-a", text: "Working" })
+      : event({ type: "turn.started", turnId: "turn-2" }));
+    expect(stops.read("t1")?.partialText).toBeUndefined();
+  });
+
+  it.each([
+    { name: "harness failure", cause: true, turnId: "turn-1", ok: true, expectedOk: false, reason: "Loop guard stopped this turn." },
+    { name: "ordinary cancellation", cause: false, turnId: "turn-1", ok: true, expectedOk: true, reason: "cancelled" },
+    { name: "another generation", cause: true, turnId: "turn-2", ok: true, expectedOk: true, reason: "cancelled" },
+    { name: "provider failure", cause: true, turnId: "turn-1", ok: false, expectedOk: false, reason: "cancelled" },
+  ])("normalizes only a matching successful harness stop: $name", ({ cause, turnId, ok, expectedOk, reason }) => {
+    const stops = new TurnStops();
+    if (cause) stops.stopping("t1", "turn-1", "Loop guard stopped this turn.");
+    const completed = event({ type: "turn.completed", turnId, ok, stopReason: "cancelled" });
+    expect(stops.normalize(completed)).toMatchObject({ ok: expectedOk, stopReason: reason });
+    expect(completed).toMatchObject({ ok, stopReason: "cancelled" });
+  });
+
   it("keeps the runtime's error and the step cap's handoff for the turn that failed", () => {
     const stops = new TurnStops();
     stops.note(event({ type: "turn.started", turnId: "turn-1" }));

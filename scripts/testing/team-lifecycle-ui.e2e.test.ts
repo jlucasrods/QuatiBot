@@ -110,7 +110,7 @@ if (!enabled) console.log("skipping team lifecycle UI e2e: set QUATI_UI_E2E=1 to
     await type("Team name", "Delivery");
     await click("Save name");
     await expect.poll(snapshot).toContain('button "Delivery"');
-    await click("Tools");
+    if (!(await snapshot()).includes('button "Team map"')) await click("Tools");
     await click("Team map");
     await manage("Delivery");
     await click("Move bots to Delivery");
@@ -160,7 +160,7 @@ if (!enabled) console.log("skipping team lifecycle UI e2e: set QUATI_UI_E2E=1 to
 
     await ui("eval", "--js", "location.reload(); true");
     await expect.poll(snapshot, { timeout: 15_000 }).toContain('button "Delivery"');
-    await click("Tools");
+    if (!(await snapshot()).includes('button "Team map"')) await click("Tools");
     await click("Team map");
     await manage("Delivery");
     expect(await snapshot()).toContain("Edit Delivery shared instructions");

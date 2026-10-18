@@ -3,10 +3,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, existsSync, openSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
+import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
 
@@ -72,19 +72,11 @@ it("applies requested Full Access workflows through MCP without duplicate approv
     return caller;
   };
   const restart = async () => {
-    const env: NodeJS.ProcessEnv = {};
-    for (const [key, value] of Object.entries(process.env)) {
-      if (["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"].includes(key.toUpperCase()) && value) env[key.toUpperCase()] = value;
-    }
-    Object.assign(env, {
-      HOME: dataDir, USERPROFILE: dataDir, QUATI_DATA_DIR: dataDir,
-      APPDATA: join(dataDir, "AppData", "Roaming"), LOCALAPPDATA: join(dataDir, "AppData", "Local"),
-      XDG_CONFIG_HOME: join(dataDir, ".config"), XDG_CACHE_HOME: join(dataDir, ".cache"),
-      XDG_DATA_HOME: join(dataDir, ".local", "share"), HERMES_HOME: join(dataDir, ".hermes"),
-      TEMP: join(dataDir, "tmp"), TMP: join(dataDir, "tmp"), TMPDIR: join(dataDir, "tmp"),
-      QUATI_PORT: new URL(url).port, QUATI_WEBHOOK_PORT: String(Number(new URL(url).port) + 1), PATH: dirname(process.execPath),
-      FAKE_CLAUDE_MODE: "happy", FAKE_CLAUDE_DUMP: fixture.fixtureDumpPath,
-    });
+    const env = {
+      ...verificationServerEnvironment({}, dataDir, Number(new URL(url).port)),
+      FAKE_ACP_DUMP: fixture.fixtureDumpPath,
+      FAKE_ACP_ROOM_PLAN: planPath,
+    };
     const log = openSync(logPath, "a", 0o600);
     restarted = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
       cwd: fileURLToPath(new URL("..", import.meta.url)), env, stdio: ["ignore", log, log],
@@ -152,7 +144,7 @@ it("applies requested Full Access workflows through MCP without duplicate approv
         ] }),
         step("create_bot", { name: "Theo", role: "Totals checker", instructions: "Check fixture totals before each report." }),
       ], { guarded: "full" });
-    expect(created.permissionMode).toBe("bypassPermissions");
+    expect(created.nativePermissions).toContainEqual({ action: "*", resource: "*", effect: "allow" });
     for (const entry of created.evidence.filter((item: any) => ["propose_profile", "propose_routine", "skill_manage", "propose_team_setup"].includes(item.step?.tool))) {
       expect(entry.response.result.content[0].text).toContain("No additional confirmation is needed");
       expect(entry.response.result.content[0].text).not.toContain("End this turn and wait");
@@ -162,9 +154,9 @@ it("applies requested Full Access workflows through MCP without duplicate approv
     const createdTheo = created.evidence.find((item: any) => item.step?.tool === "create_bot");
     expect(createdTheo.response.result.content[0].text).toMatch(/^Created @Theo in Operations/);
     expect((await bots()).find(bot => bot.name === "Theo")).toMatchObject({ section: "Operations", title: "Totals checker",
-      soul: "Check fixture totals before each report.", approvalMode: "full", autoApprove: false, composio: false });
+      soul: "Check fixture totals before each report.", approvalMode: "full", autoApprove: false });
     const mira = (await bots()).find(bot => bot.name === "Mira");
-    expect(mira).toMatchObject({ section: "Research", approvalMode: "full", autoApprove: false, composio: false });
+    expect(mira).toMatchObject({ section: "Research", approvalMode: "full", autoApprove: false });
     const routine = (await api("GET", "/api/routines")).routines.find((item: any) => item.name === "Monthly fixture report");
     expect(routine).toMatchObject({ botId: chief.id, enabled: true, schedule });
     expect((await api("GET", `/api/bots/${chief.id}/skills`)).skills).toEqual(expect.arrayContaining([expect.objectContaining({ name: "monthly-fixture-review", enabled: true })]));
@@ -173,8 +165,11 @@ it("applies requested Full Access workflows through MCP without duplicate approv
       .map((row: any) => `${row.tool}:${row.decision}:${row.source}`).sort())
       .toEqual(["schedule_routine:auto-approved:full-access", "stage_skill:auto-approved:full-access", "update_profile:auto-approved:full-access"]);
 
-    const dump = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
-    const lateToken = dump.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+    const nativeTurns: Array<{ mcpServers: Array<{ name: string; env: Array<{ name: string; value: string }> }> }> =
+      readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const agents = nativeTurns.findLast((turn) => turn.mcpServers.some((server) => server.name === "agents"))?.mcpServers.find((server) => server.name === "agents");
+    const lateToken = agents?.env.find((entry) => entry.name === "QUATI_COMMS_TOKEN")?.value;
+    expect(lateToken).toBeTruthy();
     await api("POST", "/api/internal/team-setup-requests", { plan: { reason: "Late fixture token", operations: [specialist("Must not exist", "Operations")] } }, 401, lateToken);
 
     await run(chief, chief.activeTaskId, "Update the named monthly skill, pause the report, update Mira, then delete Mira as requested.", [
@@ -200,11 +195,11 @@ it("applies requested Full Access workflows through MCP without duplicate approv
     expect(handoffs.every((node: any) => node.status === "completed")).toBe(true);
     expect(providerTurns().filter(turn => turn.botId === peer.id)).toHaveLength(1);
     const peerTurn = providerTurns().find(turn => turn.botId === peer.id)!;
-    expect(peerTurn.permissionMode).toBe("bypassPermissions");
+    expect(peerTurn.nativePermissions).toContainEqual({ action: "*", resource: "*", effect: "allow" });
     expect((await bots()).find(bot => bot.id === peer.id).approvalMode ?? "ask").toBe("ask");
     expect(await unanswered(peerTurn.threadId)).toHaveLength(0);
     expect((await messages(peerTurn.threadId)).some(message => message.kind === "activity" && /^Full access — delegated by Clive, a Chief of Staff on Full access$/.test(message.tool?.name ?? ""))).toBe(true);
-    evidence.push({ delegatedFullAccess: { peerThreadId: peerTurn.threadId, permissionMode: peerTurn.permissionMode } });
+    evidence.push({ delegatedFullAccess: { peerThreadId: peerTurn.threadId, nativePermissions: peerTurn.nativePermissions } });
 
     const askTurn = await run(chief, ask.threadId, "Change my own profile, routine and named skill, and prepare a specialist for review in this Ask task.", [
       step("propose_profile", { title: "Applied in Ask", reason: "The bot's own profile applies at any level" }),
@@ -212,7 +207,7 @@ it("applies requested Full Access workflows through MCP without duplicate approv
       step("skill_manage", { action: "create", skill_md: skill("own-ask-review", "Applies at once as the bot's own skill."), source: "conversation" }),
       step("propose_team_setup", { reason: "Ask task specialist review", operations: [specialist("Pending specialist", "Operations")] }),
     ], { pending: true, guarded: "ask" });
-    expect(askTurn.permissionMode).not.toBe("bypassPermissions");
+    expect(askTurn.nativePermissions ?? []).not.toContainEqual({ action: "*", resource: "*", effect: "allow" });
     const askCards = await unanswered(ask.threadId);
     expect(askCards).toHaveLength(1);
     expect(askCards[0].card.teamSetupRequest).toBeDefined();
@@ -234,7 +229,7 @@ it("applies requested Full Access workflows through MCP without duplicate approv
     const inverseTurn = await run(inverse, inverse.activeTaskId, "Apply my requested title in this Full Access task even though my bot default is Ask.", [
       step("propose_profile", { title: "Applied from Full task", reason: "User requested this title" }),
     ], { guarded: "full" });
-    expect(inverseTurn.permissionMode).toBe("bypassPermissions");
+    expect(inverseTurn.nativePermissions).toContainEqual({ action: "*", resource: "*", effect: "allow" });
     expect((await bots()).find(bot => bot.id === inverse.id)).toMatchObject({ title: "Applied from Full task", approvalMode: "ask" });
     expect(await unanswered(chief.activeTaskId)).toHaveLength(0);
     expect(providerTurns()).toHaveLength(7);
@@ -277,9 +272,11 @@ it("applies requested Full Access workflows through MCP without duplicate approv
     await expect.poll(async () => (await messages(interrupted.threadId)).some(message => message.text === "Reviewed the resumed check"), { timeout: 25_000 }).toBe(true);
     const [rerun, review] = providerTurns().slice(beforeRestart);
     expect(providerTurns()).toHaveLength(beforeRestart + 2);
-    expect(rerun).toMatchObject({ botId: peer.id, resumed: false, permissionMode: "bypassPermissions" });
+    expect(rerun).toMatchObject({ botId: peer.id });
+    expect(rerun.rpcMethods).toContain("session/load");
+    expect(rerun.nativePermissions).toContainEqual({ action: "*", resource: "*", effect: "allow" });
     expect(JSON.stringify(rerun.prompt)).toContain("this turn continues it");
-    expect(review).toMatchObject({ botId: chief.id, threadId: interrupted.threadId, resumed: true });
+    expect(review).toMatchObject({ botId: chief.id, threadId: interrupted.threadId });
     expect(JSON.stringify(review.prompt)).toContain("A restart cut these teammates' turns: Ada (resumed once in place");
     const recovered = await api("GET", pendingRoute);
     expect(recovered).toMatchObject({ phase: "untracked", activeTurnId: null });
@@ -295,8 +292,8 @@ it("applies requested Full Access workflows through MCP without duplicate approv
     await waitForExit(restarted, { signal: "SIGTERM" });
     const evidencePath = `${logPath}.full-access.json`;
     writeFileSync(evidencePath, JSON.stringify({ fixture: fixture.info, evidence, providerTurns: providerTurns().map(turn => ({
-      botId: turn.botId, threadId: turn.threadId, turnIndex: turn.turnIndex, permissionMode: turn.permissionMode,
-      resumed: turn.resumed, calls: turn.evidence.filter((entry: any) => entry.step),
+      botId: turn.botId, threadId: turn.threadId, turnIndex: turn.turnIndex, nativePermissions: turn.nativePermissions,
+      rpcMethods: turn.rpcMethods, calls: turn.evidence.filter((entry: any) => entry.step),
     })) }, null, 2));
     console.info(JSON.stringify({ logPath, evidencePath }));
     await fixture.close();

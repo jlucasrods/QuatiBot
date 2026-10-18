@@ -744,19 +744,6 @@ describe("ChatMarkdown attachments", () => {
     };
     const revealInFolder = vi.fn(async () => "shown" as const);
 
-    it("offers Show in folder in the local desktop app, without printing the path", () => {
-      vi.stubGlobal("window", { quati: { revealInFolder, remoteClient: { active: false } } });
-      try {
-        const html = render(true);
-        expect(html).toContain("This file is outside this chat&#x27;s working folder, so it can&#x27;t be saved from here");
-        expect(html).not.toContain("the linked file is outside");
-        expect(html).toContain("Show in folder");
-        expect(html).not.toContain("<code");
-      } finally {
-        vi.unstubAllGlobals();
-      }
-    });
-
     it("shows the full path as selectable text to a remote client instead", () => {
       vi.stubGlobal("window", { quati: { revealInFolder, remoteClient: { active: true } } });
       try {

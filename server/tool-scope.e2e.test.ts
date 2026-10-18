@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, openSync, closeSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -7,14 +8,19 @@ import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 
+interface NativeTurn {
+  pid: number;
+  mcpServers: Array<{ name: string; env?: Array<{ name: string; value: string }> }>;
+}
+
 async function withFixture(mode: "happy" | "hang", run: (helpers: {
   api(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<{ status: number; body: any }>;
   control(args: string[]): Promise<any>;
   url: string;
   dataDir: string;
-  dump(): Promise<any>;
+  dump(): Promise<NativeTurn>;
 }) => Promise<void>) {
-  const fixture = await launchVerificationServer({ ...process.env, FAKE_CLAUDE_MODE: mode });
+  const fixture = await launchVerificationServer({ FAKE_ACP_MODE: mode });
   try {
     await run({
       url: fixture.info.url, dataDir: fixture.info.dataDir,
@@ -24,10 +30,17 @@ async function withFixture(mode: "happy" | "hang", run: (helpers: {
       },
       control: (args) => runControlQuati([...args, "--url", fixture.info.url]),
       dump: async () => {
-        await expect.poll(() => existsSync(fixture.fixtureDumpPath), { timeout: 15_000 }).toBe(true);
-        const value = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
-        rmSync(fixture.fixtureDumpPath, { force: true });
-        return value;
+        const file = `${fixture.fixtureDumpPath}.prompts.jsonl`;
+        let turn: NativeTurn | undefined;
+        await expect.poll(() => {
+          if (!existsSync(file)) return false;
+          const rows: NativeTurn[] = readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+          turn = rows.findLast((row) => row.mcpServers.some((server) => server.name === "agents"));
+          return Boolean(turn);
+        }, { timeout: 15_000 }).toBe(true);
+        assert(turn);
+        rmSync(file, { force: true });
+        return turn;
       },
     });
   } finally { await fixture.close(); }
@@ -96,7 +109,7 @@ it.each(["direct", "preview", "room", "goal"] as const)("keeps a corrupt persist
     storedBot.toolScope = { allow: "all" };
     writeFileSync(file, JSON.stringify(bots));
     restarted = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
-      env: verificationServerEnvironment(process.env, fixture.info.dataDir, Number(new URL(fixture.info.url).port)),
+      env: verificationServerEnvironment({}, fixture.info.dataDir, Number(new URL(fixture.info.url).port)),
       stdio: ["ignore", log, log],
     });
     await expect.poll(async () => {
@@ -134,7 +147,10 @@ it.each(["direct", "preview", "room", "goal"] as const)("keeps a corrupt persist
         expect(room?.messages.find(message => message.kind === "goal.run")?.goalRun?.status).toBe("failed");
       }
     }
-    expect(existsSync(fixture.fixtureDumpPath)).toBe(false);
+    const nativeFile = `${fixture.fixtureDumpPath}.prompts.jsonl`;
+    const rows: NativeTurn[] = existsSync(nativeFile) ? readFileSync(nativeFile, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
+    expect(rows.filter((turn) => turn.mcpServers.some((server) =>
+      server.env?.some((entry) => entry.name === "QUATI_BOT_ID" && entry.value === bot.id)))).toEqual([]);
   } finally {
     if (restarted && restarted.exitCode === null && restarted.signalCode === null) {
       const stopped = once(restarted, "close"); restarted.kill(); await stopped;
@@ -145,13 +161,14 @@ it.each(["direct", "preview", "room", "goal"] as const)("keeps a corrupt persist
 }, 60_000);
 
 it("refuses selection changes during direct and room turns and requires a trusted widening path", async () => {
-  await withFixture("hang", async ({ api, control, dump, url }) => {
+  await withFixture("hang", async ({ api, control, url }) => {
     const { bot } = await control(["new-bot", "--name", "Active scope fixture"]);
     const { bot: idle } = await control(["new-bot", "--name", "Idle scope fixture"]);
     const current = { allow: ["native:*"] };
     expect((await api("PATCH", `/api/bots/${bot.id}`, { toolScope: current })).status).toBe(200);
     expect((await api("PATCH", `/api/bots/${idle.id}`, { toolScope: { allow: [] } })).status).toBe(200);
-    await control(["send", "--bot", bot.id, "--text", "Stay active."]); await dump();
+    await control(["send", "--bot", bot.id, "--text", "Stay active."]);
+    await expect.poll(async () => (await api("GET", "/api/bots?messages=0")).body.bots.find((entry: { id: string }) => entry.id === bot.id)?.busy).toBe(true);
     expect((await api("PATCH", `/api/bots/${bot.id}`, { toolScope: { allow: [] } }, { origin: url })).status).toBe(409);
     expect((await api("PATCH", `/api/bots/${bot.id}`, { toolScope: current })).status).toBe(200);
     expect((await api("PATCH", `/api/bots/${idle.id}`, { toolScope: null })).status).toBe(409);
@@ -159,7 +176,8 @@ it("refuses selection changes during direct and room turns and requires a truste
     expect((await api("PATCH", `/api/bots/${idle.id}`, { toolScope: { allow: [] } })).status).toBe(200);
     await control(["interrupt", "--bot", bot.id]); await control(["wait", "--bot", bot.id, "--timeout", "30"]);
     const { channel } = await control(["new-channel", "--name", "Selected tools room", "--members", bot.id]);
-    await control(["send-channel", "--channel", channel.id, "--text", "Stay active in this room."]); await dump();
+    await control(["send-channel", "--channel", channel.id, "--text", "Stay active in this room."]);
+    await expect.poll(async () => (await api("GET", "/api/bots?messages=0")).body.groups.find((entry: { id: string }) => entry.id === channel.id)?.working).toBe(true);
     expect((await api("PATCH", `/api/bots/${bot.id}`, { toolScope: { deny: ["native:bash"] } }, { origin: url })).status).toBe(409);
     await control(["interrupt", "--channel", channel.id]); await control(["wait", "--channel", channel.id, "--timeout", "30"]);
   });
@@ -167,23 +185,23 @@ it("refuses selection changes during direct and room turns and requires a truste
 
 it("carries the latest original tool selection into fresh direct and room MCP connections", async () => {
   await withFixture("happy", async ({ api, control, dump }) => {
-    const server = { name: "notes", command: process.execPath, args: ["--experimental-strip-types", fileURLToPath(new URL("./testing/fake-mcp-server.ts", import.meta.url))], enabled: true };
-    expect((await api("POST", "/api/mcp/servers", server)).status).toBe(201);
-    expect((await api("PATCH", "/api/mcp/servers/notes", { enabled: true })).status).toBe(200);
     const { bot } = await control(["new-bot", "--name", "Scope dispatch fixture"]);
-    const direct = { allow: ["native:*", "mcp:notes:read_notes"] };
+    const direct = { allow: ["native:*", "mcp:agents:list_bots"] };
     expect((await api("PATCH", `/api/bots/${bot.id}`, { toolScope: direct })).status).toBe(200);
     await control(["send", "--bot", bot.id, "--text", "Reply once."]);
     const first = await dump();
-    expect(JSON.parse(first.mcpConfig.mcpServers.notes.env.QUATI_GATE_TOOL_SCOPE)).toEqual(direct);
+    const directGate = Object.fromEntries(first.mcpServers.find((server) => server.name === "agents")?.env?.map(({ name, value }) => [name, value]) ?? []);
+    expect(JSON.parse(directGate.QUATI_GATE_TOOL_SCOPE)).toEqual(direct);
+    expect(JSON.parse(directGate.QUATI_GATE_UPSTREAM).env.QUATI_THREAD_ID).toBe(bot.activeTaskId);
     await control(["wait", "--bot", bot.id, "--timeout", "30"]);
-    const roomScope = { deny: ["mcp:notes:write_notes"] };
+    const roomScope = { deny: ["mcp:agents:create_bot"] };
     expect((await api("PATCH", `/api/bots/${bot.id}`, { toolScope: roomScope })).status).toBe(200);
     const { channel } = await control(["new-channel", "--name", "Scope dispatch room", "--members", bot.id]);
     await control(["send-channel", "--channel", channel.id, "--text", "Reply once in this room."]);
     const second = await dump();
-    expect(second.pid).not.toBe(first.pid);
-    expect(JSON.parse(second.mcpConfig.mcpServers.notes.env.QUATI_GATE_TOOL_SCOPE)).toEqual(roomScope);
+    const roomGate = Object.fromEntries(second.mcpServers.find((server) => server.name === "agents")?.env?.map(({ name, value }) => [name, value]) ?? []);
+    expect(JSON.parse(roomGate.QUATI_GATE_TOOL_SCOPE)).toEqual(roomScope);
+    expect(JSON.parse(roomGate.QUATI_GATE_UPSTREAM).env.QUATI_THREAD_ID).toBe(channel.activeTaskId);
     await control(["wait", "--channel", channel.id, "--timeout", "30"]);
   });
 }, 60_000);

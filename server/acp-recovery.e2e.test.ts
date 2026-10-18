@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 
-it.each([false, true])("recovers the same conversation after an ACP internal error without replay (output: %s)", async (afterOutput) => {
+it.each([false, true])("rehydrates the same conversation after an ACP internal error only on explicit retry (output: %s)", async (afterOutput) => {
   const fixture = await launchVerificationServer();
   const { dataDir, url, logPath } = fixture.info;
   let server: ChildProcess | undefined;
@@ -32,19 +32,22 @@ it.each([false, true])("recovers the same conversation after an ACP internal err
     ? readFileSync(rpcFile, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as { pid: number; method: string }) : [];
   const prompts = () => calls().filter((call) => call.method === "session/prompt");
   try {
-    // Add only the repository-owned synthetic provider to the launcher's
-    // temporary config while stopped. Never discover the person's CLI/home.
     await waitForExit(fixture.child, { signal: "SIGTERM" });
     const configPath = join(dataDir, "config.json");
     const config = JSON.parse(readFileSync(configPath, "utf8"));
+    const cli = join(dataDir, "opencode-recovery.mjs");
+    const fixtureEnv = {
+      FAKE_ACP_MODELS: "fixture/recovery", FAKE_ACP_DUMP: dumpFile, FAKE_ACP_DUMP_PROMPT: "1",
+      FAKE_ACP_RPC_APPEND_FILE: rpcFile, FAKE_ACP_RPC_FAILURE_FILE: failureFile,
+      ...(afterOutput ? { FAKE_ACP_RPC_FAILURE_AFTER_OUTPUT: "1" } : {}),
+    };
+    writeFileSync(cli, [
+      `#!${process.execPath}`,
+      `Object.assign(process.env, ${JSON.stringify(fixtureEnv)});`,
+      `await import(${JSON.stringify(fileURLToPath(new URL("./testing/fake-acp-cli.ts", import.meta.url)))});`,
+    ].join("\n"), { mode: 0o755 });
     config.instances.opencodeGo = {
-      driver: "opencodeGo", displayName: "Recovery fixture",
-      config: { cli: fileURLToPath(new URL("./testing/fake-acp-cli.ts", import.meta.url)) },
-      environment: {
-        FAKE_ACP_MODELS: "fixture/recovery", FAKE_ACP_DUMP: dumpFile, FAKE_ACP_DUMP_PROMPT: "1",
-        FAKE_ACP_RPC_APPEND_FILE: rpcFile, FAKE_ACP_RPC_FAILURE_FILE: failureFile,
-        ...(afterOutput ? { FAKE_ACP_RPC_FAILURE_AFTER_OUTPUT: "1" } : {}),
-      },
+      driver: "opencodeGo", displayName: "Recovery fixture", config: { cli },
     };
     writeFileSync(configPath, JSON.stringify(config));
     const log = openSync(logPath, "a", 0o600);
@@ -56,6 +59,10 @@ it.each([false, true])("recovers the same conversation after an ACP internal err
     await expect.poll(async () => {
       try { return (await fetch(url + "/api/health", { signal: AbortSignal.timeout(1_000) })).ok; } catch { return false; }
     }, { timeout: 20_000 }).toBe(true);
+
+    await expect.poll(async () => (await api("GET", "/api/instances")).instances
+      .find((instance: { instanceId: string }) => instance.instanceId === "opencodeGo")
+      ?.models.options.some((model: { id: string }) => model.id === "fixture/recovery"), { timeout: 10_000 }).toBe(true);
 
     const { bot } = await control("new-bot", "--name", "Recovery bot");
     const threadId = bot.activeTaskId;
@@ -93,8 +100,9 @@ it.each([false, true])("recovers the same conversation after an ACP internal err
     expect(prompts()[2].pid).not.toBe(firstProcess);
     const prompt = JSON.stringify(JSON.parse(readFileSync(`${dumpFile}.prompt.json`, "utf8")));
     expect(prompt.split(retryText).length - 1).toBe(1);
-    expect(prompt).not.toContain(firstText);
-    expect(prompt).not.toContain(failedText);
+    expect(prompt.split(firstText).length - 1).toBe(1);
+    expect(prompt.split(failedText).length - 1).toBe(1);
+    expect(prompt).toContain("complete current history follows");
     const finalMessages = await messages();
     for (const text of [firstText, failedText, retryText]) {
       expect(finalMessages.filter((message) => message.role === "user" && message.text === text)).toHaveLength(1);

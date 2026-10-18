@@ -950,10 +950,10 @@ export function mergeOpenCodeProviderKeys(
   return { ok: true, keys: Object.fromEntries([...keys].sort(([a], [b]) => (a < b ? -1 : 1))) };
 }
 
-const configSaveListeners = new Set<(before: JsonObject, after: JsonObject) => void>();
+const configSaveListeners = new Set<(before: JsonObject, after: JsonObject, changedSecrets: readonly string[]) => void>();
 
-/** Called synchronously after each saveConfig with the file before and after; a listener must not throw. */
-export function onConfigSaved(listener: (before: JsonObject, after: JsonObject) => void): () => void {
+/** Reports the file before and after each save plus changed vault field paths, never secret values; listeners must not throw. */
+export function onConfigSaved(listener: (before: JsonObject, after: JsonObject, changedSecrets: readonly string[]) => void): () => void {
   configSaveListeners.add(listener);
   return () => { configSaveListeners.delete(listener); };
 }
@@ -1084,11 +1084,11 @@ export function saveConfig(
     }
     disk[section] = values.data;
   }
-  if (Object.keys(secrets).length) saveConfigSecrets(DATA_DIR, secrets);
+  const changedSecrets = Object.keys(secrets).length ? saveConfigSecrets(DATA_DIR, secrets) : [];
   writeFileAtomic(p, JSON.stringify(disk, null, 2), { mode: 0o600 });
   for (const listener of configSaveListeners) {
     try {
-      listener(before, disk);
+      listener(before, disk, changedSecrets);
     } catch (error) {
       console.warn(`config: a save listener failed: ${error instanceof Error ? error.message : String(error)}`);
     }

@@ -1,17 +1,18 @@
 // POSIX only: the fake engines are shebang scripts.
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { freePortBlock } from "./testing/ports.ts";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
-const PORT = 18800 + Math.floor(Math.random() * 10_000);
-const BASE = `http://127.0.0.1:${PORT}`;
+const FAKE_ACP = pathToFileURL(join(SERVER_DIR, "testing", "fake-acp-cli.ts")).href;
+let base: string;
 const posixOnly = describe.skipIf(process.platform === "win32");
 
 posixOnly("bulk delete tasks e2e", () => {
@@ -21,7 +22,7 @@ posixOnly("bulk delete tasks e2e", () => {
   let finishGate: string;
 
   const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
-    const res = await fetch(`${BASE}${path}`, {
+    const res = await fetch(`${base}${path}`, {
       method,
       headers: body !== undefined ? { "content-type": "application/json" } : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -46,32 +47,45 @@ posixOnly("bulk delete tasks e2e", () => {
   };
 
   beforeAll(async () => {
-    chmodSync(FAKE_CLAUDE, 0o755);
     home = mkdtempSync(join(tmpdir(), "quati-bulk-delete-"));
-    mkdirSync(join(home, ".quatibot"), { recursive: true });
+    const dataDir = join(home, ".quatibot");
+    const discovery = join(dataDir, "providers", "opencode", "discovery");
+    mkdirSync(discovery, { recursive: true });
+    writeFileSync(join(discovery, ".quati-project"), "Verification fixture\n");
     finishGate = join(home, "finish-turn.gate");
+    const cli = join(home, "opencode-fixture.mjs");
+    writeFileSync(cli, [
+      "#!/usr/bin/env node",
+      "process.env.FAKE_ACP_MODE = 'echo-gated';",
+      "process.env.FAKE_ACP_MODELS = 'fixture/test';",
+      "process.env.FAKE_ACP_VERSION = '2.0.31';",
+      "process.env.FAKE_ACP_AGENT_VERSION = '2.0.31';",
+      `process.env.FAKE_ACP_GATE_FILE = ${JSON.stringify(finishGate)};`,
+      `await import(${JSON.stringify(FAKE_ACP)});`,
+    ].join("\n"), { mode: 0o700 });
     writeFileSync(
       join(home, ".quatibot", "config.json"),
       JSON.stringify({
         instances: {
-          claudeSlow: {
-            driver: "claudeAgent",
-            environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: finishGate },
-            config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
+          slow: {
+            driver: "opencodeGo",
+            config: { cli },
           },
         },
       }),
     );
+    const port = await freePortBlock([0, 1]);
+    base = `http://127.0.0.1:${port}`;
     child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
-      env: { ...(process.env.PATH ? { PATH: process.env.PATH } : {}), HOME: home, USERPROFILE: home, QUATI_PORT: String(PORT) },
+      env: verificationServerEnvironment(process.env, dataDir, port),
       stdio: ["ignore", "pipe", "pipe"],
     });
     child.stderr!.on("data", (c) => (stderr += c));
     const deadline = Date.now() + 20_000;
     for (;;) {
       try {
-        if ((await fetch(`${BASE}/api/health`)).ok) break;
+        if ((await fetch(`${base}/api/health`)).ok) break;
       } catch {
         /* not up yet */
       }
@@ -79,6 +93,7 @@ posixOnly("bulk delete tasks e2e", () => {
       if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}. stderr:\n${stderr}`);
       await new Promise((r) => setTimeout(r, 150));
     }
+    await waitUntil(async () => (await api("GET", "/api/instances")).body.instances[0]?.models.default === "fixture/test", 10_000, "fixture model was not discovered");
   }, 30_000);
 
   afterAll(async () => {
@@ -120,7 +135,7 @@ posixOnly("bulk delete tasks e2e", () => {
 
   it("refuses a running task per id but still deletes the others", async () => {
     rmSync(finishGate, { force: true });
-    const bot = await newBot("Bulk C", { instanceId: "claudeSlow", model: "claude-fake" });
+    const bot = await newBot("Bulk C", { instanceId: "slow", model: "fixture/test" });
     const running = bot.threadId;
     expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "go" })).status).toBe(202);
     await waitUntil(async () => (await getBot(bot.id))?.busy === true, 15_000, "turn never started");
@@ -185,7 +200,7 @@ posixOnly("bulk delete tasks e2e", () => {
 
   it("refuses a channel thread with a running turn per id but still deletes the others", async () => {
     rmSync(finishGate, { force: true });
-    const bot = await newBot("Bulk J", { instanceId: "claudeSlow", model: "claude-fake" });
+    const bot = await newBot("Bulk J", { instanceId: "slow", model: "fixture/test" });
     const room = await newRoom("Bulk room busy", bot);
     const second = (await api("POST", `/api/groups/${room.id}/tasks`, {})).body.task.threadId;
     const third = (await api("POST", `/api/groups/${room.id}/tasks`, {})).body.task.threadId;

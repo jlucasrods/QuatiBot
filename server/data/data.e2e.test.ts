@@ -95,10 +95,18 @@ it("loads, queries, shows, pages, renders and exports through the real server", 
     expect(receipts.map((message) => [message.tool.name, message.dataResult.title, message.dataResult.cardId]))
       .toEqual([["data_show", "Totals", tableCard.data.id], ["data_show", "By region", chartCard.data.id]]);
 
-    const dump = join(dataDir, "fake-claude-dump.json");
+    const dump = `${fixture.fixtureDumpPath}.prompts.jsonl`;
     const providerPrompt = async () => {
-      await expect.poll(() => existsSync(dump), { timeout: 20_000 }).toBe(true);
-      return JSON.parse(readFileSync(dump, "utf8")).prompt.message.content as string;
+      let prompt = "";
+      await expect.poll(() => {
+        if (!existsSync(dump)) return false;
+        const rows: Array<{ prompt: Array<{ text?: string }>; mcpServers: Array<{ env?: Array<{ name: string; value: string }> }> }> =
+          readFileSync(dump, "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
+        const turn = rows.findLast(row => row.mcpServers.some(server => server.env?.some(entry => entry.name === "QUATI_THREAD_ID" && entry.value === threadId)));
+        prompt = turn?.prompt.map(block => block.text ?? "").join("\n") ?? "";
+        return Boolean(prompt);
+      }, { timeout: 20_000 }).toBe(true);
+      return prompt;
     };
     const envelope = (prompt: string) => prompt.match(/<data-context>.*?<\/data-context>/g) ?? [];
     const settled = async () => {

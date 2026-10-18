@@ -229,7 +229,8 @@ describe("shared sentences", () => {
       expect(prompt).not.toContain("nothing changes until the user confirms");
     }
     expect(LEARN_PROMPT).toContain("only when the user explicitly asks to revise that exact name");
-    expect(CREDENTIAL_PROMPT).toContain("secure credential request");
+    expect(CREDENTIAL_PROMPT).toContain("secure entry card in QuatiBot's web interface");
+    expect(CREDENTIAL_PROMPT).toContain("opencode auth login");
     expect(CREDENTIAL_PROMPT).not.toContain("applied immediately");
   });
 });

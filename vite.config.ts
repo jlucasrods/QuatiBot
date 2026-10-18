@@ -32,9 +32,6 @@ export default defineConfig({
     fileParallelism: false,
     // --shard splits the files by recorded CI seconds, not count
     sequence: { sequencer: DurationSequencer },
-    // Known flakes in scripts/testing/ci-retry-list.json get two retries in
-    // CI only, each reported.
-    runner: "./scripts/testing/ci-retry-runner.ts",
     // Doubled on Windows, whose runners are about 1.45x slower.
     testTimeout: hostTimeout(20_000),
     hookTimeout: hostTimeout(30_000),

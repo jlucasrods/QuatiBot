@@ -1,10 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 
-import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
+import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { RoutineManager, type RoutineRun } from "./routines.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
@@ -73,7 +73,7 @@ it("recovers queued/due work and a waiting routine's imported hand-off after res
     await scheduler.tick();
     expect(scheduler.listRuns().find((run) => run.id === queued.id)?.status).toBe("queued");
     const disk = JSON.parse(readFileSync(file, "utf8"));
-    disk.startupLaunchId = "previous-desktop-launch";
+    disk.startupLaunchId = "previous-server-launch";
     const dueAt = Date.now() - 1_000;
     const cronDueAt = Math.floor(Date.now() / 60_000) * 60_000 - 5 * 60_000;
     disk.routines.find((routine: { id: string }) => routine.id === cron.id).enabled = true;
@@ -105,21 +105,7 @@ it("recovers queued/due work and a waiting routine's imported hand-off after res
       }],
     }));
 
-    // Reuse the fixture home, never the parent's CLI accounts or app state.
-    const env: NodeJS.ProcessEnv = {};
-    for (const key of ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"]) {
-      if (process.env[key]) env[key] = process.env[key];
-    }
-    Object.assign(env, {
-      HOME: dataDir, USERPROFILE: dataDir, QUATI_DATA_DIR: dataDir,
-      APPDATA: join(dataDir, "AppData", "Roaming"), LOCALAPPDATA: join(dataDir, "AppData", "Local"),
-      XDG_CONFIG_HOME: join(dataDir, ".config"), XDG_CACHE_HOME: join(dataDir, ".cache"),
-      XDG_DATA_HOME: join(dataDir, ".local", "share"), HERMES_HOME: join(dataDir, ".hermes"),
-      TEMP: join(dataDir, "tmp"), TMP: join(dataDir, "tmp"), TMPDIR: join(dataDir, "tmp"),
-      QUATI_PORT: new URL(url).port, QUATI_WEBHOOK_PORT: String(Number(new URL(url).port) + 1),
-      PATH: dirname(process.execPath), FAKE_CLAUDE_MODE: "happy",
-      QUATI_DESKTOP_LAUNCH_ID: "previous-desktop-launch",
-    });
+    const env = verificationServerEnvironment({}, dataDir, Number(new URL(url).port));
     const log = openSync(logPath, "a", 0o600);
     restarted = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
       cwd: fileURLToPath(new URL("..", import.meta.url)), env, stdio: ["ignore", log, log],

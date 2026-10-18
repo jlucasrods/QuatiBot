@@ -97,15 +97,18 @@ describe("LiveCallBar", () => {
     expect(markup).not.toContain(`aria-label="${other}"`);
   });
 
-  it("names the keyboard chords on the mute and hang-up buttons", () => {
-    vi.stubGlobal("window", { quati: { platform: "darwin", speechStop: vi.fn(async () => {}) } });
+  it.each([
+    ["Macintosh; Intel Mac OS X", "⌘⇧", "Meta"],
+    ["X11; Linux x86_64", "Ctrl+Shift+", "Control"],
+  ])("names the browser keyboard chords for %s", (userAgent, label, key) => {
+    vi.stubGlobal("navigator", { language: "en", userAgent });
     configureLiveMedia({ getUserMedia: () => new Promise<MediaStream>(() => {}) });
     void startLiveCall({ botId: bot.id, threadId: bot.threadId });
     const markup = render(createElement(LiveCallBar, { bot }));
-    expect(markup).toContain('title="Mute (⌘⇧M)"');
-    expect(markup).toContain('aria-keyshortcuts="Meta+Shift+M"');
-    expect(markup).toContain('title="Hang up (⌘⇧H)"');
-    expect(markup).toContain('aria-keyshortcuts="Meta+Shift+H"');
+    expect(markup).toContain(`title="Mute (${label}M)"`);
+    expect(markup).toContain(`aria-keyshortcuts="${key}+Shift+M"`);
+    expect(markup).toContain(`title="Hang up (${label}H)"`);
+    expect(markup).toContain(`aria-keyshortcuts="${key}+Shift+H"`);
   });
 });
 

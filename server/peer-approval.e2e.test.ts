@@ -8,7 +8,7 @@ import { waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
 
 it("preserves peer approval outcomes through real HTTP responses and sends no work without an allow", async () => {
-  const fixture = await launchVerificationServer(process.env);
+  const fixture = await launchVerificationServer();
   const { url, dataDir, logPath } = fixture.info;
   const gate = join(dataDir, "finish-provider");
   const expiry = join(dataDir, "expire-peer-approval");
@@ -41,12 +41,19 @@ it("preserves peer approval outcomes through real HTTP responses and sends no wo
     const from = (await cli("new-bot", "--name", "Approval source")).bot;
     const target = (await cli("new-bot", "--name", "Approval target")).bot;
     target.threadId = target.activeTaskId;
+    const mountedToken = () => {
+      const turns: Array<{ mcpServers: Array<{ name: string; env?: Array<{ name: string; value: string }> }> }> =
+        readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      const turn = turns.findLast((row) => row.mcpServers.some((server) =>
+        server.env?.some((entry) => entry.name === "QUATI_THREAD_ID" && entry.value === from.threadId)));
+      return turn?.mcpServers.find((server) => server.name === "agents")?.env?.find((entry) => entry.name === "QUATI_COMMS_TOKEN")?.value ?? "";
+    };
     // Peer review applies below Full access.
     await api("PATCH", `/api/bots/${from.id}`, { approvePeerComms: true, approvalMode: "ask" });
     // Reuse the shared launcher's disposable data; the import hook controls only the peer timer.
     await waitForExit(fixture.child, { signal: "SIGTERM" });
-    const env = verificationServerEnvironment({ ...process.env, FAKE_CLAUDE_MODE: "slow",
-      FAKE_CLAUDE_SLOW_FINISH_GATE: gate }, dataDir, Number(new URL(url).port));
+    const env = verificationServerEnvironment({ FAKE_ACP_MODE: "echo-gated",
+      FAKE_ACP_GATE_FILE: gate, FAKE_ACP_DUMP: fixture.fixtureDumpPath }, dataDir, Number(new URL(url).port));
     env.QUATI_TEST_PEER_APPROVAL = "1";
     const log = openSync(logPath, "a", 0o600);
     child = spawn(process.execPath, ["--import", new URL("./testing/peer-approval-hooks.mjs", import.meta.url).href,
@@ -71,7 +78,7 @@ it("preserves peer approval outcomes through real HTTP responses and sends no wo
     }, { timeout: 15_000 }).toBe(true);
     let token = "";
     await expect.poll(() => {
-      try { token = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN; }
+      try { token = mountedToken(); }
       catch { return false; }
       return Boolean(token);
     }, { timeout: 15_000 }).toBe(true);
@@ -127,11 +134,11 @@ it("preserves peer approval outcomes through real HTTP responses and sends no wo
 
     rmSync(expiry, { force: true });
     rmSync(gate, { force: true });
-    rmSync(fixture.fixtureDumpPath, { force: true });
+    rmSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, { force: true });
     const other = (await cli("new-bot", "--name", "Second approval target")).bot;
     await cli("send", "--bot", from.id, "--task", from.threadId, "--text", "Check the completed handoff and request two teammates.");
     await expect.poll(() => {
-      try { token = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN; }
+      try { token = mountedToken(); }
       catch { return false; }
       return Boolean(token);
     }, { timeout: 15_000 }).toBe(true);

@@ -3494,7 +3494,6 @@
   "place.view.ccUnavailable.short": "Şu anda kullanılamıyor",
   "place.view.ccUnavailable.line": "Bulut bilgisayarları şu anda başlatılamıyor. Bunun sizin yaptığınız bir şeyle ilgisi yok.",
   "place.view.ccEnded.short": "Plan sona erdi",
-  "place.view.ccEnded.line": "Quati Cloud planınız sona erdi, bu nedenle bulut bilgisayarları kapalı.",
   "place.view.ccNoStart.short": "Başlamadı",
   "place.view.ccNoStart.line": "{bot} adlı botun bulut bilgisayarı başlamadı.",
   "place.view.ccClearing.short": "Temizleniyor",

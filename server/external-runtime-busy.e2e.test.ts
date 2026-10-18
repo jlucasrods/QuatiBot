@@ -14,13 +14,12 @@ it.each(["already busy", "became busy during approval"])(
   async scenario => {
     const scratch = mkdtempSync(join(tmpdir(), "quati-external-busy-"));
     const gate = join(scratch, "finish-peer");
-    const prompts = join(scratch, "prompts.jsonl");
     let fixture: VerificationServer | undefined;
     const evidence: unknown[] = [];
     try {
-      fixture = await launchVerificationServer({ ...process.env, FAKE_CLAUDE_MODE: "slow",
-        FAKE_CLAUDE_SLOW_FINISH_GATE: gate, FAKE_CLAUDE_PROMPTS: prompts });
+      fixture = await launchVerificationServer({ FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: gate });
       const session = fixture;
+      const prompts = `${session.fixtureDumpPath}.prompts.jsonl`;
       const control = (...args: string[]) => runControlQuati([...args, "--url", session.info.url]) as Promise<any>;
       const api = async (method: string, path: string, body?: unknown, runtime = false): Promise<any> => {
         const response = await fetch(session.info.url + path, {

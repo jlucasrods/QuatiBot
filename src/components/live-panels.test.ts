@@ -40,13 +40,17 @@ const fetched: string[] = [];
 let root: Root;
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0)); };
 async function mount(panel: typeof InspectorPanel | typeof ActivityPanel) {
-  const state: AppState = { ...initialState, bots: [bot], selectedId: bot.id };
-  const value = { state, dispatch: vi.fn(), flushBotPatches: async () => null, refreshInstances: async () => {}, refreshModels: async () => {} };
   const container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  flushSync(() => root.render(createElement(BotEditorStore, { value, children: createElement(panel, { bot }) })));
+  const render = (current: Bot) => {
+    const state: AppState = { ...initialState, bots: [current], selectedId: current.id };
+    const value = { state, dispatch: vi.fn(), flushBotPatches: async () => null, refreshInstances: async () => {}, refreshModels: async () => {} };
+    flushSync(() => root.render(createElement(BotEditorStore, { value, children: createElement(panel, { bot: current }) })));
+  };
+  render(bot);
   await settle();
+  return render;
 }
 
 beforeEach(() => {
@@ -90,6 +94,15 @@ describe("Inspector on the app's live stream", () => {
 });
 
 describe("Activity on the app's live stream", () => {
+  it("keeps a pending receipt refresh when the task snapshot updates", async () => {
+    const render = await mount(ActivityPanel);
+    frame(runtime("settled", { type: "turn.completed", ok: true }));
+    render({ ...bot, tasks: bot.tasks?.map((task) => ({ ...task, busy: false })) });
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await settle();
+    expect(fetched).toEqual(["/api/bots/bot/activity?limit=300", "/api/bots/bot/activity?limit=300"]);
+  });
+
   it("reloads when one of the bot's turns settles, with no stream of its own", async () => {
     await mount(ActivityPanel);
     expect(fetched).toEqual(["/api/bots/bot/activity?limit=300"]);

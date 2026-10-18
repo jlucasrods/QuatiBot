@@ -71,7 +71,7 @@ describe("ChatNotice", () => {
 
   it("shows in the room as well as the chat", () => {
     for (const file of ["components/ChatView.tsx", "components/GroupView.tsx"]) {
-      expect(source(file)).toContain("<ChatNotice notice={state.notice} />");
+      expect(source(file)).toMatch(/<ChatNotice notice=\{state\.notice\}\s*\/>/);
     }
   });
 });

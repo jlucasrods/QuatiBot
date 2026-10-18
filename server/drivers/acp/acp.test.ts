@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -64,6 +64,19 @@ describe("OpenCode V2 ACP turns", () => {
     expect(session.cwd).toBe(home);
   });
 
+  it.each([
+    { kind: "execute", title: "shell" },
+    { kind: "read", title: "git push origin release" },
+  ])("keeps the semantic kind of a $kind tool", async ({ kind, title }) => {
+    const command = "git push origin release";
+    const recorder = await create({ FAKE_ACP_TOOL_CALLS: JSON.stringify([{ name: command, kind, input: { command }, ok: true }]) });
+    await instance.adapter.sendTurn({ threadId: "thread", text: "Report fixture tools", cwd: home });
+    await recorder.until((event) => event.type === "turn.completed");
+
+    expect(recorder.events.filter((event) => event.type === "item.started" && event.itemType === "tool"))
+      .toMatchObject([{ title, summary: command }]);
+  });
+
   it("passes internal browser, computer and Android MCPs only to the session", async () => {
     const recorder = await create();
     const server = { command: process.execPath, args: ["fixture-mcp"], env: { FIXTURE_TOKEN: "session-secret" } };
@@ -84,5 +97,21 @@ describe("OpenCode V2 ACP turns", () => {
     const recorder = await create({ FAKE_ACP_MODE: mode });
     await instance.adapter.sendTurn({ threadId: "thread", text: "Hello", cwd: home });
     expect(await recorder.until((event) => event.type === "turn.completed")).toMatchObject({ ok: false });
+  });
+
+  it.each([
+    { message: "The request was cancelled by the client.", data: undefined, expected: "The request was cancelled by the client." },
+    { message: "The request was cancelled by the client.", data: { details: "The request was cancelled by the client." }, expected: "The request was cancelled by the client." },
+    { message: "The request was cancelled by the client.", data: { details: "Failed to save a file" }, expected: "The request was cancelled by the client.: Failed to save a file (session/prompt)" },
+    { message: "Failed after the request was cancelled by the client.", data: undefined, expected: "Failed after the request was cancelled by the client. (session/prompt)" },
+  ])("preserves the cancellation boundary for $expected", async ({ message, data, expected }) => {
+    const failure = join(home, "rpc-failure.json");
+    writeFileSync(failure, JSON.stringify({ code: -32603, message, data }));
+
+    const recorder = await create({ FAKE_ACP_RPC_FAILURE_FILE: failure });
+    await instance.adapter.sendTurn({ threadId: "thread", text: "Hello", cwd: home });
+    await recorder.until((event) => event.type === "turn.completed");
+
+    expect(recorder.events.filter((event) => event.type === "runtime.error")).toMatchObject([{ message: expected }]);
   });
 });

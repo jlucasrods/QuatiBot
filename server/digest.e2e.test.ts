@@ -1,17 +1,17 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const fake = (name: string) => join(SERVER_DIR, "testing", name);
 const PORT = 18800 + Math.floor(Math.random() * 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
-const posixOnly = describe.skipIf(process.platform === "win32");
 
 interface Msg {
   id: string;
@@ -23,15 +23,7 @@ interface Msg {
   digest?: { turnId: string; tools: Array<{ name: string; count: number }>; files?: { added: string[]; changed: string[] }; hookCoverage: string };
 }
 
-/** One row per engine family with a fake in server/testing; `tools` is what that fake's default turn emits. */
-const ENGINES = [
-  { id: "acp", driver: "grokAgent", cli: "fake-acp-cli.ts", env: {}, tools: ["run"] },
-  { id: "claude", driver: "claudeAgent", cli: "fake-claude-cli.ts", env: {}, tools: ["Bash"] },
-  { id: "codex", driver: "codex", cli: "fake-codex-app-server.ts", env: {}, tools: ["*"] },
-  { id: "pi", driver: "piAgent", cli: "fake-pi-cli.ts", env: { FAKE_PI_MODE: "tooluse" }, tools: ["bash"] },
-] as const;
-
-posixOnly("work digest e2e (every fake engine)", () => {
+describe("OpenCode work digests", () => {
   let child: ChildProcess;
   let home: string;
   let stderr = "";
@@ -60,32 +52,33 @@ posixOnly("work digest e2e (every fake engine)", () => {
   };
 
   beforeAll(async () => {
-    for (const e of ENGINES) chmodSync(fake(e.cli), 0o755);
     home = mkdtempSync(join(tmpdir(), "quati-digest-e2e-"));
     mkdirSync(join(home, ".quatibot"), { recursive: true });
+    const tools = join(home, "bin");
+    mkdirSync(tools);
+    symlinkSync("/usr/bin/git", join(tools, "git"));
     const instances: Record<string, unknown> = {};
-    for (const e of ENGINES) {
-      instances[e.id] = { driver: e.driver, environment: e.env, config: { cli: fake(e.cli), fullAuto: true } };
+    for (const [id, mode] of [["opencodeGo", "happy"], ["gated", "echo-gated"], ["echo", "echo-gated"]]) {
+      const cli = join(home, `${id}.mjs`);
+      writeFileSync(cli, [
+        `#!${process.execPath}`,
+        `Object.assign(process.env, ${JSON.stringify({
+          FAKE_ACP_MODE: mode, FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31",
+          FAKE_ACP_AGENT_NAME: "OpenCode", FAKE_ACP_MODELS: "fixture/test",
+          ...(id === "gated" ? { FAKE_ACP_GATE_FILE: gate(), FAKE_ACP_STARTED_FILE: started() } : {}),
+        })});`,
+        `await import(${JSON.stringify(fake("fake-acp-cli.ts"))});`,
+      ].join("\n"), { mode: 0o755 });
+      instances[id] = { driver: "opencodeGo", config: { cli } };
     }
-    // a gated ACP instance for the file-change test, and a second plain ACP
-    // instance that echoes its prompt so the replay can be read back
-    instances.gated = {
-      driver: "grokAgent",
-      environment: { FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: gate(), FAKE_ACP_STARTED_FILE: started() },
-      config: { cli: fake("fake-acp-cli.ts"), fullAuto: true },
-    };
-    instances.echo = {
-      driver: "grokAgent",
-      environment: { FAKE_ACP_MODE: "echo-gated" },
-      config: { cli: fake("fake-acp-cli.ts"), fullAuto: true },
-    };
+    const discovery = join(home, ".quatibot", "providers", "opencode", "discovery");
+    mkdirSync(discovery, { recursive: true });
+    writeFileSync(join(discovery, ".quati-project"), "");
     writeFileSync(join(home, ".quatibot", "config.json"), JSON.stringify({ instances }));
 
-    const env: NodeJS.ProcessEnv = { HOME: home, USERPROFILE: home, QUATI_PORT: String(PORT) };
-    if (process.env.PATH) env.PATH = process.env.PATH;
     child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
-      env,
+      env: { ...verificationServerEnvironment({}, join(home, ".quatibot"), PORT), HOME: home, PATH: `${dirname(process.execPath)}:${tools}` },
       stdio: ["ignore", "pipe", "pipe"],
     });
     child.stderr!.on("data", (c) => (stderr += c));
@@ -98,6 +91,11 @@ posixOnly("work digest e2e (every fake engine)", () => {
       if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}. stderr:\n${stderr}`);
       await new Promise((r) => setTimeout(r, 150));
     }
+    await waitFor(async () => {
+      const rows = (await api("GET", "/api/instances")).body.instances;
+      return ["opencodeGo", "gated", "echo"].every((id) => rows.find((row: { instanceId: string }) => row.instanceId === id)
+        ?.models?.options?.some((model: { id: string }) => model.id === "fixture/test"));
+    }, "OpenCode model discovery");
   }, 30_000);
 
   afterAll(async () => {
@@ -105,12 +103,12 @@ posixOnly("work digest e2e (every fake engine)", () => {
     await removeTempDir(home);
   });
 
-  it.each(ENGINES)("$id: one settled turn yields exactly one digest naming its tools", async (engine) => {
+  it("one settled turn yields exactly one digest naming its tools", async () => {
     const created = (await api("POST", "/api/bots")).body.bot;
-    expect((await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: engine.id, model: "fake-model" } })).status).toBe(200);
+    expect((await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "opencodeGo", model: "fixture/test" } })).status).toBe(200);
     expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "do one thing" })).status).toBe(202);
-    await waitFor(() => settled(created.id), `${engine.id} to settle`);
-    await waitFor(async () => (await getBot(created.id)).messages.some((m: Msg) => m.kind === "digest"), `${engine.id} digest`);
+    await waitFor(() => settled(created.id), "OpenCode to settle");
+    await waitFor(async () => (await getBot(created.id)).messages.some((m: Msg) => m.kind === "digest"), "OpenCode digest");
 
     const bot = await getBot(created.id);
     const digests: Msg[] = bot.messages.filter((m: Msg) => m.kind === "digest");
@@ -122,8 +120,7 @@ posixOnly("work digest e2e (every fake engine)", () => {
     expect(d!.digest?.turnId).toBeTruthy();
     if (reply.turnId) expect(d!.digest?.turnId).toBe(reply.turnId);
     const names = d!.digest!.tools.map((t) => t.name);
-    if (engine.tools[0] === "*") expect(names.length).toBeGreaterThan(0);
-    else for (const name of engine.tools) expect(names).toContain(name);
+    expect(names).toContain("run");
     const activities: Msg[] = bot.messages.filter((m: Msg) => m.kind === "activity" && m.tool);
     for (const a of activities) expect(a.turnId).toBe(d!.digest?.turnId);
     expect(d!.digest!.tools.reduce((n, t) => n + t.count, 0)).toBe(activities.length);
@@ -134,7 +131,7 @@ posixOnly("work digest e2e (every fake engine)", () => {
     writeFileSync(join(project, "README.md"), "hello");
     const created = (await api("POST", "/api/bots")).body.bot;
     expect((await api("PATCH", `/api/bots/${created.id}`, { cwd: project })).status).toBe(200);
-    expect((await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "gated", model: "fake-model" } })).status).toBe(200);
+    expect((await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "gated", model: "fixture/test" } })).status).toBe(200);
 
     // the turn is held open by the gate; "the engine" changes a file meanwhile
     expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "raise the retry limit" })).status).toBe(202);
@@ -148,7 +145,7 @@ posixOnly("work digest e2e (every fake engine)", () => {
     const digest: Msg = (await getBot(created.id)).messages.find((m: Msg) => m.kind === "digest");
     expect(digest.digest?.files?.added).toEqual(["retry.ts"]);
 
-    expect((await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "echo", model: "fake-model" } })).status).toBe(200);
+    expect((await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "echo", model: "fixture/test" } })).status).toBe(200);
     expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "what did you change?" })).status).toBe(202);
     await waitFor(async () => {
       const b = await getBot(created.id);

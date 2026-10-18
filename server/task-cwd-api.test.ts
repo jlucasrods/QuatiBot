@@ -53,7 +53,7 @@ it("pins an explicitly chosen new-thread folder without moving existing sessions
     const run = async (task: string, text: string, expectedCwd: string) => {
       await control(["send", "--bot", bot.id, "--task", task, "--text", text]);
       expect((await control(["wait", "--bot", bot.id, "--task", task, "--timeout", "30"])).status).toBe("settled");
-      const dump = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
+      const dump = JSON.parse(readFileSync(`${fixture.fixtureDumpPath}.session.json`, "utf8"));
       expect(realpathSync(dump.cwd)).toBe(realpathSync(expectedCwd));
       evidence.push({ receipt: { cwd: dump.cwd, prompt: dump.prompt } });
     };

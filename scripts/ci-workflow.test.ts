@@ -50,22 +50,15 @@ describe("CI concurrency", () => {
         expect(rootConfig).not.toContain('"evals/**/*.test.ts"');
     });
 
-    it("supersedes old PR checks but never cancels a running main or merge-queue run", () => {
-        expect(workflow.on.push.branches).toEqual(["main"]);
-        expect(workflow.on).toHaveProperty("merge_group");
-        expect(workflow.concurrency["cancel-in-progress"]).toBe("${{ github.event_name == 'pull_request' }}");
-    });
-    it("keeps main to one running and one waiting run, apart from PR and merge-queue groups", () => {
-        // One group for every main push: GitHub keeps the running run and only
-        // the newest waiting one, so a burst of merges cannot pile up full runs.
-        expect(workflow.concurrency.group).toBe("ci-${{ github.event_name == 'merge_group' && github.event.merge_group.head_ref || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}");
+    it("runs only for pull requests and supersedes their older checks", () => {
+        expect(workflow.on).toEqual({ pull_request: null });
+        expect(workflow.concurrency).toEqual({ group: "ci-pr-${{ github.event.pull_request.number }}", "cancel-in-progress": true });
     });
     it("stops a closed PR's run by joining ci.yml's PR group", () => {
         const stop = parse(readFileSync(new URL("../.github/workflows/ci-stop-closed.yml", import.meta.url), "utf8"));
         expect(stop.on).toEqual({ pull_request: { types: ["closed"] } });
         expect(stop.concurrency).toEqual({ group: "ci-pr-${{ github.event.pull_request.number }}", "cancel-in-progress": true });
-        // For pull_request events ci.yml's group expression reduces to pr-<number>.
-        expect(workflow.concurrency.group).toContain("github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)");
+        expect(workflow.concurrency.group).toBe(stop.concurrency.group);
     });
     it("never lets a merged PR's stop run join main's group", () => {
         // A merged PR's closed event reports the base branch as github.ref, so a
@@ -89,14 +82,14 @@ describe("CI concurrency", () => {
         expect(workflow.jobs.vitest["timeout-minutes"]).toBe(30);
     });
 
-    it("lets push scoping read the previous commit's CI, and nothing more", () => {
-        // ci-scope.mjs runs a push's docs- or version-only diff without the runtime
-        // jobs only when the commit before it has its own green run.
-        expect(workflow.jobs.static.permissions).toEqual({ contents: "read", actions: "read" });
+    it("selects PR checks without access to Actions or credentials", () => {
+        expect(workflow.jobs.static.permissions).toBeUndefined();
         const scope = workflow.jobs.static.steps.find((step: {
             id?: string;
         }) => step.id === "scope");
-        expect(scope.env).toEqual({ GH_TOKEN: "${{ github.token }}" });
+        expect(scope.env).toBeUndefined();
+        expect(workflow.jobs.static.steps.some((step: { run?: string }) =>
+            step.run === "pnpm exec tsc -b --force && pnpm exec tsc -p tsconfig.server.json")).toBe(true);
         for (const [name, job] of Object.entries(workflow.jobs) as [
             string,
             {
@@ -106,24 +99,6 @@ describe("CI concurrency", () => {
             if (name !== "static")
                 expect(job.permissions, name).toBeUndefined();
         }
-    });
-    it("reports every known flaky test that needed a retry in the vitest job summary", () => {
-        const steps = workflow.jobs.vitest.steps as {
-            name?: string;
-            run?: string;
-            if?: string;
-            env?: Record<string, string>;
-        }[];
-        const tests = steps.findIndex((step) => step.name === "Run tests");
-        const report = steps.findIndex((step) => step.run === "node scripts/testing/ci-retry-summary.mjs");
-        expect(report).toBe(tests + 1);
-        expect(steps[report]!.if).toBe("${{ !cancelled() }}");
-        // The runner context exists only at step level, never in a job's env.
-        expect(workflow.jobs.vitest.env).toBeUndefined();
-        for (const step of [steps[tests]!, steps[report]!]) {
-            expect(step.env).toEqual({ QUATI_VITEST_RETRY_LOG: "${{ runner.temp }}/vitest-retries.jsonl" });
-        }
-        expect(readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8")).toContain('runner: "./scripts/testing/ci-retry-runner.ts"');
     });
     it.each(requiredRuntimeJobs)("fails closed for every required %s outcome", (job) => {
         for (const result of ["success", "failure", "cancelled", "skipped"]) {

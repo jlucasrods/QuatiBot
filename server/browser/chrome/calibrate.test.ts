@@ -1,5 +1,5 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir, userInfo } from "node:os";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { userInfo, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
@@ -30,7 +30,7 @@ describe("reading a Chrome's own identity", () => {
   it.skipIf(process.platform === "win32")("starts the binary headless over a pipe, off the keychain, on the account's real home, and says when it exits", async () => {
     const dir = folder();
     const chrome = join(dir, "chrome");
-    writeFileSync(chrome, `#!/bin/sh\nprintf '%s' "$HOME" > '${dir}/home'\nprintf '%s\\n' "$@" > '${dir}/args'\nexit 3\n`, { mode: 0o755 });
+    writeFileSync(chrome, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 'Chrome 153.0.8010.47'; exit 0; fi\nprintf '%s' "$HOME" > '${dir}/home'\nprintf '%s\\n' "$@" > '${dir}/args'\nexit 3\n`, { mode: 0o755 });
     await expect(calibrateIdentity({ executablePath: chrome, host: "desktop", env: { PATH: "/usr/bin:/bin", HOME: "/tmp/not-a-home" }, tmpRoot: dir, handshakeTimeoutMs: 10_000 })).rejects.toThrow(/exited|closed its DevTools pipe/);
     expect(readFileSync(join(dir, "home"), "utf8")).toBe(userInfo().homedir);
     const args = readFileSync(join(dir, "args"), "utf8").split("\n");
@@ -42,11 +42,8 @@ describe("reading a Chrome's own identity", () => {
 
   it("reads it once per binary, and again after the binary changed in place", async () => {
     const dir = folder();
-    const app = join(dir, "Google Chrome.app", "Contents");
-    mkdirSync(join(app, "MacOS"), { recursive: true });
-    const chrome = join(app, "MacOS", "Google Chrome");
+    const chrome = join(dir, "chrome");
     writeFileSync(chrome, "#!/bin/sh\n", { mode: 0o755 });
-    writeFileSync(join(app, "Info.plist"), "<plist>153</plist>");
     const calibrate = vi.fn(async () => ({ ...READ }));
     const options = { executablePath: chrome, host: "desktop" as const };
     expect((await loadOrCalibrateIdentity(dir, options, calibrate)).calibrated).toBe(true);
@@ -54,7 +51,7 @@ describe("reading a Chrome's own identity", () => {
     expect(calibrate).toHaveBeenCalledOnce();
     const stored = JSON.parse(readFileSync(identityFile(dir, chrome), "utf8")) as CalibratedIdentity;
     expect(stored.product).toBe("Chrome/153.0.8010.47");
-    writeFileSync(join(app, "Info.plist"), "<plist>154 with a longer version</plist>");
+    writeFileSync(chrome, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     expect((await loadOrCalibrateIdentity(dir, options, calibrate)).calibrated).toBe(true);
     expect(calibrate).toHaveBeenCalledTimes(2);
   });

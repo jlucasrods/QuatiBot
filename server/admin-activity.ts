@@ -204,8 +204,8 @@ const CONFIG_CATEGORY: Record<string, AdminActivityCategory> = {
   defaultModelSelection: "engine",
 };
 
-export function configChangeRows(before: unknown, after: unknown): Array<Omit<AdminActionRow, "at" | "actor">> {
-  const paths = changedPaths(isPlainObject(before) ? before : {}, isPlainObject(after) ? after : {});
+export function configChangeRows(before: unknown, after: unknown, secretPaths: readonly string[] = []): Array<Omit<AdminActionRow, "at" | "actor">> {
+  const paths = [...new Set([...changedPaths(isPlainObject(before) ? before : {}, isPlainObject(after) ? after : {}), ...secretPaths])];
   const byCategory = new Map<AdminActivityCategory, string[]>();
   for (const path of paths) {
     const category = CONFIG_CATEGORY[path.split(".")[0]!] ?? "config";
@@ -217,7 +217,7 @@ export function configChangeRows(before: unknown, after: unknown): Array<Omit<Ad
     target: { kind: "settings" },
     changed,
     before: pick(before, changed),
-    after: pick(after, changed),
+    after: Object.fromEntries(changed.map((path) => [path, secretPaths.includes(path) ? HIDDEN : valueAt(after, path) ?? null])),
   }));
 }
 

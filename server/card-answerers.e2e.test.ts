@@ -1,21 +1,23 @@
 // The fake ACP CLI in "permission" mode (every turn asks to run `echo hi`), and an email sign-in list naming one admin and
 // two members whose sessions are issued before boot.
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 
 import type { DecisionRow } from "./decision-log.ts";
 import { SessionRegistry } from "./sessions.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
-const PORT = 28800 + Math.floor(Math.random() * 10_000);
-const BASE = `http://127.0.0.1:${PORT}`;
-const posixOnly = describe.skipIf(process.platform === "win32");
+let PORT: number;
+let BASE: string;
+const posixOnly = describe.skipIf(process.platform !== "linux");
 const BOSS = "boss@example.test";
 const ADA = "ada@example.test";
 const BOB = "bob@example.test";
@@ -43,9 +45,9 @@ async function start(env: NodeJS.ProcessEnv = {}) {
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: join(SERVER_DIR, ".."),
     env: {
-      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-      HOME: home, USERPROFILE: home, QUATI_PORT: String(PORT), QUATI_WEBHOOK_PORT: String(PORT + 1),
+      ...verificationServerEnvironment({}, join(home, ".quatibot"), PORT),
+      HOME: home, FAKE_ACP_MODE: "permission", FAKE_ACP_MODELS: "fixture/test",
+      FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_AGENT_NAME: "OpenCode",
       QUATI_TEST_INTERNAL_CAPABILITY_KEY: CAPABILITY_KEY, ...env,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -55,12 +57,17 @@ async function start(env: NodeJS.ProcessEnv = {}) {
   const deadline = Date.now() + 20_000;
   for (;;) {
     try {
-      if ((await fetch(`${BASE}/api/health`)).ok) return;
+      if ((await fetch(`${BASE}/api/health`)).ok) break;
     } catch {
     }
     if (Date.now() > deadline) throw new Error(`server never came up:\n${log}`);
     await new Promise((r) => setTimeout(r, 150));
   }
+  expect(await waitFor(async () => {
+    const { body } = await api("GET", "/api/instances", undefined, BOSS);
+    return body.instances?.find((instance: { instanceId: string }) => instance.instanceId === "opencodeGo")
+      ?.models.options.some((option: { id: string }) => option.id === "fixture/test");
+  })).toBe(true);
 }
 
 async function waitFor<T>(read: () => Promise<T | null | undefined>, ms = 30_000): Promise<T | null> {
@@ -90,7 +97,7 @@ async function makeBot(name: string) {
   const created = await api("POST", "/api/bots", { name }, BOSS);
   expect(created.status, JSON.stringify(created.body)).toBe(201);
   // On Ask, so the fake engine's permission request becomes a card.
-  const patched = await api("PATCH", `/api/bots/${created.body.bot.id}`, { modelSelection: { instanceId: "grok", model: "fake-model" }, approvalMode: "ask" }, BOSS);
+  const patched = await api("PATCH", `/api/bots/${created.body.bot.id}`, { modelSelection: { instanceId: "opencodeGo", model: "fixture/test" }, approvalMode: "ask" }, BOSS);
   expect(patched.status).toBe(200);
   return created.body.bot as { id: string; threadId: string };
 }
@@ -107,13 +114,16 @@ const refusal = /Only the person who started this conversation or sent this requ
 
 posixOnly("who may answer a card on a shared workspace", () => {
   beforeAll(async () => {
-    chmodSync(FAKE_CLI, 0o755);
     home = mkdtempSync(join(tmpdir(), "quati-card-answerers-"));
+    PORT = await freePortBlock([0, 1]);
+    BASE = `http://127.0.0.1:${PORT}`;
     const data = join(home, ".quatibot");
     mkdirSync(data, { recursive: true });
+    mkdirSync(join(data, "providers", "opencode", "discovery"), { recursive: true });
+    writeFileSync(join(data, "providers", "opencode", "discovery", ".quati-project"), "");
     writeFileSync(join(data, "config.json"), JSON.stringify({
       signIn: { admins: [BOSS], members: [ADA, BOB] },
-      instances: { grok: { driver: "grokAgent", environment: { FAKE_ACP_MODE: "permission" }, config: { cli: FAKE_CLI, fullAuto: false } } },
+      instances: { opencodeGo: { driver: "opencodeGo", config: { cli: FAKE_CLI } } },
     }));
     const role = (email: string) => (email === BOSS ? ["admin", "client"] as const : ["client"] as const);
     const registry = new SessionRegistry({ file: join(data, "sessions.json"), emailScopes: (email) => [...role(email)] });

@@ -5,18 +5,17 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { SessionRegistry } from "./sessions.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const PORT = 28800 + Math.floor(Math.random() * 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
-const posixOnly = describe.skipIf(process.platform === "win32");
+const linuxOnly = describe.skipIf(process.platform !== "linux");
 const BOSS = "boss@example.test";
 const ADA = "ada@example.test";
-const SECRET = "sk-ant-api03-activity-fixture-secret-0123456789abcdef";
-const MCP_SECRET = "mcp-activity-fixture-secret-value";
-const ARG_SECRET = "acme_live_9f8e7d6c5b4a3f2e1d0c";
+const SECRET = "sk-avatar-activity-fixture-secret-0123456789abcdef";
 
 let child: ChildProcess;
 let home: string;
@@ -43,11 +42,7 @@ const api = async (method: string, path: string, body?: unknown, as?: string, ex
 async function start() {
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: join(SERVER_DIR, ".."),
-    env: {
-      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-      HOME: home, USERPROFILE: home, QUATI_PORT: String(PORT), QUATI_WEBHOOK_PORT: String(PORT + 1),
-    },
+    env: { ...verificationServerEnvironment({}, data, PORT), HOME: home },
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout!.on("data", (c) => (log += c));
@@ -95,7 +90,7 @@ async function activity(query = "", as = BOSS): Promise<any[]> {
 }
 const month = () => new Date().toISOString().slice(0, 7);
 
-posixOnly("admin activity log", () => {
+linuxOnly("admin activity log", () => {
   beforeAll(async () => {
     home = mkdtempSync(join(tmpdir(), "quati-admin-activity-"));
     data = join(home, ".quatibot");
@@ -127,20 +122,17 @@ posixOnly("admin activity log", () => {
     expect((await api("GET", "/api/admin-activity?from=2026-02-31", undefined, BOSS)).status).toBe(400);
   });
 
-  it("records settings, people, keys and budgets with who changed them, never a secret", async () => {
+  it("records settings, people and auxiliary keys with who changed them, never a secret", async () => {
     expect((await api("PUT", "/api/config", { signIn: { admins: [BOSS], members: [ADA, "carol@example.test"] } }, BOSS)).status).toBe(200);
-    expect((await api("PUT", "/api/config", { anthropic: { key: SECRET } }, BOSS)).status).toBe(200);
-    expect((await api("PUT", "/api/config", { budgets: { monthlyUsd: 75 } }, BOSS)).status).toBe(200);
+    expect((await api("PUT", "/api/config", { imageGen: { key: SECRET } }, BOSS)).status).toBe(200);
     expect((await api("PUT", "/api/config", { decisions: { retentionDays: 400 } })).status).toBe(200); // the owner, on this machine
     expect((await api("PUT", "/api/config", { profile: { name: "Ops desk" } }, undefined, { "x-quatibot-cli": "1" })).status).toBe(200);
 
     const people = (await activity("?what=people"))[0];
     expect(people).toMatchObject({ type: "admin", who: BOSS, what: "people", action: "people.update", changed: ["signIn.members"],
       before: { "signIn.members": [ADA] }, after: { "signIn.members": [ADA, "carol@example.test"] } });
-    const engine = (await activity("?what=engine"))[0];
-    expect(engine).toMatchObject({ who: BOSS, action: "engine.update", changed: ["anthropic.key"], after: { "anthropic.key": "[hidden]" } });
-    const budget = (await activity("?what=budget"))[0];
-    expect(budget).toMatchObject({ who: BOSS, changed: ["budgets.monthlyUsd"], after: { "budgets.monthlyUsd": 75 } });
+    const key = (await activity("?what=config")).find((entry) => entry.changed.includes("imageGen.key"));
+    expect(key).toMatchObject({ who: BOSS, action: "config.update", changed: ["imageGen.key"], after: { "imageGen.key": "[hidden]" } });
     const config = await activity("?what=config");
     expect(config[0]).toMatchObject({ who: "Command line", changed: ["profile.name"], after: { "profile.name": "Ops desk" } });
     expect(config[1]).toMatchObject({ who: "This computer", changed: ["decisions.retentionDays"], after: { "decisions.retentionDays": 400 } });
@@ -152,9 +144,7 @@ posixOnly("admin activity log", () => {
     }
   });
 
-  it("records MCP servers, webhooks, bots, a bot's audience and sessions", async () => {
-    const mcp = await api("POST", "/api/mcp/servers", { name: "fixture", command: process.execPath, args: ["--version", "--api-key", ARG_SECRET], env: { FIXTURE_TOKEN: MCP_SECRET } }, BOSS);
-    expect(mcp.status, JSON.stringify(mcp.body)).toBe(201);
+  it("records webhooks, bots, a bot's audience and sessions", async () => {
     const bot = await api("POST", "/api/bots", { name: "Audit Owl" }, BOSS);
     expect(bot.status).toBe(201);
     const botId = bot.body.bot.id as string;
@@ -173,7 +163,7 @@ posixOnly("admin activity log", () => {
 
     const rows = (await activity("?what=all")).filter((entry) => entry.type === "admin");
     const actions = rows.map((entry) => entry.action);
-    for (const action of ["mcp.update", "bot.create", "visibility.update", "bot.update", "webhook.create", "webhook.delete", "session.revoke", "pairing.create", "bot.delete"]) {
+    for (const action of ["bot.create", "visibility.update", "bot.update", "webhook.create", "webhook.delete", "session.revoke", "pairing.create", "bot.delete"]) {
       expect(actions, action).toContain(action);
     }
     expect(actions.filter((action) => action === "bot.update")).toHaveLength(1);
@@ -181,11 +171,6 @@ posixOnly("admin activity log", () => {
     expect(actions.filter((action) => action === "visibility.update")).toHaveLength(1);
     const audience = rows.find((entry) => entry.action === "visibility.update");
     expect(audience).toMatchObject({ who: BOSS, target: { kind: "bot", id: botId, name: "Audit Owl" }, before: { visibility: "everyone" }, after: { visibility: { people: [ADA] } } });
-    const mcpRow = rows.find((entry) => entry.action === "mcp.update");
-    expect(JSON.stringify(mcpRow)).not.toContain(MCP_SECRET);
-    expect(JSON.stringify(mcpRow)).not.toContain(ARG_SECRET);
-    expect(JSON.stringify(mcpRow)).toContain("--api-key");
-    expect(JSON.stringify(mcpRow)).toContain("FIXTURE_TOKEN");
     expect(rows.find((entry) => entry.action === "session.revoke")).toMatchObject({ target: { id: oldPhone, name: "Old phone" } });
     expect(rows.find((entry) => entry.action === "pairing.create")).toMatchObject({ after: { label: "Reception iPad", scopes: ["client"] } });
     expect(rows.find((entry) => entry.action === "bot.delete")).toMatchObject({ target: { id: botId }, before: { visibility: { people: [ADA] } } });
@@ -210,7 +195,6 @@ posixOnly("admin activity log", () => {
     expect(csv.text.split("\n")[0]).toBe("time,type,who,what,action,target,changed,before,after,bot,tool,summary,thread");
     expect(csv.text).toContain("visibility.update");
     expect(csv.text).not.toContain("activity-fixture-secret");
-    expect(csv.text).not.toContain(ARG_SECRET);
   });
 
   it("puts each concurrent change down to the admin who made it", async () => {
@@ -219,7 +203,7 @@ posixOnly("admin activity log", () => {
     // machine has made (and finished) a change of their own to the same thing.
     const slowBot = slowRequest("PATCH", `/api/bots/${bot.id}`, { approvePeerComms: true }, BOSS);
     await new Promise((r) => setTimeout(r, 300));
-    expect((await api("PATCH", `/api/bots/${bot.id}`, { composio: false })).status).toBe(200);
+    expect((await api("PATCH", `/api/bots/${bot.id}`, { browser: false })).status).toBe(200);
     slowBot.release();
     expect((await slowBot.response).status).toBe(200);
     const slowConfig = slowRequest("PUT", "/api/config", { profile: { name: "Race desk" } }, BOSS);
@@ -232,7 +216,7 @@ posixOnly("admin activity log", () => {
     const botRows = rows.filter((entry) => entry.action === "bot.update" && entry.target?.id === bot.id);
     expect(botRows.map((entry) => [entry.who, entry.changed]).sort()).toEqual([
       [BOSS, ["approvePeerComms"]],
-      ["This computer", ["composio"]],
+      ["This computer", ["browser"]],
     ].sort());
     const configRows = rows.filter((entry) => entry.action === "config.update" &&
       (JSON.stringify(entry.after).includes("Race desk") || JSON.stringify(entry.after).includes("365")));

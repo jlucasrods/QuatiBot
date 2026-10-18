@@ -87,11 +87,12 @@ async function screenCalls(server: AgentsIntegration, count: number): Promise<Ar
   return calls;
 }
 
-/** Plan fields: `launch` replaces Claude's argv files; `progress`/`progressAfterGate` stream around the
- * gate; `approve` asks through Claude's permission-prompt tool (`replyIfDenied` otherwise);
- * `screenCalls` calls the mounted computer that many times. */
 export async function runRoomHandoffAgent(argv: string[], planPath: string, prompt?: unknown,
-  launch?: { integration: AgentsIntegration; browser?: AgentsIntegration; system: string; evidence?: Record<string, unknown> },
+  launch?: {
+    integration: AgentsIntegration; browser?: AgentsIntegration; system: string; evidence?: Record<string, unknown>;
+    toolResult?: (name: string, input: unknown, ok: boolean) => void;
+    approve?: (ask: { tool_name: string; input: Record<string, unknown> }) => Promise<{ behavior: string }>;
+  },
   progress?: (text: string) => void): Promise<string> {
   const arg = (flag: string) => argv[argv.indexOf(flag) + 1];
   const mounted = launch ? [] : Object.values(JSON.parse(readAtLaunch(arg("--mcp-config"))).mcpServers as Record<string, AgentsIntegration>);
@@ -192,14 +193,18 @@ export async function runRoomHandoffAgent(argv: string[], planPath: string, prom
         if (step.server === "browser" && !browser) throw new Error("A scripted browser step needs the turn's browser tools");
         const response = browser ? await browserToolCall(browser, step.tool, step.arguments) : await call("tools/call", { name: step.tool ?? "coordinate_bots", arguments: step.arguments });
         evidence.push({ step, response });
+        launch?.toolResult?.(step.tool ?? "coordinate_bots", step.arguments, !response.error && !response.result?.isError);
         if (Boolean(response.error || response.result?.isError) !== Boolean(step.expectError)) throw new Error(`Unexpected tool outcome: ${JSON.stringify(response)}`);
       }
       // A person's answer, like a test gate, is owned by the parent test's timeout.
       if (plan.gateFile || plan.approve || plan.screenCalls) clearTimeout(timer);
       const mounted = launch ? {} : JSON.parse(readAtLaunch(arg("--mcp-config"))).mcpServers as Record<string, AgentsIntegration>;
       if (plan.approve) {
-        if (!mounted.quati || !argv.includes("--permission-prompt-tool")) throw new Error("A scripted approval needs Claude's permission-prompt tool");
-        approval = await askPermission(mounted.quati, plan.approve);
+        if (launch?.approve) approval = await launch.approve(plan.approve);
+        else {
+          if (!mounted.quati || !argv.includes("--permission-prompt-tool")) throw new Error("A scripted approval needs a native permission channel");
+          approval = await askPermission(mounted.quati, plan.approve);
+        }
       }
       if (plan.screenCalls) {
         if (!mounted.computer?.env?.QUATI_CONTROL_URL) throw new Error("Scripted screen calls need a mounted computer");
@@ -218,7 +223,7 @@ export async function runRoomHandoffAgent(argv: string[], planPath: string, prom
       });
       if (typeof plan.progressAfterGate === "string") progress?.(plan.progressAfterGate);
       if (plan.delayMs) await new Promise(resolve => { delayTimer = setTimeout(resolve, plan.delayMs); });
-      if (plan.fail && !resumed) throw new Error("Scripted addressed agent failure");
+      if (plan.fail && !resumed) throw new Error(typeof plan.fail === "string" ? plan.fail : "Scripted addressed agent failure");
       if (plan.failResumed && resumed) throw new Error("Scripted failure of a resumed turn");
       if (approval && approval.behavior !== "allow") return plan.replyIfDenied ?? `${plan.reply} (approval ${approval.behavior})`;
       if (entry) return plan.reply ?? `Result from ${botId}`;

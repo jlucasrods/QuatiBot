@@ -5,8 +5,8 @@ import type { Bot } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({
   onCall: null as string | null,
-  dictation: true,
-  host: "darwin" as "darwin" | "win32",
+  dictation: false,
+  host: "linux",
   serverPage: false,
   config: { tts: { configured: true, ready: true } } as Record<string, unknown> | null,
   bots: [] as unknown[],
@@ -14,12 +14,11 @@ const fixture = vi.hoisted(() => ({
   dispatch: vi.fn(),
   startCall: vi.fn(),
   endCall: vi.fn(),
-  track: vi.fn(),
 }));
 
 vi.mock("@/state/store", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
-  return { ...original, useStore: () => ({ state: { ...original.initialState, config: fixture.config, bots: fixture.bots, instances: [{ instanceId: "codex", driverKind: "codex" }, { instanceId: "claude-3f0c2b1e-9d1a-4c55-8a51-0a3a6f1e2b7c", driverKind: "claudeAgent" }] }, dispatch: fixture.dispatch }) };
+  return { ...original, useStore: () => ({ state: { ...original.initialState, config: fixture.config, bots: fixture.bots, instances: [{ instanceId: "opencodeGo", driverKind: "opencodeGo" }] }, dispatch: fixture.dispatch }) };
 });
 vi.mock("./DesktopCapabilities", async (importOriginal) => ({
   ...await importOriginal<typeof import("./DesktopCapabilities")>(),
@@ -56,7 +55,7 @@ const { configureLiveMedia, liveMedia, resetLiveMedia } = await import("@/lib/li
 const bot: Bot = {
   id: "pepper", threadId: "t", name: "Pepper", title: "", description: "", color: "green",
   notifications: true, unread: false, messages: [], voice: "voice-1",
-  modelSelection: { instanceId: "codex", model: "m" },
+  modelSelection: { instanceId: "opencodeGo", model: "m" },
 };
 
 type Props = { children?: ReactNode; onClick?: () => void; [key: string]: unknown };
@@ -82,17 +81,16 @@ function render(placement: "composer" | "header" = "composer") {
 
 beforeEach(() => {
   fixture.onCall = null;
-  fixture.dictation = true;
-  fixture.host = "darwin";
+  fixture.dictation = false;
+  fixture.host = "linux";
   fixture.serverPage = false;
-  fixture.config = { tts: { configured: true, ready: true } };
+  fixture.config = { tts: { configured: true, ready: true }, live: { configured: true } };
   fixture.bots = [bot];
   fixture.helpShown = false;
   fixture.startCall.mockClear();
   fixture.endCall.mockClear();
-  fixture.track.mockClear();
   fixture.dispatch.mockClear();
-  vi.stubGlobal("window", { quati: { speechStart: () => {} } });
+  vi.stubGlobal("window", {});
 });
 afterEach(() => {
   resetLiveMedia();
@@ -102,30 +100,10 @@ afterEach(() => {
 describe("composer call button", () => {
   it("is a Send-sized filled button with a waveform, labelled for the bot", () => {
     const { html, button } = render();
-    expect(button.props["aria-label"]).toBe("Call Pepper");
+    expect(button.props["aria-label"]).toBe("Live call with Pepper");
     expect(String(button.props.className).split(" ")).toEqual(expect.arrayContaining(["size-8", "rounded-l-3xl", "rounded-r-lg", "active:rounded-3xl", "transition-[color,background,border-radius]", "bg-control"]));
     expect(html).toContain("lucide-audio-lines");
     expect(html).not.toContain("lucide-phone");
-  });
-
-  it("starts the call with the same telemetry as the header button did", () => {
-    render().button.props.onClick!();
-    expect(fixture.track).toHaveBeenCalledWith("call_started", { driver: "codex", mode: "turns" });
-    expect(fixture.startCall).toHaveBeenCalledWith("pepper");
-    expect(fixture.endCall).not.toHaveBeenCalled();
-  });
-
-  it("names the engine, never the instance id, for an added account", () => {
-    const added = { ...bot, modelSelection: { instanceId: "claude-3f0c2b1e-9d1a-4c55-8a51-0a3a6f1e2b7c", model: "m" } };
-    let tree: ReactNode = null;
-    function Capture() {
-      const element = CallButton({ bot: added }) as ReactElement<Parameters<typeof CallTargetButton>[0]>;
-      tree = CallTargetButton(element.props);
-      return tree;
-    }
-    renderToStaticMarkup(createElement(Capture));
-    findButton(tree)!.props.onClick!();
-    expect(fixture.track.mock.calls).toEqual([["call_started", { driver: "claude", mode: "turns" }]]);
   });
 
   it("shows a hang-up state during the call and hangs up", () => {
@@ -139,20 +117,6 @@ describe("composer call button", () => {
     expect(fixture.startCall).not.toHaveBeenCalled();
   });
 
-  it("explains missing voice setup in a help popover that opens upward, instead of calling", () => {
-    fixture.config = { tts: { configured: false } };
-    fixture.helpShown = true;
-    const { html, button } = render();
-    expect(button.props["aria-label"]).toBe("Set up a voice in an agent profile to make calls");
-    expect(button.props["aria-controls"]).toBeTruthy();
-    expect(html).toContain("Call unavailable");
-    expect(html).toContain("Set up voice");
-    expect(html).not.toContain("Open agent settings");
-    expect(html).toMatch(/role="group" aria-label="Call unavailable" class="[^"]*\bbottom-full\b/);
-    button.props.onClick!();
-    expect(fixture.startCall).not.toHaveBeenCalled();
-  });
-
   it("is a Live call on a device that can't take turns", () => {
     fixture.dictation = false;
     const getUserMedia = vi.fn(() => new Promise<MediaStream>(() => {}));
@@ -163,20 +127,7 @@ describe("composer call button", () => {
     button.props.onClick!();
     expect(getUserMedia).toHaveBeenCalledTimes(1);
     expect(liveMedia()).toMatchObject({ phase: "starting", botId: "pepper" });
-    expect(fixture.track).toHaveBeenCalledWith("call_started", { driver: "codex", mode: "live" });
-  });
-
-  it("is a Live call on a server's page in the Windows app and the Mac app alike", () => {
-    fixture.dictation = false;
-    fixture.serverPage = true;
-    for (const host of ["win32", "darwin"] as const) {
-      fixture.host = host;
-      const { html, button } = render();
-      expect(button.props["aria-label"], host).toBe("Live call with Pepper");
-      expect(html, host).not.toContain("bg-warning");
-      expect(html, host).not.toContain("Call unavailable");
-      expect(html, host).not.toContain("Choose This computer");
-    }
+    expect(fixture.startCall).toHaveBeenCalledExactlyOnceWith("pepper");
   });
 
   it("leaves the header placement (rooms) as it was", () => {

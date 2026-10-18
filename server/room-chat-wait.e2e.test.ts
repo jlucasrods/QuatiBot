@@ -2,16 +2,17 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SERVER_DIR, "..");
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
+const FAKE_ACP = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 
 const WAIT_CHIP = (name: string) => `${name} is finishing another conversation — will reply here when free`;
 
@@ -44,33 +45,34 @@ const api = async (
   return { status: response.status, body: await response.json() };
 };
 
-const fixture = (displayName: string, environment: Record<string, string>) => ({
-  driver: "claudeAgent",
-  displayName,
-  environment,
-  config: { cli: FAKE_CLAUDE },
-});
+const fixture = (id: string, displayName: string, environment: Record<string, string>) => {
+  const cli = join(home, `${id}-opencode.mjs`);
+  writeFileSync(cli, [
+    "#!/usr/bin/env node",
+    ...Object.entries(environment).map(([key, value]) => `process.env.${key} = ${JSON.stringify(value)};`),
+    `await import(${JSON.stringify(pathToFileURL(FAKE_ACP).href)});`,
+  ].join("\n"), { mode: 0o700 });
+  return { driver: "opencodeGo", displayName, config: { cli } };
+};
 
 beforeAll(async () => {
   home = mkdtempSync(join(tmpdir(), "quati-room-chat-wait-"));
   const data = join(home, ".quatibot");
   const staticDir = join(home, "static");
   mkdirSync(data, { recursive: true });
+  mkdirSync(join(data, "providers", "opencode", "discovery"), { recursive: true });
+  writeFileSync(join(data, "providers", "opencode", "discovery", ".quati-project"), "fixture");
   mkdirSync(join(staticDir, "assets"), { recursive: true });
   writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>Room chat wait test</title>");
   writeFileSync(join(staticDir, "assets", "smoke.css"), "body{}");
   patientFinishGate = join(home, "patient-finish");
   writeFileSync(patientFinishGate, "initial turns may finish");
   writeFileSync(join(data, "config.json"), JSON.stringify({
+    threads: { maxConcurrentPerBot: 1 },
     instances: {
-      // A gate keeps a direct turn busy until the test observes the room's wait, rather than racing the fake CLI's 800ms closing reply.
-      patient: fixture("Patient fixture", { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: patientFinishGate }),
-      quick: fixture("Quick fixture", { FAKE_CLAUDE_MODE: "happy" }),
-      summoner: fixture("Summoning fixture", {
-        FAKE_CLAUDE_MODE: "happy",
-        FAKE_CLAUDE_REPLIES: JSON.stringify(["Let me pull in @Bee for this."]),
-        FAKE_CLAUDE_REPLY_STATE: join(home, "summoner-replies.txt"),
-      }),
+      patient: fixture("patient", "Patient fixture", { FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: patientFinishGate }),
+      quick: fixture("quick", "Quick fixture", { FAKE_ACP_MODE: "happy" }),
+      summoner: fixture("summoner", "Summoning fixture", { FAKE_ACP_TEXT_REPLY: "Let me pull in @Bee for this." }),
     },
   }));
   const port = await freePortBlock([0, 1]);
@@ -78,13 +80,8 @@ beforeAll(async () => {
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: ROOT,
     env: {
-      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-      HOME: home,
-      USERPROFILE: home,
-      QUATI_PORT: String(port),
-      QUATI_WEBHOOK_PORT: String(port + 1),
-      QUATI_STATIC_DIR: staticDir,
+      ...verificationServerEnvironment({}, data, port), HOME: home, QUATI_STATIC_DIR: staticDir,
+      FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_AGENT_NAME: "OpenCode", FAKE_ACP_MODELS: "fixture/test",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -100,6 +97,12 @@ beforeAll(async () => {
     if (Date.now() >= deadline) throw new Error(`server never became healthy: ${stderr}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  for (;;) {
+    const instances = (await api("GET", "/api/instances")).body.instances;
+    if (instances.length === 3 && instances.every((instance: { models: { options: Array<{ id: string }> } }) => instance.models.options.some(model => model.id === "fixture/test"))) break;
+    if (Date.now() >= deadline) throw new Error(`fixture models unavailable: ${JSON.stringify(instances)}`);
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
 }, 30_000);
 
 afterAll(async () => {
@@ -107,12 +110,15 @@ afterAll(async () => {
   if (home) await removeTempDir(home);
 });
 
-const createBot = async (name: string, instanceId: string) =>
-  (await api("POST", "/api/bots", {
+const createBot = async (name: string, instanceId: string) => {
+  const result = await api("POST", "/api/bots", {
     name,
-    modelSelection: { instanceId, model: "claude-sonnet-5" },
+    modelSelection: { instanceId, model: "fixture/test" },
     requireAvailableModel: true,
-  })).body.bot;
+  });
+  expect(result.status).toBe(201);
+  return result.body.bot;
+};
 
 const snapshot = async (groupId: string) => {
   const state = (await api("GET", "/api/bots?messages=40")).body;
@@ -144,7 +150,6 @@ const roundSummary = (messages: StateMessage[], waitedBotId: string) => {
       message.kind === "activity" && message.from?.botId === waitedBotId && /another conversation/i.test(message.tool?.name ?? "")
     ).length,
     skipped: messages.some((message) => /skipped this round/i.test(message.tool?.name ?? "")),
-    // The slow fixture splits one turn into two text items, so consecutive repeats collapse to the speaker.
     speakers: messages
       .filter((message) => message.kind === "text" && message.role === "bot")
       .map((message) => message.from?.name)
@@ -178,7 +183,7 @@ const releaseAfterRoomWait = async (roomId: string, botId: string, name: string)
 };
 
 /** Deliberately slow (real turns held open through a real server): the inner polls take 15s, leaving no headroom in vitest's 20s default. */
-describe("chat rooms wait for a member busy elsewhere", { timeout: 45_000 }, () => {
+describe("chat rooms wait for a member at thread capacity", { timeout: 45_000 }, () => {
   it("parks on a responder busy in a 1:1, then lets them reply once that turn settles, in order", async () => {
     const busy = await createBot("Busy", "patient");
     const quick = await createBot("Quick", "quick");

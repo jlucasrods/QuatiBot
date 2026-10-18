@@ -1,30 +1,33 @@
-// POSIX-gated like the other CLI e2es: the fakes are shebang scripts.
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { withoutTurnClock } from "./testing/turn-clock-text.ts";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
 const FAKE_ACP = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
-const FAKE_CODEX = join(SERVER_DIR, "testing", "fake-codex-app-server.ts");
 const PORT = 18800 + Math.floor(Math.random() * 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
-const posixOnly = describe.skipIf(process.platform === "win32");
+const linuxOnly = describe.skipIf(process.platform !== "linux");
 
-posixOnly("mid-turn steering e2e", () => {
+linuxOnly("queued messages with OpenCode ACP", () => {
   let child: ChildProcess;
   let home: string;
   let stderr = "";
-  let steerGate: string;
   let steerFinishGate: string;
-  let lateSteerFinishGate: string;
-  let lateSteerContinuationGate: string;
-  let lateSteerDump: string;
-  let codexSteerGate: string;
+
+  type NativeTurn = {
+    prompt: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
+    mcpServers: Array<{ env?: Array<{ name: string; value: string }> }>;
+  };
+  const nativeTurn = (threadId: string): NativeTurn | undefined => {
+    const path = join(home, "gated-dump.json.prompts.jsonl");
+    if (!existsSync(path)) return;
+    const turns: NativeTurn[] = readFileSync(path, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    return turns.findLast((turn) => turn.mcpServers.some((server) => server.env?.some((entry) => entry.name === "QUATI_THREAD_ID" && entry.value === threadId)));
+  };
 
   const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
     const res = await fetch(`${BASE}${path}`, {
@@ -35,8 +38,6 @@ posixOnly("mid-turn steering e2e", () => {
     return { status: res.status, body: await res.json() };
   };
   const getBot = async (id: string) => (await api("GET", "/api/bots")).body.bots.find((b: any) => b.id === id);
-  const askedAt = (botId: string, threadId: string) => (JSON.parse(readFileSync(join(home, ".quatibot", "bots.json"), "utf8")) as any[])
-    .find((bot) => bot.id === botId).tasks.find((task: any) => task.threadId === threadId).askedAt;
   const PAIRED = { name: "Safari on Mac", id: expect.stringMatching(/^p_[\w-]{22}$/) };
   const asPairedPerson = async () => {
     const opened = await api("POST", "/api/auth/pairing", {});
@@ -67,63 +68,35 @@ posixOnly("mid-turn steering e2e", () => {
   };
 
   beforeAll(async () => {
-    chmodSync(FAKE_CLAUDE, 0o755);
-    chmodSync(FAKE_ACP, 0o755);
-    chmodSync(FAKE_CODEX, 0o755);
     home = mkdtempSync(join(tmpdir(), "quati-steer-"));
-    mkdirSync(join(home, ".quatibot"), { recursive: true });
-    steerGate = join(home, "delayed-steer.gate");
+    const dataDir = join(home, ".quatibot");
+    mkdirSync(dataDir, { recursive: true });
+    const discovery = join(dataDir, "providers", "opencode", "discovery");
+    mkdirSync(discovery, { recursive: true });
+    writeFileSync(join(discovery, ".quati-project"), "fixture");
     steerFinishGate = join(home, "finish-steered-turn.gate");
-    lateSteerFinishGate = join(home, "finish-late-steered-turn.gate");
-    lateSteerContinuationGate = join(home, "finish-late-steer-continuation.gate");
-    lateSteerDump = join(home, "late-steer-dump.json");
-    codexSteerGate = join(home, "codex-steer-refused.gate");
-    writeFileSync(codexSteerGate, "refuse live steers until the queue test clears this gate");
-    writeFileSync(
-      join(home, ".quatibot", "config.json"),
-      JSON.stringify({
-        instances: {
-          claude: { driver: "claudeAgent", environment: { FAKE_CLAUDE_MODE: "slow" }, config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" } },
-          claudeSteer: {
-            driver: "claudeAgent",
-            environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: steerFinishGate },
-            config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
-          },
-          claudeRace: {
-            driver: "claudeAgent",
-            environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_STEER_GATE: steerGate },
-            config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
-          },
-          // Results say queued_turn_count: 0 throughout, as Claude 2.1.282's did: words waiting on stdin are not in the queue that field counts.
-          claudeLateSteer: {
-            driver: "claudeAgent",
-            environment: {
-              FAKE_CLAUDE_MODE: "slow",
-              FAKE_CLAUDE_SLOW_FINISH_GATE: lateSteerFinishGate,
-              FAKE_CLAUDE_LATE_STEER_GATE: lateSteerContinuationGate,
-              FAKE_CLAUDE_QUEUED_TURN_COUNT: "zero",
-              FAKE_CLAUDE_DUMP: lateSteerDump,
-            },
-            config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
-          },
-          acp: { driver: "grokAgent", environment: { FAKE_ACP_MODE: "hang" }, config: { cli: FAKE_ACP, fullAuto: true } },
-          // codex parks its turn on an unanswered question; turn/steer folds new input into that live turn without ending it.
-          codex: { driver: "codex", environment: { FAKE_CODEX_MODE: "question", FAKE_CODEX_ASK_HOLD: "1" }, config: { cli: FAKE_CODEX } },
-          codexRace: {
-            driver: "codex",
-            environment: {
-              FAKE_CODEX_MODE: "question",
-              FAKE_CODEX_ASK_HOLD: "1",
-              FAKE_CODEX_STEER_ERROR_FILE: codexSteerGate,
-            },
-            config: { cli: FAKE_CODEX },
-          },
-        },
-      }),
-    );
+    const instances: Record<string, { driver: string; config: { cli: string } }> = {};
+    for (const [id, mode] of Object.entries({ gated: "echo-gated", acp: "hang", questions: "question" })) {
+      const cli = join(home, `${id}-opencode.mjs`);
+      writeFileSync(cli, [
+        "#!/usr/bin/env node",
+        `process.env.FAKE_ACP_MODE = ${JSON.stringify(mode)};`,
+        `process.env.FAKE_ACP_GATE_FILE = ${JSON.stringify(steerFinishGate)};`,
+        `process.env.FAKE_ACP_DUMP = ${JSON.stringify(join(home, `${id}-dump.json`))};`,
+        `await import(${JSON.stringify(pathToFileURL(FAKE_ACP).href)});`,
+      ].join("\n"), { mode: 0o700 });
+      instances[id] = { driver: "opencodeGo", config: { cli } };
+    }
+    writeFileSync(join(dataDir, "config.json"), JSON.stringify({
+      instances, defaultModelSelection: { instanceId: "gated", model: "fixture/test" },
+    }));
     child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
-      env: { ...(process.env.PATH ? { PATH: process.env.PATH } : {}), HOME: home, USERPROFILE: home, QUATI_PORT: String(PORT) },
+      env: {
+        ...verificationServerEnvironment({}, dataDir, PORT), HOME: home,
+        FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_AGENT_NAME: "OpenCode",
+        FAKE_ACP_MODELS: "fixture/test", FAKE_ACP_IMAGE_CAPABILITY: "1",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     child.stderr!.on("data", (c) => (stderr += c));
@@ -137,6 +110,10 @@ posixOnly("mid-turn steering e2e", () => {
       if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}. stderr:\n${stderr}`);
       await new Promise((r) => setTimeout(r, 150));
     }
+    await waitFor(async () => {
+      const snapshots = (await api("GET", "/api/instances")).body.instances;
+      return Object.keys(instances).every((id) => snapshots.find((instance: { instanceId: string }) => instance.instanceId === id)?.models.options.some((option: { id: string }) => option.id === "fixture/test"));
+    }, "the OpenCode fixture models");
   }, 30_000);
 
   afterAll(async () => {
@@ -149,105 +126,6 @@ posixOnly("mid-turn steering e2e", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  it(
-    "a message during a Claude turn is steered into it: 202, in the transcript in order and marked, folded into the reply",
-    async () => {
-      rmSync(steerFinishGate, { force: true });
-      const created = (await api("POST", "/api/bots")).body.bot;
-      await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "claudeSteer", model: "claude-fake" } });
-      const instances = (await api("GET", "/api/instances")).body.instances;
-      expect(instances.find((i: any) => i.instanceId === "claudeSteer").capabilities.queueing).toBe(true);
-
-      expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first" })).status).toBe(202);
-      await waitFor(async () => (await getBot(created.id)).busy === true, "the turn to start");
-      // the fake pauses after its tool result; this lands inside that gap
-      await waitFor(async () => (await getBot(created.id)).messages.some((m: any) => m.kind === "activity"), "the tool chip");
-      let second: Awaited<ReturnType<typeof api>>;
-      try {
-        second = await api("POST", `/api/bots/${created.id}/messages`, { text: "and also this" });
-      } finally {
-        writeFileSync(steerFinishGate, "finish");
-      }
-      expect(second.status).toBe(202);
-      expect(second.body.steered).toBe(true);
-
-      await waitFor(async () => (await getBot(created.id)).busy === false, "the turn to settle");
-      const bot = await getBot(created.id);
-      const texts = bot.messages.filter((m: any) => m.kind === "text").map((m: any) => `${m.role}:${m.role === "bot" ? withoutTurnClock(m.text) : m.text}`);
-      expect(texts.slice(1)).toEqual([
-        "user:first",
-        "bot:hello from fake claude",
-        "user:and also this",
-        "bot:reply to: first + steered: and also this",
-      ]);
-      const steered = bot.messages.find((m: any) => m.text === "and also this");
-      expect(steered.steered).toBe(true);
-      expect(askedAt(created.id, created.threadId)).toBe(steered.at);
-      expect(bot.messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.text.startsWith("reply to:"))).toHaveLength(1);
-      const chip = bot.messages.find((m: any) => m.kind === "activity" && m.tool?.name === "Bash");
-      expect(chip.tool).toMatchObject({ ok: true, summary: "echo hi" });
-    },
-    40_000,
-  );
-
-  it("a steer the CLI runs as its next native turn keeps the turn, its busy state and its internal tool pass until that reply lands", async () => {
-    rmSync(lateSteerFinishGate, { force: true });
-    rmSync(lateSteerContinuationGate, { force: true });
-    rmSync(lateSteerDump, { force: true });
-    const created = (await api("POST", "/api/bots")).body.bot;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "claudeLateSteer", model: "claude-fake" } });
-
-    expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first" })).status).toBe(202);
-    await waitFor(async () => (await getBot(created.id)).busy === true, "the turn to start");
-    await waitFor(async () => (await getBot(created.id)).messages.some((m: any) => m.kind === "activity"), "the tool chip");
-    let dump: any;
-    await waitFor(async () => {
-      try {
-        dump = JSON.parse(readFileSync(lateSteerDump, "utf8"));
-        return true;
-      } catch {
-        return false;
-      }
-    }, "the fake's spawn dump");
-    const token = dump.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN as string;
-    expect(token).toMatch(/^[a-f0-9]{48}$/);
-    const internalTools = async () =>
-      (await fetch(`${BASE}/api/internal/agents`, { headers: { authorization: `Bearer ${token}` } })).status;
-    expect(await internalTools()).toBe(200);
-
-    const second = await api("POST", `/api/bots/${created.id}/messages`, { text: "and also this" });
-    expect(second.status).toBe(202);
-    expect(second.body.steered).toBe(true);
-    writeFileSync(lateSteerFinishGate, "finish");
-    await waitFor(
-      async () => (await getBot(created.id)).messages.filter((m: any) => m.kind === "activity").length === 2,
-      "the continuation's tool chip",
-    );
-    expect((await getBot(created.id)).busy).toBe(true);
-    expect(await internalTools()).toBe(200);
-
-    writeFileSync(lateSteerContinuationGate, "finish");
-    await waitFor(async () => (await getBot(created.id)).busy === false, "the turn to settle");
-    expect(await internalTools()).toBe(401);
-    const bot = await getBot(created.id);
-    const texts = bot.messages.filter((m: any) => m.kind === "text").map((m: any) => `${m.role}:${m.role === "bot" ? withoutTurnClock(m.text) : m.text}`);
-    expect(texts.slice(1)).toEqual([
-      "user:first",
-      "bot:hello from fake claude",
-      "user:and also this",
-      "bot:reply to: first",
-      "bot:hello from fake claude",
-      "bot:reply to: and also this",
-    ]);
-    const events = readFileSync(join(home, ".quatibot", "events", `${created.threadId}.ndjson`), "utf8")
-      .trim().split("\n").map((line) => JSON.parse(line));
-    const completed = events.filter((e) => e.type === "turn.completed");
-    expect(completed).toHaveLength(1);
-    const answered = events.findIndex((e) => e.type === "item.completed" && e.itemType === "assistant_text" && e.text === "reply to: and also this");
-    expect(answered).toBeGreaterThan(-1);
-    expect(events.indexOf(completed[0])).toBeGreaterThan(answered);
-  }, 40_000);
-
   it("keeps two queued attachment messages as two native images in one follow-up turn", async () => {
     // The opener holds the bot's one slot on the gated slow instance, so both sends queue; a timed opener could settle between them.
     rmSync(steerFinishGate, { force: true });
@@ -256,18 +134,16 @@ posixOnly("mid-turn steering e2e", () => {
     try {
       const created = (await api("POST", "/api/bots")).body.bot;
       await api("PATCH", `/api/bots/${created.id}`, {
-        modelSelection: { instanceId: "claudeSteer", model: "claude-fake" },
+        modelSelection: { instanceId: "gated", model: "fixture/test" },
       });
       const waiting = (await api("POST", `/api/bots/${created.id}/tasks`, { title: "Images" })).body.task.threadId as string;
       const waitingMessages = async () =>
         (await api("GET", `/api/threads/${waiting}/messages?limit=20`)).body.messages as any[];
       expect((await api("POST", `/api/bots/${created.id}/messages`, { threadId: created.threadId, text: "first image task" })).status)
         .toBe(202);
-      const openerMessages = async () =>
-        (await api("GET", `/api/threads/${created.threadId}/messages?limit=20`)).body.messages as any[];
       await waitFor(
-        async () => (await openerMessages()).some((message: any) => message.kind === "activity"),
-        "the image queue tool chip",
+        async () => Boolean(nativeTurn(created.threadId)),
+        "the opener's actual ACP prompt",
       );
 
       const attachments = join(home, ".quatibot", "attachments");
@@ -311,80 +187,26 @@ posixOnly("mid-turn steering e2e", () => {
         "the attached follow-up to settle",
       );
 
-      const nativeRows = readFileSync(
-        join(home, ".quatibot", "native", `${waiting}.ndjson`),
-        "utf8",
-      )
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line));
-      const followUp = nativeRows
-        .filter((row) => row.dir === "out" && row.source === "claude.sdk.message")
-        .at(-1)?.msg;
-      expect(followUp.message.content.map((block: any) => block.type === "text" ? { ...block, text: withoutTurnClock(block.text) } : block)).toEqual([
-        {
-          type: "image",
-          source: { type: "base64", media_type: "image/png", data: "[image data: 12 base64 chars]" },
-        },
-        {
-          type: "image",
-          source: { type: "base64", media_type: "image/png", data: "[image data: 16 base64 chars]" },
-        },
-        { type: "text", text: "look at this\n\n\n\nand this\n\n" },
+      const followUp = nativeTurn(waiting);
+      expect(followUp).toBeDefined();
+      expect(followUp!.prompt.filter((block) => block.type === "image")).toEqual([
+        { type: "image", mimeType: "image/png", data: Buffer.from("first png").toString("base64") },
+        { type: "image", mimeType: "image/png", data: Buffer.from("second png").toString("base64") },
       ]);
+      const text = followUp!.prompt.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+      expect(text).toContain("look at this");
+      expect(text).toContain("and this");
+      expect(text).not.toContain("<attached-image path=");
     } finally {
       await api("PATCH", "/api/config", { threads: { maxConcurrentPerBot: previousLimit } });
     }
-  }, 40_000);
-
-  it("an attachment sent during a Claude turn is steered into it as native images", async () => {
-    rmSync(steerFinishGate, { force: true });
-    const created = (await api("POST", "/api/bots")).body.bot;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "claudeSteer", model: "claude-fake" } });
-
-    expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first" })).status).toBe(202);
-    await waitFor(async () => (await getBot(created.id)).busy === true, "the turn to start");
-    await waitFor(async () => (await getBot(created.id)).messages.some((m: any) => m.kind === "activity"), "the tool chip");
-
-    const attachments = join(home, ".quatibot", "attachments");
-    mkdirSync(attachments, { recursive: true });
-    const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174006.png");
-    writeFileSync(imagePath, "steered png");
-    const imageText = `and look at this\n\n<attached-image path="${imagePath}" name="shot.png" />`;
-    let second: Awaited<ReturnType<typeof api>>;
-    try {
-      second = await api("POST", `/api/bots/${created.id}/messages`, { text: imageText });
-    } finally {
-      writeFileSync(steerFinishGate, "finish");
-    }
-    expect(second.status).toBe(202);
-    expect(second.body.steered).toBe(true);
-
-    await waitFor(async () => (await getBot(created.id)).busy === false, "the turn to settle");
-    const bot = await getBot(created.id);
-    const steered = bot.messages.find((m: any) => m.text === imageText);
-    expect(steered.steered).toBe(true);
-    const replies = bot.messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.text.startsWith("reply to:"));
-    expect(replies).toHaveLength(1);
-    expect(withoutTurnClock(replies[0].text)).toBe("reply to: first + steered: [image] and look at this");
-
-    const nativeRows = readFileSync(join(home, ".quatibot", "native", `${created.threadId}.ndjson`), "utf8")
-      .trim().split("\n").map((line) => JSON.parse(line));
-    const steerRow = nativeRows.filter((row) =>
-      row.dir === "out" && row.source === "claude.sdk.message" && Array.isArray(row.msg?.message?.content),
-    ).at(-1)?.msg;
-    expect(steerRow.uuid).toEqual(expect.any(String));
-    expect(steerRow.message.content).toEqual([
-      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 16 base64 chars]" } },
-      { type: "text", text: "and look at this\n\n" },
-    ]);
   }, 40_000);
 
   it("delivers a queued room burst's non-last image natively in the coalesced turn", async () => {
     rmSync(steerFinishGate, { force: true });
     const created = (await api("POST", "/api/bots")).body.bot;
     await api("PATCH", `/api/bots/${created.id}`, {
-      modelSelection: { instanceId: "claudeSteer", model: "claude-fake" },
+      modelSelection: { instanceId: "gated", model: "fixture/test" },
     });
     const room = (await api("POST", "/api/groups", {
       name: "Burst image room",
@@ -419,65 +241,23 @@ posixOnly("mid-turn steering e2e", () => {
     );
     await waitFor(async () => (await getGroup())?.working === false, "the burst turn to settle");
     expect(
-      (await getGroup())?.messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.text?.startsWith("reply to:")),
+      (await getGroup())?.messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.text?.startsWith("echo:")),
     ).toHaveLength(2);
 
-    const nativeRows = readFileSync(
-      join(home, ".quatibot", "native", `${room.threadId}.ndjson`),
-      "utf8",
-    )
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-    const followUp = nativeRows
-      .filter((row) => row.dir === "out" && row.source === "claude.sdk.message")
-      .at(-1)?.msg;
-    expect(followUp.message.content).toEqual([
-      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 12 base64 chars]" } },
-      expect.objectContaining({ type: "text" }),
+    const followUp = nativeTurn(room.threadId);
+    expect(followUp).toBeDefined();
+    expect(followUp!.prompt.filter((block) => block.type === "image")).toEqual([
+      { type: "image", mimeType: "image/png", data: Buffer.from("room png").toString("base64") },
     ]);
-    const textBlock = followUp.message.content.find((block: any) => block.type === "text").text;
+    const textBlock = followUp!.prompt.filter((block) => block.type === "text").map((block) => block.text).join("\n");
     expect(textBlock).toContain("look at the room screenshot");
     expect(textBlock).toContain("and summarize it");
     expect(textBlock).not.toContain("<attached-image");
   }, 40_000);
 
-  it("rejects a delayed steer acknowledgement after the bot is deleted", async () => {
-    const created = (await api("POST", "/api/bots")).body.bot;
-    await api("PATCH", `/api/bots/${created.id}`, {
-      modelSelection: { instanceId: "claudeRace", model: "claude-fake" },
-    });
-
-    expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first race turn" })).status).toBe(202);
-    await waitFor(async () => (await getBot(created.id))?.busy === true, "the race turn to start");
-    await waitFor(
-      async () => (await getBot(created.id))?.messages.some((message: any) => message.kind === "activity"),
-      "the race turn tool chip",
-    );
-
-    // The fake paused stdin after the first prompt; this exceeds a pipe's buffer, so the steer cannot acknowledge until the gate opens.
-    const delayed = api("POST", `/api/bots/${created.id}/messages`, {
-      text: `delayed ownership check ${"x".repeat(900_000)}`,
-      threadId: created.threadId,
-    });
-    const prematurelySettled = await Promise.race([
-      delayed.then(() => true),
-      new Promise<false>((resolve) => setTimeout(() => resolve(false), 100)),
-    ]);
-    expect(prematurelySettled).toBe(false);
-
-    await waitFor(async () => (await getBot(created.id))?.busy === false, "the original race turn to settle");
-    expect((await api("DELETE", `/api/bots/${created.id}`)).status).toBe(200);
-    writeFileSync(steerGate, "open");
-
-    const rejected = await delayed;
-    expect(rejected.status).toBe(404);
-    expect(rejected.body.error).toMatch(/no such bot/i);
-  }, 40_000);
-
   it("an engine without a live session preserves the message in the server-side queue", async () => {
     const created = (await api("POST", "/api/bots")).body.bot;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "acp", model: "fake-model" } });
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "acp", model: "fixture/test" } });
     expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first" })).status).toBe(202);
     await waitFor(async () => (await getBot(created.id)).busy === true, "the hung turn to start");
     const person = await asPairedPerson();
@@ -501,7 +281,7 @@ posixOnly("mid-turn steering e2e", () => {
 
   it("a message waiting for a free slot still names the paired person once it runs", async () => {
     const created = (await api("POST", "/api/bots")).body.bot;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "acp", model: "fake-model" } });
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "acp", model: "fixture/test" } });
     const limit = (await api("GET", "/api/config")).body.threads.maxConcurrentPerBot as number;
     const threads: string[] = [created.threadId];
     for (let i = 0; i < limit; i++) {
@@ -532,84 +312,9 @@ posixOnly("mid-turn steering e2e", () => {
     }
   }, 40_000);
 
-  it("a codex message during a live turn is steered into it via turn/steer, and Stop never reports SIGTERM", async () => {
-    const created = (await api("POST", "/api/bots")).body.bot;
-    const instances = (await api("GET", "/api/instances")).body.instances;
-    const codexInstance = instances.find((i: any) => i.instanceId === "codex");
-    expect(codexInstance.capabilities.queueing).toBe(true);
-    await api("PATCH", `/api/bots/${created.id}`, {
-      modelSelection: { instanceId: "codex", model: codexInstance.models.default },
-    });
-
-    expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first codex turn" })).status).toBe(202);
-    await waitFor(async () => (await getBot(created.id)).busy === true, "the codex turn to start");
-    await waitFor(
-      async () => (await getBot(created.id)).messages.some((m: any) => m.card),
-      "the codex question card",
-    );
-
-    const second = await api("POST", `/api/bots/${created.id}/messages`, { text: "and also this" });
-    expect(second.status).toBe(202);
-    expect(second.body.steered).toBe(true);
-    const steered = (await getBot(created.id)).messages.find((m: any) => m.text === "and also this");
-    expect(steered.steered).toBe(true);
-
-    const nativeRows = readFileSync(join(home, ".quatibot", "native", `${created.threadId}.ndjson`), "utf8")
-      .trim().split("\n").map((line) => JSON.parse(line));
-    const steerRow = nativeRows.find((row) => row.dir === "out" && row.msg?.method === "turn/steer")?.msg;
-    expect(steerRow?.params).toMatchObject({
-      threadId: "codex-thread-1",
-      input: [{ type: "text", text: "and also this" }],
-      expectedTurnId: "turn-1",
-    });
-
-    await api("POST", `/api/bots/${created.id}/interrupt`);
-    await waitFor(async () => (await getBot(created.id)).busy === false, "the steered codex turn to settle");
-    const bot = await getBot(created.id);
-    expect(JSON.stringify(bot.messages)).not.toContain("SIGTERM");
-    expect(stderr).not.toContain("signal SIGTERM");
-  }, 40_000);
-
-  it("the queue steer endpoint pulls a codex queue into the running turn once the engine can steer", async () => {
-    const created = (await api("POST", "/api/bots")).body.bot;
-    const instances = (await api("GET", "/api/instances")).body.instances;
-    const model = instances.find((i: any) => i.instanceId === "codexRace").models.default;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "codexRace", model } });
-
-    expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first gated turn" })).status).toBe(202);
-    await waitFor(async () => (await getBot(created.id)).busy === true, "the gated turn to start");
-    await waitFor(
-      async () => (await getBot(created.id)).messages.some((m: any) => m.card),
-      "the gated question card",
-    );
-
-    // the gate file makes the live steer lose: the words queue instead
-    const person = await asPairedPerson();
-    const queued = await person("POST", `/api/bots/${created.id}/messages`, { text: "steer these queued words" });
-    expect(queued.body).toMatchObject({ ok: true, queued: true });
-    expect((await getBot(created.id)).messages.some((m: any) => m.text === "steer these queued words")).toBe(false);
-
-    rmSync(codexSteerGate, { force: true });
-    const steered = await api("POST", `/api/bots/${created.id}/queue/${queued.body.queueId}/steer`, {
-      threadId: created.threadId,
-    });
-    expect(steered.status).toBe(200);
-    expect(steered.body.steered).toBe(true);
-    expect(steered.body.queueIds).toEqual([queued.body.queueId]);
-    const folded = (await getBot(created.id)).messages.find((m: any) => m.text === "steer these queued words");
-    expect(folded.steered).toBe(true);
-    expect(folded.sender).toEqual(PAIRED);
-    expect(steered.body.messages[0].sender).toEqual(PAIRED);
-    expect(askedAt(created.id, created.threadId)).toBe(folded.at);
-
-    await api("POST", `/api/bots/${created.id}/interrupt`);
-    await waitFor(async () => (await getBot(created.id)).busy === false, "the queue-steered turn to settle");
-    expect(stderr).not.toContain("signal SIGTERM");
-  }, 40_000);
-
   it("an engine without live steering keeps its queue through the steer endpoint, then drains after Stop", async () => {
     const created = (await api("POST", "/api/bots")).body.bot;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "acp", model: "fake-model" } });
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "acp", model: "fixture/test" } });
     expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first" })).status).toBe(202);
     await waitFor(async () => (await getBot(created.id)).busy === true, "the hung turn to start");
     const queued = await api("POST", `/api/bots/${created.id}/messages`, { text: "second" });
@@ -632,53 +337,9 @@ posixOnly("mid-turn steering e2e", () => {
     await waitFor(async () => (await getBot(created.id)).busy === false, "the drained turn to settle");
   }, 40_000);
 
-  it("a room steer folds the queued head into the running codex turn, and room Stop reports no SIGTERM", async () => {
-    const created = (await api("POST", "/api/bots")).body.bot;
-    const instances = (await api("GET", "/api/instances")).body.instances;
-    const model = instances.find((i: any) => i.instanceId === "codex").models.default;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "codex", model } });
-    const room = (await api("POST", "/api/groups", {
-      name: "Steer room",
-      memberIds: [created.id],
-      setup: { bulletin: "", defaultResponder: { kind: "member", botId: created.id } },
-    })).body.group;
-    const getGroup = async () =>
-      (await api("GET", "/api/bots?messages=30")).body.groups.find((g: any) => g.id === room.id);
-
-    expect((await api("POST", `/api/groups/${room.id}/messages`, { text: "first room turn" })).status).toBe(202);
-    await waitFor(async () => (await getGroup())?.busyBotId === created.id, "the room turn to start");
-    await waitFor(async () => (await getGroup())?.messages.some((m: any) => m.card), "the room question card");
-
-    const person = await asPairedPerson();
-    const queued = await person("POST", `/api/groups/${room.id}/messages`, { text: "steer these room words" });
-    expect(queued.status).toBe(202);
-    expect(queued.body).toMatchObject({ ok: true, queued: true });
-    expect((await getGroup())?.messages.some((m: any) => m.text === "steer these room words")).toBe(false);
-
-    const steered = await api("POST", `/api/groups/${room.id}/queue/${queued.body.queueId}/steer`, {
-      threadId: room.threadId,
-    });
-    expect(steered.status).toBe(200);
-    expect(steered.body).toMatchObject({ ok: true, steered: true });
-    expect(steered.body.queueIds).toEqual([queued.body.queueId]);
-    const folded = (await getGroup())?.messages.find((m: any) => m.text === "steer these room words");
-    expect(folded?.steered).toBe(true);
-    expect(folded?.sender).toEqual(PAIRED);
-
-    const nativeRows = readFileSync(join(home, ".quatibot", "native", `${room.threadId}.ndjson`), "utf8")
-      .trim().split("\n").map((line) => JSON.parse(line));
-    const steerRow = nativeRows.find((row) => row.dir === "out" && row.msg?.method === "turn/steer")?.msg;
-    expect(steerRow?.params).toMatchObject({ input: [{ type: "text", text: "steer these room words" }] });
-
-    await api("POST", `/api/groups/${room.id}/interrupt`, {});
-    await waitFor(async () => (await getGroup())?.working === false, "the steered room turn to settle");
-    expect(JSON.stringify((await getGroup())?.messages)).not.toContain("SIGTERM");
-    expect(stderr).not.toContain("signal SIGTERM");
-  }, 40_000);
-
   it("a room whose engine cannot steer keeps its queue, then drains after Stop", async () => {
     const created = (await api("POST", "/api/bots")).body.bot;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "acp", model: "fake-model" } });
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "acp", model: "fixture/test" } });
     const room = (await api("POST", "/api/groups", {
       name: "Queue room",
       memberIds: [created.id],
@@ -712,61 +373,11 @@ posixOnly("mid-turn steering e2e", () => {
     await waitFor(async () => (await getGroup())?.working === false, "the drained room turn to settle");
   }, 40_000);
 
-  it("a room steer keeps each burst line's own reply context in the fold", async () => {
-    const created = (await api("POST", "/api/bots")).body.bot;
-    const instances = (await api("GET", "/api/instances")).body.instances;
-    const model = instances.find((i: any) => i.instanceId === "codex").models.default;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "codex", model } });
-    const room = (await api("POST", "/api/groups", {
-      name: "Reply burst room",
-      memberIds: [created.id],
-      setup: { bulletin: "", defaultResponder: { kind: "member", botId: created.id } },
-    })).body.group;
-    const getGroup = async () =>
-      (await api("GET", "/api/bots?messages=30")).body.groups.find((g: any) => g.id === room.id);
-
-    expect((await api("POST", `/api/groups/${room.id}/messages`, { text: "first room turn" })).status).toBe(202);
-    await waitFor(async () => (await getGroup())?.busyBotId === created.id, "the room turn to start");
-    await waitFor(async () => (await getGroup())?.messages.some((m: any) => m.card), "the room question card");
-    const firstTurnId = (await getGroup())?.messages.find(
-      (m: any) => m.role === "user" && m.text === "first room turn",
-    )?.id;
-    expect(firstTurnId).toBeTruthy();
-
-    const person = await asPairedPerson();
-    const replying = await person("POST", `/api/groups/${room.id}/messages`, {
-      text: "steer this reply line",
-      replyToId: firstTurnId,
-    });
-    const plain = await person("POST", `/api/groups/${room.id}/messages`, { text: "and this plain line" });
-    expect(replying.body).toMatchObject({ ok: true, queued: true });
-    expect(plain.body).toMatchObject({ ok: true, queued: true });
-
-    const steered = await api("POST", `/api/groups/${room.id}/queue/${replying.body.queueId}/steer`, {
-      threadId: room.threadId,
-    });
-    expect(steered.status).toBe(200);
-    expect(steered.body.steered).toBe(true);
-    expect(steered.body.queueIds).toEqual([replying.body.queueId, plain.body.queueId]);
-
-    const nativeRows = readFileSync(join(home, ".quatibot", "native", `${room.threadId}.ndjson`), "utf8")
-      .trim().split("\n").map((line) => JSON.parse(line));
-    const foldRow = nativeRows.find((row) => row.dir === "out" && row.msg?.method === "turn/steer")?.msg;
-    const foldedText = foldRow?.params.input.map((block: any) => block.text).join("\n") ?? "";
-    expect(foldedText).toContain("steer this reply line");
-    expect(foldedText).toContain("and this plain line");
-    expect(foldedText.match(/The current message is a reply to/g)).toHaveLength(1);
-    expect(foldedText).toContain("first room turn");
-
-    await api("POST", `/api/groups/${room.id}/interrupt`, {});
-    await waitFor(async () => (await getGroup())?.working === false, "the steered room turn to settle");
-  }, 40_000);
-
   it("a queued room attachment refuses the fold and waits for a real turn", async () => {
     const created = (await api("POST", "/api/bots")).body.bot;
     const instances = (await api("GET", "/api/instances")).body.instances;
-    const model = instances.find((i: any) => i.instanceId === "codex").models.default;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "codex", model } });
+    const model = instances.find((i: any) => i.instanceId === "questions").models.default;
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "questions", model } });
     const room = (await api("POST", "/api/groups", {
       name: "Attachment steer room",
       memberIds: [created.id],
@@ -793,7 +404,7 @@ posixOnly("mid-turn steering e2e", () => {
       threadId: room.threadId,
     });
     expect(steered.status).toBe(200);
-    expect(steered.body).toMatchObject({ ok: true, queued: true, blockedBy: "images" });
+    expect(steered.body).toMatchObject({ ok: true, queued: true });
     expect(steered.body.steered).toBeUndefined();
     expect((await getGroup())?.working).toBe(true);
     expect((await getGroup())?.messages.some((m: any) => m.text === imageText)).toBe(false);
@@ -803,76 +414,23 @@ posixOnly("mid-turn steering e2e", () => {
       async () => (await getGroup())?.messages.some((m: any) => m.text === imageText),
       "the attachment line to drain",
     );
+    const nativePrompts = () => {
+      const rows: Array<{ dir: string; msg?: { method?: string } }> = readFileSync(join(home, ".quatibot", "native", `${room.threadId}.ndjson`), "utf8")
+        .trim().split("\n").map((line) => JSON.parse(line));
+      return rows.filter((row) => row.dir === "out" && row.msg?.method === "session/prompt");
+    };
+    await waitFor(async () => nativePrompts().length === 2, "the queued attachment's actual ACP prompt");
     await api("POST", `/api/groups/${room.id}/interrupt`, {});
     await waitFor(async () => (await getGroup())?.working === false, "the drained attachment turn to settle");
-
-    const nativeRows = readFileSync(join(home, ".quatibot", "native", `${room.threadId}.ndjson`), "utf8")
-      .trim().split("\n").map((line) => JSON.parse(line));
-    expect(nativeRows.filter((row) => row.dir === "out" && row.msg?.method === "turn/steer")).toHaveLength(0);
+    expect(nativePrompts()).toHaveLength(2);
   }, 40_000);
 
-  it("a room steer folds a queued attachment into the running Claude turn as native images", async () => {
-    rmSync(steerFinishGate, { force: true });
-    const created = (await api("POST", "/api/bots")).body.bot;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "claudeSteer", model: "claude-fake" } });
-    const room = (await api("POST", "/api/groups", {
-      name: "Image steer room",
-      memberIds: [created.id],
-      setup: { bulletin: "", defaultResponder: { kind: "member", botId: created.id } },
-    })).body.group;
-    const getGroup = async () =>
-      (await api("GET", "/api/bots?messages=30")).body.groups.find((g: any) => g.id === room.id);
-
-    try {
-      expect((await api("POST", `/api/groups/${room.id}/messages`, { text: "start the room" })).status).toBe(202);
-      await waitFor(async () => (await getGroup())?.busyBotId === created.id, "the room turn to start");
-      await waitFor(async () => (await getGroup())?.messages.some((m: any) => m.kind === "activity"), "the room tool chip");
-
-      const attachments = join(home, ".quatibot", "attachments");
-      mkdirSync(attachments, { recursive: true });
-      const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174007.png");
-      writeFileSync(imagePath, "room steer png");
-      const imageText = `what about this one\n\n<attached-image path="${imagePath}" name="room.png" />`;
-      const person = await asPairedPerson();
-      const queued = await person("POST", `/api/groups/${room.id}/messages`, { text: imageText });
-      expect(queued.body).toMatchObject({ ok: true, queued: true });
-
-      const steered = await api("POST", `/api/groups/${room.id}/queue/${queued.body.queueId}/steer`, {
-        threadId: room.threadId,
-      });
-      expect(steered.status).toBe(200);
-      expect(steered.body).toMatchObject({ ok: true, steered: true });
-      expect(steered.body.queueIds).toEqual([queued.body.queueId]);
-      expect(steered.body.blockedBy).toBeUndefined();
-      const folded = (await getGroup())?.messages.find((m: any) => m.text === imageText);
-      expect(folded?.steered).toBe(true);
-      expect(folded?.sender).toEqual(PAIRED);
-    } finally {
-      writeFileSync(steerFinishGate, "finish");
-    }
-    await waitFor(async () => (await getGroup())?.working === false, "the steered room turn to settle");
-    const replies = (await getGroup())?.messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.text?.startsWith("reply to:"));
-    expect(replies).toHaveLength(1);
-    expect(replies[0].text).toContain("+ steered: [image] what about this one");
-
-    const nativeRows = readFileSync(join(home, ".quatibot", "native", `${room.threadId}.ndjson`), "utf8")
-      .trim().split("\n").map((line) => JSON.parse(line));
-    const steerRow = nativeRows.filter((row) =>
-      row.dir === "out" && row.source === "claude.sdk.message" && Array.isArray(row.msg?.message?.content),
-    ).at(-1)?.msg;
-    expect(steerRow.uuid).toEqual(expect.any(String));
-    expect(steerRow.message.content).toEqual([
-      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 20 base64 chars]" } },
-      { type: "text", text: "what about this one\n\n" },
-    ]);
-  }, 40_000);
-
-  it("the queue steer endpoint keeps a codex attachment queued and says why", async () => {
+  it("the queue steer endpoint keeps an attachment queued without native steering", async () => {
     const created = (await api("POST", "/api/bots")).body.bot;
     const instances = (await api("GET", "/api/instances")).body.instances;
-    const codexInstance = instances.find((i: any) => i.instanceId === "codex");
-    expect(codexInstance.capabilities.queueing).toBe(true);
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "codex", model: codexInstance.models.default } });
+    const instance = instances.find((i: any) => i.instanceId === "questions");
+    expect(instance.capabilities.queueing).toBe(false);
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "questions", model: instance.models.default } });
 
     expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first codex turn" })).status).toBe(202);
     await waitFor(async () => (await getBot(created.id)).busy === true, "the codex turn to start");
@@ -891,13 +449,13 @@ posixOnly("mid-turn steering e2e", () => {
       threadId: created.threadId,
     });
     expect(still.status).toBe(200);
-    expect(still.body).toMatchObject({ ok: true, queued: true, blockedBy: "images" });
+    expect(still.body).toMatchObject({ ok: true, queued: true });
     expect(still.body.steered).toBeUndefined();
     expect((await getBot(created.id)).busy).toBe(true);
     expect((await getBot(created.id)).messages.some((m: any) => m.text === imageText)).toBe(false);
     const nativeRows = readFileSync(join(home, ".quatibot", "native", `${created.threadId}.ndjson`), "utf8")
       .trim().split("\n").map((line) => JSON.parse(line));
-    expect(nativeRows.filter((row) => row.dir === "out" && row.msg?.method === "turn/steer")).toHaveLength(0);
+    expect(nativeRows.filter((row) => row.dir === "out" && row.msg?.method === "session/prompt")).toHaveLength(1);
 
     expect((await api("DELETE", `/api/bots/${created.id}/queue/${queued.body.queueId}`, { threadId: created.threadId })).status).toBe(200);
     await api("POST", `/api/bots/${created.id}/interrupt`);

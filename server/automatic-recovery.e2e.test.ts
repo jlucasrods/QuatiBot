@@ -1,14 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
 
 const primary = { instanceId: "opencodeGo", model: "fixture/recovery" };
-const backup = { instanceId: "claude", model: "claude-sonnet-5" };
+const backup = { instanceId: "backup", model: "fixture/backup" };
 const transient = { code: -32603, message: "Internal error", data: { details: "Upstream connection timed out" } };
 const jsonLines = (path: string): any[] => existsSync(path)
   ? readFileSync(path, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
@@ -24,7 +24,7 @@ async function withRecoveryFixture(
     control: (...args: string[]) => Promise<any>;
     calls: () => Array<{ pid: number; method: string }>;
     backupPrompts: () => any[];
-    backupReceipt: () => { argv: string[]; prompt: unknown; systemPrompt: string };
+    backupReceipt: () => { prompt: unknown; env: Record<string, string> };
     dataDir: string; failureFile: string; gateFile: string; evidence: unknown[];
   }) => Promise<void>,
 ) {
@@ -34,7 +34,9 @@ async function withRecoveryFixture(
   const failureFile = join(dataDir, "startup-failure.json");
   const gateFile = join(dataDir, "startup-release");
   const rpcFile = join(dataDir, "primary-rpc.jsonl");
-  const backupFile = join(dataDir, "backup-prompts.jsonl");
+  const backupDump = join(dataDir, "backup-dump.json");
+  const backupFile = `${backupDump}.prompts.jsonl`;
+  const backupFailure = join(dataDir, "backup-failure.json");
   const evidence: unknown[] = [{ url, options }];
   let server: ChildProcess | undefined;
   const api = async (method: string, path: string, body?: unknown, expectedStatus?: number) => {
@@ -42,7 +44,7 @@ async function withRecoveryFixture(
       method, headers: { "content-type": "application/json", origin: url },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(30_000),
     });
-    const result = await response.json();
+    const result = JSON.parse(await response.text());
     const context = `${method} ${path}: ${JSON.stringify(result)}`;
     if (expectedStatus === undefined) expect(response.ok, context).toBe(true);
     else expect(response.status, context).toBe(expectedStatus);
@@ -57,46 +59,61 @@ async function withRecoveryFixture(
     await waitForExit(fixture.child, { signal: "SIGTERM" });
     const configPath = join(dataDir, "config.json");
     const config = JSON.parse(readFileSync(configPath, "utf8"));
-    const cli = fileURLToPath(new URL("./testing/fake-acp-cli.ts", import.meta.url));
-    config.instances.history = {
-      driver: "opencodeGo", displayName: "History fixture", config: { cli },
-      environment: { FAKE_ACP_MODELS: primary.model },
+    const cli = pathToFileURL(fileURLToPath(new URL("./testing/fake-acp-cli.ts", import.meta.url))).href;
+    const startupFault = {
+      FAKE_ACP_RPC_APPEND_FILE: rpcFile,
+      FAKE_ACP_RPC_FAILURE_FILE: failureFile,
+      FAKE_ACP_RPC_FAILURE_METHOD: options.method ?? "initialize",
+      ...(options.afterOutput ? { FAKE_ACP_RPC_FAILURE_AFTER_OUTPUT: "1" } : {}),
+      ...(options.gated ? { FAKE_ACP_RPC_FAILURE_GATE: gateFile } : {}),
     };
-    config.instances.opencodeGo = {
-      driver: "opencodeGo", displayName: "Primary fixture", config: { cli },
-      environment: {
-        FAKE_ACP_MODELS: primary.model, FAKE_ACP_RPC_APPEND_FILE: rpcFile,
-        FAKE_ACP_RPC_FAILURE_FILE: failureFile, FAKE_ACP_RPC_FAILURE_METHOD: options.method ?? "initialize",
-        ...(options.afterOutput ? { FAKE_ACP_RPC_FAILURE_AFTER_OUTPUT: "1" } : {}),
-        ...(options.gated ? { FAKE_ACP_RPC_FAILURE_GATE: gateFile } : {}),
+    const fixtures: Record<string, Record<string, string>> = {
+      history: {}, opencodeGo: startupFault, secondary: startupFault,
+      backup: {
+        FAKE_ACP_DUMP: backupDump,
+        FAKE_ACP_RPC_FAILURE_FILE: backupFailure,
+        FAKE_ACP_RPC_FAILURE_METHOD: "session/prompt",
       },
     };
-    config.instances.secondary = { ...config.instances.opencodeGo, displayName: "Second startup fixture" };
-    config.instances.claude.environment = {
-      ...config.instances.claude.environment,
-      FAKE_CLAUDE_PROMPTS: backupFile, FAKE_CLAUDE_TOOL_CALLS: "[]",
-      FAKE_CLAUDE_MODE: options.backupFails ? "not-logged-in" : "happy",
-    };
+    config.instances = {};
+    for (const [id, knobs] of Object.entries(fixtures)) {
+      const executable = join(dataDir, `${id}-opencode.mjs`);
+      const environment = {
+        FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31",
+        FAKE_ACP_AGENT_NAME: "OpenCode", FAKE_ACP_MODELS: `${primary.model},${backup.model}`,
+        ...knobs,
+      };
+      writeFileSync(executable, ["#!/usr/bin/env node",
+        ...Object.entries(environment).map(([name, value]) => `process.env[${JSON.stringify(name)}] = ${JSON.stringify(value)};`),
+        `await import(${JSON.stringify(cli)});`,
+      ].join("\n"), { mode: 0o700 });
+      config.instances[id] = { driver: "opencodeGo", displayName: `${id} fixture`, config: { cli: executable } };
+    }
+    config.defaultModelSelection = { instanceId: "history", model: primary.model };
     config.automaticRecovery = { enabled: options.enabled !== false, backup };
     writeFileSync(configPath, JSON.stringify(config));
     const log = openSync(logPath, "a", 0o600);
     server = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
       cwd: fileURLToPath(new URL("..", import.meta.url)),
-      env: verificationServerEnvironment({}, dataDir, Number(new URL(url).port)), stdio: ["ignore", log, log],
+      env: {
+        ...verificationServerEnvironment({}, dataDir, Number(new URL(url).port)),
+        ...(options.scripted ? { FAKE_ACP_ROOM_PLAN: join(dataDir, "room-plan.json") } : {}),
+      }, stdio: ["ignore", log, log],
     });
     closeSync(log);
     await expect.poll(async () => {
       try { return (await fetch(url + "/api/health", { signal: AbortSignal.timeout(1_000) })).ok; } catch { return false; }
     }, { timeout: 20_000 }).toBe(true);
-    // Armed once the server is up: the failure is the turns' to meet, not the
-    // model discovery the server runs while it starts.
+    await expect.poll(async () => {
+      const { instances } = await api("GET", "/api/instances");
+      return Object.keys(fixtures).every((id) => instances.find((entry: { instanceId: string }) => entry.instanceId === id)
+        ?.models?.options?.some((model: { id: string }) => model.id === primary.model));
+    }, { timeout: 20_000 }).toBe(true);
     writeFileSync(failureFile, JSON.stringify(options.error ?? transient));
+    if (options.backupFails) writeFileSync(backupFailure, JSON.stringify({ code: -32000, message: "Authentication required: run opencode auth login" }));
     await check({
       api, control, calls: () => turnCalls(rpcFile), backupPrompts: () => jsonLines(backupFile),
-      backupReceipt: () => {
-        const { argv, prompt, systemPrompt } = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
-        return { argv, prompt, systemPrompt };
-      },
+      backupReceipt: () => jsonLines(backupFile).at(-1),
       dataDir, failureFile, gateFile, evidence,
     });
   } finally {
@@ -135,13 +152,14 @@ it("recovers once on the same thread with its history and permissions, leaving t
     expect(prompt).toContain("REMEMBER_AUTOMATIC_RECOVERY_7Q");
     expect(prompt).toContain("hello from fake acp");
     expect(prompt.split(text)).toHaveLength(2);
-    expect(receipt.argv[receipt.argv.indexOf("--permission-mode") + 1]).toBe("default");
+    expect(JSON.parse(receipt.env.OPENCODE_CONFIG_CONTENT ?? "{}").permissions ?? [])
+      .not.toContainEqual({ action: "*", resource: "*", effect: "allow" });
     const messages = (await api("GET", `/api/threads/${threadId}/messages?limit=100`)).messages as any[];
     expect(messages.filter((message) => message.role === "user" && message.text === text)).toHaveLength(1);
     expect(messages.find((message) => message.role === "user" && message.text === text).requestPending).toBe(false);
     expect(messages.filter((message) => message.tool?.name?.startsWith("recovery:"))).toHaveLength(1);
     expect(messages.findLast((message) => message.role === "bot" && message.kind === "text")).toMatchObject({
-      text: "hello from fake claude", turnSucceeded: true,
+      text: "hello from fake acp", turnSucceeded: true,
     });
     const after = await state();
     const task = after.tasks.find((entry: any) => entry.threadId === threadId);
@@ -190,7 +208,8 @@ it("recovers a coordinated specialist and returns its result to the Chief exactl
     expect(turns.filter((turn) => turn.botId === chief.id)).toHaveLength(2);
     expect(turns.filter((turn) => turn.botId === specialist.id)).toHaveLength(1);
     expect(turns.find((turn) => turn.botId === specialist.id)).toMatchObject({
-      threadId: child.threadId, model: backup.model, permissionMode: "bypassPermissions",
+      threadId: child.threadId, model: backup.model,
+      nativePermissions: expect.arrayContaining([{ action: "*", resource: "*", effect: "allow" }]),
     });
     expect(calls().filter((call) => call.method === "initialize.error")).toHaveLength(1);
     expect(calls().some((call) => call.method === "session/prompt")).toBe(false);
@@ -295,7 +314,7 @@ it("stops after one failed backup instead of looping between engines", async () 
     const { messages } = await control("messages", "--bot", bot.id, "--task", threadId, "--limit", "20");
     expect(messages.filter((message: any) => message.role === "user" && message.text === "ONLY_ONE_BACKUP_4T")).toHaveLength(1);
     expect(messages.map((message: any) => message.tool).filter((tool: any) => tool?.ok === false))
-      .toEqual([{ name: "error: Not logged in · Please run /login", ok: false, setup: true }]);
+      .toEqual([{ name: "error: Configure this model's provider in OpenCode with `opencode auth login`, then refresh models.", ok: false, setup: true }]);
   });
 }, 90_000);
 

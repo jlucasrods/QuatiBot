@@ -6,7 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { AppState, Bot, InstanceInfo } from "@/state/store";
 import { setLocale, t } from "@/lib/i18n";
 
-const fixture = vi.hoisted(() => ({ advanced: true, android: false }));
+const fixture = vi.hoisted(() => ({ advanced: true }));
 
 vi.mock("./DesktopCapabilities", async (importOriginal) => ({
   ...await importOriginal<typeof import("./DesktopCapabilities")>(),
@@ -14,8 +14,8 @@ vi.mock("./DesktopCapabilities", async (importOriginal) => ({
   useDesktopCapabilities: () => ({
     ready: true,
     capabilities: {
-      host: { platform: "darwin", label: "Host", session: "unknown", packaged: true, homeDir: "/Users/me" },
-      windowChrome: "native",
+      host: { platform: "linux", label: "Host", session: "unknown", packaged: false, homeDir: "/home/fixture" },
+      windowChrome: "browser",
       screenPreview: { available: false, interaction: "none" },
       dictation: { available: false, engine: "none", onDevice: false },
       localComputer: { available: false, support: "unsupported", enabled: false, status: "unavailable" },
@@ -25,7 +25,6 @@ vi.mock("./DesktopCapabilities", async (importOriginal) => ({
 vi.mock("@/lib/interface-mode", () => ({ useAdvancedMode: () => fixture.advanced, setAdvancedMode: () => {} }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 vi.mock("./CloudScreenPreview", () => ({ CloudScreenPreview: () => null }));
-vi.mock("./AndroidDevicePanel", () => ({ AndroidDevicePanel: () => null, useAndroidUsbDevices: () => ({ devices: fixture.android ? [{ serial: "p1" }] : [] }) }));
 vi.mock("./BrowserPanel", () => ({ BrowserPanel: () => null }));
 vi.mock("./CloudBackendPicker", () => ({ CloudBackendPicker: () => null }));
 vi.mock("./bot-settings/RoutinesSection", () => ({ RoutinesSection: () => null }));
@@ -33,8 +32,7 @@ vi.mock("./data/DataPanel", () => ({ DataPanel: () => createElement("div", { "da
 vi.mock("@/state/store", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: async (path: string) => {
-    if (path.startsWith("/api/bots/scout/computer/control")) return { held: false, helpReason: null };
-    if (path.startsWith("/api/bots/scout/computer?")) return { surface: "cloud", backend: "box", configured: true, box: { boxId: "bx_23456789", state: "ready" } };
+    if (path.startsWith("/api/bots/scout/local-computer?")) return { ready: true };
     return {};
   },
 }));
@@ -43,22 +41,22 @@ const { ComputerPanel } = await import("./ComputerPanel");
 const { BotEditorStore, initialState } = await import("@/state/store");
 
 const engine = (instanceId: string) => ({
-  instanceId, driverKind: "claudeAgent", displayName: instanceId, access: "subscription",
+  instanceId, driverKind: "opencodeGo", displayName: instanceId, access: "subscription",
   snapshot: { state: "available", version: "1", authenticated: true },
   models: { default: "m", options: [{ id: "m", label: "M" }] },
   capabilities: { computerMcp: true, browserMcp: true },
 }) as InstanceInfo;
 const makeBot = (patch: Partial<Bot> = {}): Bot => ({
   id: "scout", threadId: "thread", name: "Scout", title: "", description: "", color: "green",
-  notifications: true, unread: false, busy: false, computer: "cloud", messages: [],
-  modelSelection: { instanceId: "claude", model: "m" },
+  notifications: true, unread: false, busy: false, computer: "vm", messages: [],
+  modelSelection: { instanceId: "opencodeGo", model: "m" },
   tasks: [{ threadId: "thread", title: "Thread", createdAt: 1, approvalMode: "ask" }],
   ...patch,
 }) as unknown as Bot;
 
 let root: Root | null = null;
 const value = (): Parameters<typeof BotEditorStore>[0]["value"] => ({
-  state: { ...initialState, instances: [engine("claude"), engine("codex")], config: { box: { configured: true } } as AppState["config"] } as AppState,
+  state: { ...initialState, instances: [engine("opencodeGo")], config: {} as AppState["config"] } as AppState,
   dispatch: vi.fn(),
   flushBotPatches: async () => null,
   refreshInstances: async () => {},
@@ -100,7 +98,6 @@ beforeEach(() => {
     removeItem: (key: string) => void saved.delete(key),
   });
   fixture.advanced = true;
-  fixture.android = false;
 });
 afterEach(() => {
   root?.unmount();
@@ -184,28 +181,6 @@ describe("Computer panel tab", () => {
     await settle();
     expect(selected()).toBe("Computer");
     expect(document.activeElement).toBe(tab("Computer"));
-  });
-
-  it("moves over an Android tab that appeared", async () => {
-    fixture.android = true;
-    await open(makeBot());
-    expect(tabLabels()).toEqual(["Computer", "Routines", "Android", "Browser", "Data"]);
-    press("Routines", "ArrowRight");
-    await settle();
-    expect(selected()).toBe("Android");
-  });
-
-  it("keeps one selected tab when Android disconnects", async () => {
-    fixture.android = true;
-    await open(makeBot());
-    flushSync(() => tab("Android").click());
-    await settle();
-    expect(selected()).toBe("Android");
-
-    fixture.android = false;
-    await open(makeBot());
-    expect(tabLabels()).not.toContain("Android");
-    expect(selected()).toBe("Computer");
   });
 
   it("stops on the Files tab in Simple mode", async () => {

@@ -22,11 +22,9 @@ describe("parseCommand", () => {
     expect(parseCommand(["send", "Mira", "--", "--not-a-flag"]).positionals).toEqual(["Mira", "--not-a-flag"]);
   });
 
-  it("names team and engine actions as one verb", () => {
+  it("names team actions as one verb", () => {
     expect(parseCommand(["team", "apply", "room.yaml", "--check"])).toMatchObject({ verb: "team apply", positionals: ["room.yaml"], flags: { check: true } });
     expect(parseCommand(["team", "export", "--team", "A", "--team", "B", "--out", "t.yaml"]).flags).toMatchObject({ team: ["A", "B"], out: "t.yaml" });
-    expect(parseCommand(["engine", "set", "claude", "--key-env", "ANTHROPIC_API_KEY"])).toMatchObject({ verb: "engine set", positionals: ["claude"] });
-    expect(parseCommand(["engine", "list"]).verb).toBe("engine list");
     expect(usage(() => parseCommand(["team", "destroy"]))).toEqual({ message: "team needs one of: apply, export", exitCode: EXIT.usage });
   });
 
@@ -40,9 +38,9 @@ describe("parseCommand", () => {
   });
 
   it("knows which verbs change something", () => {
-    for (const verb of ["send", "run", "interrupt", "team apply", "engine set"]) expect(MUTATING_VERBS.has(verb), verb).toBe(true);
-    for (const verb of ["doctor", "bots", "wait", "messages", "export", "events", "team export", "engine list"]) expect(MUTATING_VERBS.has(verb), verb).toBe(false);
-    expect([...HEADLESS_VERBS].sort()).toEqual(["bots", "channels", "connect", "doctor", "edit", "engine", "events", "export", "interrupt", "mcp",
+    for (const verb of ["send", "run", "interrupt", "team apply"]) expect(MUTATING_VERBS.has(verb), verb).toBe(true);
+    for (const verb of ["doctor", "bots", "wait", "messages", "export", "events", "team export"]) expect(MUTATING_VERBS.has(verb), verb).toBe(false);
+    expect([...HEADLESS_VERBS].sort()).toEqual(["bots", "channels", "connect", "doctor", "edit", "events", "export", "interrupt", "mcp",
       "messages", "models", "new-bot", "new-channel", "run", "send", "send-channel", "set-model", "team", "wait"]);
   });
 });

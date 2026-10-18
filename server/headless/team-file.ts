@@ -1,4 +1,3 @@
-// Keys are never written in the file: an engine's key is { env: NAME } or { file: PATH }, read only when it must be written.
 import { readFileSync } from "node:fs";
 import { dirname, posix, resolve, win32 } from "node:path";
 
@@ -14,24 +13,7 @@ export const TEAM_BRIEF_MAX_BYTES = 24_000;
 export const ROOM_BRIEF_MAX_CHARS = 12_000;
 export const SKILL_MAX_BYTES = 262_144;
 
-const secret = z.union([
-  z.object({ env: z.string().trim().min(1) }).strict(),
-  z.object({ file: z.string().trim().min(1) }).strict(),
-], { error: "put the key in an environment variable or a file: { env: NAME } or { file: PATH }" });
 const textOrFile = z.union([z.string(), z.object({ file: z.string().trim().min(1) }).strict()]);
-const url = z.string().regex(/^https?:\/\/\S+$/, "must be an http:// or https:// address");
-
-const keyOnly = z.object({ key: secret }).strict();
-const enginesSchema = z.object({
-  claude: z.object({ key: secret, baseUrl: z.union([url, secret]).optional(), everyClaudeBot: z.boolean().optional(), install: z.boolean().optional() }).strict().optional(),
-  openai: keyOnly.optional(),
-  openrouter: keyOnly.optional(),
-  xai: keyOnly.optional(),
-  groq: keyOnly.optional(),
-  mistral: keyOnly.optional(),
-  cerebras: keyOnly.optional(),
-  openaiCompatible: z.object({ key: secret, baseUrl: z.union([url, secret]) }).strict().optional(),
-}).strict();
 
 const oneLine = (what: string, max: number) => z.string().max(max, `must be at most ${max} characters`)
   .refine(fitsOnOneLine, `${what} must fit on one line`);
@@ -41,9 +23,9 @@ const botFields = {
   title: oneLine("a title", BOT_PROFILE_LIMITS.title).optional(),
   description: z.string().max(BOT_PROFILE_LIMITS.description, `must be at most ${BOT_PROFILE_LIMITS.description} characters`).optional(),
   soul: textOrFile.optional(),
-  model: z.string().regex(/^[\w.-]+\/\S.*$/, "must be INSTANCE/MODEL, such as claude/claude-sonnet-5-5").optional(),
+  model: z.string().regex(/^[\w.-]+\/\S.*$/, "must be INSTANCE/MODEL, such as opencodeGo/provider/model").optional(),
   effort: z.enum(["none", "low", "medium", "high", "xhigh", "max"]).optional(),
-  approval: z.enum(["ask", "edits", "auto", "full"], { error: "must be ask, edits, auto or full (custom is set in the desktop app)" }).optional(),
+  approval: z.enum(["ask", "edits", "auto", "full"], { error: "must be ask, edits, auto or full (Custom is not supported)" }).optional(),
   computer: z.enum(["auto", "off", "browser", "vm"]).optional(),
   cwd: z.string().min(1).optional(),
   browser: z.union([z.boolean(), z.object({ enabled: z.boolean(), profile: z.string().trim().min(1).max(100).optional() }).strict()]).optional(),
@@ -53,7 +35,6 @@ const botFields = {
 
 const teamFileSchema = z.object({
   version: z.literal(1, { error: "version: 1 is required" }),
-  engines: enginesSchema.optional(),
   defaults: z.object(botFields).strict().optional(),
   teams: z.array(z.object({
     name: z.string().trim().min(1).max(60),
@@ -76,7 +57,6 @@ const teamFileSchema = z.object({
   }).strict()).optional(),
 }).strict();
 
-export type Secret = z.infer<typeof secret>;
 export type TeamFileInput = z.infer<typeof teamFileSchema>;
 
 export interface DesiredSkill { name: string; description: string; text: string; enabled: boolean; file: string }
@@ -102,21 +82,14 @@ export interface DesiredBot {
 }
 export interface DesiredRoom { name: string; team?: string; members: string[]; brief?: string; responder?: string }
 export interface DesiredTeam { name: string; brief?: string; prune: boolean }
-export interface DesiredEngine { kind: string; key: Secret; baseUrl?: string | Secret; everyClaudeBot?: boolean; install?: boolean }
 
 export interface TeamFile {
   path: string;
-  engines: DesiredEngine[];
   teams: DesiredTeam[];
   bots: DesiredBot[];
   rooms: DesiredRoom[];
   warnings: string[];
 }
-
-const ENGINE_KIND: Record<string, string> = {
-  claude: "claude", openai: "openai", openrouter: "openrouter", xai: "xai", groq: "groq", mistral: "mistral", cerebras: "cerebras",
-  openaiCompatible: "openai-compatible",
-};
 
 export function everyTool(scope: { allow?: unknown; deny?: unknown } | null | undefined): boolean {
   return !scope || (!Array.isArray(scope.allow) && !(Array.isArray(scope.deny) && scope.deny.length > 0));
@@ -258,12 +231,5 @@ export function checkTeamFile(input: TeamFileInput, file: string, dir: string): 
     if (brief !== undefined && brief.trimEnd().length > ROOM_BRIEF_MAX_CHARS) throw usageError(`${where}: brief is over ${ROOM_BRIEF_MAX_CHARS} characters`);
     return { name: room.name, ...(room.team ? { team: room.team } : {}), members: room.members, ...(brief !== undefined ? { brief } : {}), ...(room.responder ? { responder: room.responder } : {}) };
   });
-  const engines: DesiredEngine[] = Object.entries(input.engines ?? {}).flatMap(([name, value]) => {
-    if (!value) return [];
-    const spec = value as { key: Secret; baseUrl?: string | Secret; everyClaudeBot?: boolean; install?: boolean };
-    const anchored = <T extends string | Secret>(ref: T): T => typeof ref === "object" && "file" in ref ? { file: resolve(dir, ref.file) } as T : ref;
-    return [{ kind: ENGINE_KIND[name]!, key: anchored(spec.key), ...(spec.baseUrl !== undefined ? { baseUrl: anchored(spec.baseUrl) } : {}),
-      ...(spec.everyClaudeBot !== undefined ? { everyClaudeBot: spec.everyClaudeBot } : {}), ...(spec.install ? { install: true } : {}) }];
-  });
-  return { path: file, engines, teams, bots, rooms, warnings };
+  return { path: file, teams, bots, rooms, warnings };
 }

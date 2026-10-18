@@ -25,16 +25,12 @@ function writeWeb(text: string): Promise<boolean> {
         }
     });
 }
-/** The web Clipboard API rejects unfocused, denied and insecure-context writes; then the desktop bridge runs. Never throws. */
+/** Clipboard writes can fail in unfocused, denied or insecure contexts. Never throws. */
 export async function copyText(text: string): Promise<CopyResult> {
     if (!text.trim())
         return "empty";
     if (await writeWeb(text))
         return "copied";
-    try {
-    }
-    catch {
-    }
     return "failed";
 }
 interface CopyFeedbackOptions {

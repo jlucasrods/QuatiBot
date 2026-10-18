@@ -29,10 +29,9 @@ export function ToolSelectionCard({ bot, engineKind }: { bot: Bot; engineKind?: 
     ...(fields.onlyListed ? { allow: lines(fields.allow) } : {}), deny: lines(fields.deny),
   } : undefined;
   const parsed = parseToolScope(proposed);
-  const support = TOOL_SCOPE_SUPPORT[engineKind as keyof typeof TOOL_SCOPE_SUPPORT];
+  const supported = engineKind !== undefined && Object.hasOwn(TOOL_SCOPE_SUPPORT, engineKind);
   const restricted = fields.custom && (fields.onlyListed || lines(fields.deny).length > 0);
-  const unavailable = restricted && support !== "native-and-mcp"
-    && (support !== "mcp" || narrowsNativeTools(proposed));
+  const unavailable = restricted && (!supported || narrowsNativeTools(proposed));
   const change = (patch: Partial<Draft>) => { setDraft({ ...fields, ...patch }); setError(null); };
   const save = async () => {
     if (!draft || bot.busy || pending.current || !parsed.ok) return;
@@ -47,9 +46,7 @@ export function ToolSelectionCard({ bot, engineKind }: { bot: Bot; engineKind?: 
       if (alive.current) setSaving(false);
     }
   };
-  const example = engineKind === "piAgent" ? "native:read\nnative:edit\nnative:write"
-    : engineKind === "grokAgent" ? "native:read_file\nnative:search_replace\nnative:write"
-      : support === "mcp" ? "native:*\nmcp:mail:read_notes" : "native:ask_user\nmcp:mail:read_notes";
+  const example = "native:*\nmcp:mail:read_notes";
 
   return <div className="rounded-xl bg-card p-4">
     <div className="text-[15px] font-medium text-ink">{t("botAccess.tools.title")}</div>
@@ -84,7 +81,7 @@ export function ToolSelectionCard({ bot, engineKind }: { bot: Bot; engineKind?: 
       {engineKind === "grokAgent" && <p className="text-[12px] text-ink-secondary">{t("botAccess.tools.grok")}</p>}
     </fieldset>}
     {unavailable && <p role="alert" className="mt-2 text-[12px] text-danger">
-      {t(support === "mcp" ? "botAccess.tools.nativeUnsupported" : "botAccess.tools.unsupported")}
+      {t(supported ? "botAccess.tools.nativeUnsupported" : "botAccess.tools.unsupported")}
     </p>}
     {!parsed.ok && <p role="alert" className="mt-2 text-[12px] text-danger">{parsed.error}</p>}
     {error && <p role="alert" className="mt-2 text-[12px] text-danger">{error}</p>}

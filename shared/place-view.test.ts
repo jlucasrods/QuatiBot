@@ -92,7 +92,7 @@ describe("U1: one line and at most one action for every state", () => {
       short: "Not available now", line: "Cloud computers can't start right now. It isn't anything you did.", action: { id: "try-again" },
     });
     expect(placeViewOf("auto", {}, { role: "admin", server: "mac" }).line)
-      .toBe("Uses the built-in browser, a private desktop on this computer, or this computer's screen, whichever the task needs.");
+      .toBe("Uses the agent's browser or an isolated VM, whichever the task needs.");
     expect(placeViewOf("cc-provider", { bot: "Scout", words: "Start the $20/month Boat plan." }, admin))
       .toMatchObject({ short: "Couldn't start", line: "Your Boat account couldn't start Scout's cloud computer: Start the $20/month Boat plan." });
   });
@@ -130,9 +130,8 @@ describe("placeState", () => {
   });
 
   it("words the Auto line for where this server runs", () => {
-    expect(placeView(facts({ place: "auto" })).line).toMatch(/built-in browser, or a running Local VM/);
-    expect(placeView(facts({ place: "auto", server: "pc" })).line).not.toMatch(/Local VM/);
-    expect(placeView(facts({ place: "auto", server: "linux" })).line).toMatch(/Local VM/);
+    expect(placeView(facts({ place: "auto", server: "linux" })).line)
+      .toBe("Uses the agent's browser or an isolated VM, whichever the task needs.");
     expect(placeView(facts({ engine: { name: "Claude", computer: true, browser: true, signedIn: false } })).line)
       .toBe("Sign in to Claude first. Scout uses it on the cloud computer too.");
   });

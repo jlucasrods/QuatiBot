@@ -1,17 +1,16 @@
-// Real server, fake Claude CLI with a slow `auth status` (each probe may take up to its 8 s timeout).
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, expect, it } from "vitest";
 import { runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const FAKE_CLI = join(ROOT, "server/testing/fake-claude-cli.ts");
+const FAKE_CLI = pathToFileURL(join(ROOT, "server/testing/fake-acp-cli.ts")).href;
 
 const homes: string[] = [];
 const children: ChildProcess[] = [];
@@ -25,8 +24,25 @@ function freshHome(): string {
   const home = mkdtempSync(join(tmpdir(), "quati-boot-readiness-"));
   homes.push(home);
   mkdirSync(join(home, "tmp"), { recursive: true });
+  const discovery = join(home, "providers", "opencode", "discovery");
+  mkdirSync(discovery, { recursive: true });
+  writeFileSync(join(discovery, ".quati-project"), "Verification fixture\n");
+  const cli = join(home, "opencode-fixture.mjs");
+  writeFileSync(cli, [
+    "#!/usr/bin/env node",
+    "import { appendFileSync, existsSync } from 'node:fs';",
+    `if (existsSync(${JSON.stringify(join(home, "hold-probe"))})) {`,
+    `appendFileSync(${JSON.stringify(join(home, "probes.log"))}, 'probe ' + process.pid + '\\n');`,
+    `while (!existsSync(${JSON.stringify(join(home, "release-probe"))})) await new Promise(resolve => setTimeout(resolve, 25));`,
+    "}",
+    "process.env.FAKE_ACP_AGENT_VERSION = '2.0.31';",
+    "process.env.FAKE_ACP_VERSION = '2.0.31';",
+    "process.env.FAKE_ACP_MODELS = 'fixture/test';",
+    `process.env.FAKE_ACP_DUMP = ${JSON.stringify(join(home, "fake-acp-dump.json"))};`,
+    `await import(${JSON.stringify(FAKE_CLI)});`,
+  ].join("\n"), { mode: 0o700 });
   writeFileSync(join(home, "config.json"), JSON.stringify({
-    instances: { claude: { driver: "claudeAgent", displayName: "Verification fixture", config: { cli: FAKE_CLI } } },
+    instances: { opencodeGo: { driver: "opencodeGo", displayName: "Verification fixture", config: { cli } } },
   }));
   return home;
 }
@@ -59,28 +75,30 @@ async function boot(home: string, knobs: Record<string, string> = {}) {
 
 it("makes a first run's starter bot on the engine a new bot gets", async () => {
   const server = await boot(freshHome());
+  await expect.poll(async () => (await server.get("/api/bots?messages=0")).bots[0]?.modelSelection, { timeout: 10_000 })
+    .toMatchObject({ instanceId: "opencodeGo", model: "fixture/test" });
   const { bots } = await server.get("/api/bots?messages=0");
   expect(bots).toHaveLength(1);
-  expect(bots[0].modelSelection).toMatchObject({ instanceId: "claude", model: expect.stringMatching(/.+/) });
+  expect(bots[0].modelSelection).toMatchObject({ instanceId: "opencodeGo", model: "fixture/test" });
 });
 
 it("answers on a later start while an engine CLI is still being probed, and runs turns once it has answered", async () => {
   const home = freshHome();
   const first = await boot(home);
+  await expect.poll(async () => (await first.get("/api/bots?messages=0")).bots[0]?.modelSelection.instanceId, { timeout: 10_000 }).toBe("opencodeGo");
   const [starter] = (await first.get("/api/bots?messages=0")).bots;
   const member = (await first.control("new-bot", "--name", "Room member")).bot;
   const room = (await first.control("new-channel", "--name", "Start room", "--members", member.id)).channel;
   await first.stop();
 
   const probes = join(home, "probes.log");
-  const release = join(home, "release-auth");
-  const dump = join(home, "fake-claude-dump.json");
-  const server = await boot(home, { FAKE_CLAUDE_PROBE_LOG: probes, FAKE_CLAUDE_HOLD_AUTH: release });
-  // The probe the server is still waiting on is alive: health did not wait
-  // for it (the server would have killed it at its timeout first).
+  const release = join(home, "release-probe");
+  const prompts = join(home, "fake-acp-dump.json.prompts.jsonl");
+  writeFileSync(join(home, "hold-probe"), "");
+  const server = await boot(home);
   let held = 0;
   await expect.poll(() => {
-    held = existsSync(probes) ? Number(/^auth (\d+)$/m.exec(readFileSync(probes, "utf8"))?.[1] ?? 0) : 0;
+    held = existsSync(probes) ? Number(/^probe (\d+)$/m.exec(readFileSync(probes, "utf8"))?.[1] ?? 0) : 0;
     return held;
   }, { timeout: 10_000 }).toBeGreaterThan(0);
   expect(() => process.kill(held, 0)).not.toThrow();
@@ -88,22 +106,24 @@ it("answers on a later start while an engine CLI is still being probed, and runs
   await server.control("send", "--bot", starter.id, "--task", starter.threadId, "--text", "Right after the start");
   await server.control("send-channel", "--channel", room.id, "--text", "Right after the start, in a room");
   await new Promise((resolve) => setTimeout(resolve, 1_500));
-  expect(existsSync(dump)).toBe(false);
+  expect(existsSync(prompts)).toBe(false);
   expect(() => process.kill(held, 0)).not.toThrow();
   writeFileSync(release, "");
 
   expect((await server.control("wait", "--bot", starter.id, "--task", starter.threadId, "--timeout", "30")).status).toBe("settled");
   expect((await server.control("wait", "--channel", room.id, "--timeout", "30")).status).toBe("settled");
-  const seen = JSON.parse(readFileSync(dump, "utf8"));
-  expect(seen.argv[seen.argv.indexOf("--autocompact") + 1]).toBe("200000");
+  const seen = readFileSync(prompts, "utf8");
+  expect(seen).toContain("Right after the start");
+  expect(seen).toContain("Right after the start, in a room");
   const { instances } = await server.get("/api/instances");
-  expect(instances.find((instance: { instanceId: string }) => instance.instanceId === "claude")?.snapshot)
+  expect(instances.find((instance: { instanceId: string }) => instance.instanceId === "opencodeGo")?.snapshot)
     .toMatchObject({ state: "available", authenticated: true });
 }, 60_000);
 
 it("starts the words a later start restored before a message sent while the engines are read", async () => {
   const home = freshHome();
   const first = await boot(home);
+  await expect.poll(async () => (await first.get("/api/bots?messages=0")).bots[0]?.modelSelection.instanceId, { timeout: 10_000 }).toBe("opencodeGo");
   const [starter] = (await first.get("/api/bots?messages=0")).bots;
   await first.stop();
   // Words still queued for the conversation when the last run stopped.
@@ -114,9 +134,10 @@ it("starts the words a later start restored before a message sent while the engi
   } finally { db.close(); }
 
   const probes = join(home, "probes.log");
-  const release = join(home, "release-auth");
-  const server = await boot(home, { FAKE_CLAUDE_PROBE_LOG: probes, FAKE_CLAUDE_HOLD_AUTH: release });
-  await expect.poll(() => existsSync(probes) && /^auth \d+$/m.test(readFileSync(probes, "utf8")), { timeout: 10_000 }).toBe(true);
+  const release = join(home, "release-probe");
+  writeFileSync(join(home, "hold-probe"), "");
+  const server = await boot(home);
+  await expect.poll(() => existsSync(probes) && /^probe \d+$/m.test(readFileSync(probes, "utf8")), { timeout: 10_000 }).toBe(true);
   await server.control("send", "--bot", starter.id, "--task", starter.threadId, "--text", "Sent while the engines are read");
   writeFileSync(release, "");
 

@@ -42,7 +42,7 @@ export async function verifyTeamBackup(report: (event: unknown) => void = () => 
     for (const existing of before.groups) assert.deepEqual(after.groups.find((candidate: { id: string }) => candidate.id === existing.id), existing);
     assert.deepEqual(await command("messages", "--bot", bot.id, "--limit", "10"), transcript);
     const old = before.bots.find((candidate: { id: string }) => candidate.id === bot.id);
-    assert.ok(old.messages.some((message: { role: string; kind: string; text?: string }) => message.role === "bot" && message.kind === "text" && message.text?.includes("hello from fake claude")));
+    assert.ok(old.messages.some((message: { role: string; kind: string; text?: string }) => message.role === "bot" && message.kind === "text" && message.text?.includes("hello from fake acp")));
     for (const message of old.messages.filter((message: { kind: string }) => message.kind === "text")) {
       assert.ok(added.messages.some((copy: { text: string; id: string }) => copy.text === message.text && copy.id !== message.id));
     }
@@ -84,7 +84,7 @@ export async function verifyTeamBackup(report: (event: unknown) => void = () => 
     }
     await command("send", "--bot", fromManifest.bots[0].id, "--text", "Confirm the imported template is ready. Reply once.");
     assert.equal((await command("wait", "--bot", fromManifest.bots[0].id, "--timeout", "30") as { status: string }).status, "settled");
-    assert.ok(JSON.stringify(await command("messages", "--bot", fromManifest.bots[0].id, "--limit", "10")).includes("hello from fake claude"));
+    assert.ok(JSON.stringify(await command("messages", "--bot", fromManifest.bots[0].id, "--limit", "10")).includes("hello from fake acp"));
     // The copied history is usable for a fresh turn without resuming the
     // original provider session or altering the original bot's transcript.
     await command("send", "--bot", added.id, "--text", "Continue the imported conversation. Reply once.");

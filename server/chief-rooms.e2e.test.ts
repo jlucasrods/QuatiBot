@@ -15,7 +15,7 @@ type Mounted = { command: string; args: string[]; env: Record<string, string> };
 const CHIEF_ONLY_TOOLS = ["create_bot", "list_team_setup", "propose_team_setup", "propose_bot_deletion", "create_room", "manage_room", "retry_thread"];
 
 it("creates and manages an own-section room through the mounted Chief MCP proxy", async () => {
-  const fixture = await launchVerificationServer({ ...process.env, FAKE_CLAUDE_MODE: "hang" });
+  const fixture = await launchVerificationServer({ FAKE_ACP_MODE: "hang" });
   const evidence: unknown[] = [{ fixture: fixture.info }];
   const proxies: ChildProcess[] = [];
   const control = async (args: string[]) => {
@@ -41,13 +41,15 @@ it("creates and manages an own-section room through the mounted Chief MCP proxy"
     const [chief, peer, second, foreign] = bots;
     await api("PATCH", `/api/bots/${chief.id}`, { chiefOfStaff: true });
     const mount = async (bot: Bot, text: string): Promise<Mounted> => {
-      rmSync(fixture.fixtureDumpPath, { force: true });
+      const promptPath = `${fixture.fixtureDumpPath}.prompts.jsonl`;
+      rmSync(promptPath, { force: true });
       await control(["send", "--bot", bot.id, "--text", text]);
-      await expect.poll(() => existsSync(fixture.fixtureDumpPath), { timeout: 15_000 }).toBe(true);
-      const { mcpConfig } = z.object({ mcpConfig: z.object({ mcpServers: z.object({
-        agents: z.object({ command: z.string(), args: z.array(z.string()), env: z.record(z.string(), z.string()) }),
-      }) }) }).parse(JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")));
-      const mounted = mcpConfig.mcpServers.agents;
+      await expect.poll(() => existsSync(promptPath), { timeout: 15_000 }).toBe(true);
+      const prompt = JSON.parse(readFileSync(promptPath, "utf8").trim().split("\n")[0]);
+      const agents = z.array(z.object({ name: z.string(), command: z.string(), args: z.array(z.string()),
+        env: z.array(z.object({ name: z.string(), value: z.string() })),
+      })).parse(prompt.mcpServers).find((server) => server.name === "agents")!;
+      const mounted = { command: agents.command, args: agents.args, env: Object.fromEntries(agents.env.map(({ name, value }) => [name, value])) };
       expect(mounted.env.QUATI_BOT_ID).toBe(bot.id);
       expect(mounted.env.QUATI_HARNESS_URL).toBe(fixture.info.url);
       return mounted;

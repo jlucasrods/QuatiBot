@@ -22,37 +22,39 @@ it("keeps ordinary work out of setup and carries explicit bot defaults and file 
     else expect(response.ok, JSON.stringify(result)).toBe(true);
     return result;
   };
-  const receipt = () => {
-    const dump = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
-    // Never retain the launch environment/MCP config: it holds fixture tokens.
-    const result = { model: dump.argv[dump.argv.indexOf("--model") + 1], system: dump.systemPrompt as string, prompt: dump.prompt };
+  const receipt = (threadId: string) => {
+    const turns: Array<{ model: string; prompt: Array<{ text?: string }>; mcpServers: Array<{ env?: Array<{ name: string; value: string }> }> }> =
+      readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const turn = turns.findLast((entry) => entry.mcpServers.some((server) => server.env?.some(({ name, value }) => name === "QUATI_THREAD_ID" && value === threadId)));
+    expect(turn).toBeDefined();
+    const result = { model: turn!.model, prompt: turn!.prompt.map((block) => block.text ?? "").join("\n") };
     evidence.push({ receipt: result });
     return result;
   };
   try {
     const catalog = await control(["models"]);
-    const [a, b] = catalog.instances.find((item: any) => item.instanceId === "claude").models.options.map((item: any) => item.id);
-    const selection = (model: string) => ({ instanceId: "claude", model });
+    const [a, b] = catalog.instances.find((item: any) => item.instanceId === "opencodeGo").models.options.map((item: any) => item.id);
+    const selection = (model: string) => ({ instanceId: "opencodeGo", model });
     const { bot } = await api("POST", "/api/bots", { name: "Garden helper", title: "Gardener", modelSelection: selection(a) });
     const direct = async (text: string) => {
       await control(["send", "--bot", bot.id, "--task", bot.threadId, "--text", text]);
       expect((await control(["wait", "--bot", bot.id, "--task", bot.threadId, "--timeout", "30"])).status).toBe("settled");
-      return receipt();
+      return receipt(bot.threadId);
     };
     const ordinary = await direct("What is 17 + 25? Answer with the number.");
-    expect(ordinary.system).not.toContain("at most four questions");
-    expect(ordinary.system).not.toContain("The user explicitly asked you to set yourself up");
+    expect(ordinary.prompt).not.toContain("at most four questions");
+    expect(ordinary.prompt).not.toContain("The user explicitly asked you to set yourself up");
     const oldFile = join(fixture.info.dataDir, "workspaces", bot.id, "garden-plan.txt");
     writeFileSync(oldFile, "Water the garden on Friday. Fixture code: MOSS-42.\n");
     // The prompt JSON-encodes paths, including Windows backslashes.
-    expect(ordinary.system).toContain(JSON.stringify(join(fixture.info.dataDir, "workspaces", bot.id)));
-    expect(ordinary.system).toContain(JSON.stringify(join(fixture.info.dataDir, "task-workspaces", bot.id, bot.threadId)));
+    expect(ordinary.prompt).toContain(JSON.stringify(join(fixture.info.dataDir, "workspaces", bot.id)));
+    expect(ordinary.prompt).toContain(JSON.stringify(join(fixture.info.dataDir, "task-workspaces", bot.id, bot.threadId)));
 
     const setup = await direct("/setup Help me track garden watering");
-    expect(setup.system).toContain("The user explicitly asked you to set yourself up");
-    expect(setup.system).toContain("at most four questions");
+    expect(setup.prompt).toContain("The user explicitly asked you to set yourself up");
+    expect(setup.prompt).toContain("at most four questions");
     const afterSetup = await direct("Never mind setup. Summarize: the garden needs water Friday.");
-    expect(afterSetup.system).not.toContain("at most four questions");
+    expect(afterSetup.prompt).not.toContain("at most four questions");
     expect(JSON.stringify(afterSetup.prompt)).toContain("Never mind setup");
 
     await api("PATCH", `/api/bots/${bot.id}`, { soul: "You look after the garden. Keep its watering plan.", description: "Garden helper" });
@@ -67,13 +69,13 @@ it("keeps ordinary work out of setup and carries explicit bot defaults and file 
     const room = async (text: string) => {
       await control(["send-channel", "--channel", group.id, "--text", text]);
       expect((await control(["wait", "--channel", group.id, "--timeout", "30"])).status).toBe("settled");
-      return receipt();
+      return receipt(group.threadId);
     };
     const shared = await room("Read the garden-plan.txt you made earlier and tell me its fixture code.");
     expect(shared.model).toBe(b);
-    expect(shared.system).toContain("You look after the garden");
-    expect(shared.system).toContain(JSON.stringify(join(fixture.info.dataDir, "task-workspaces", bot.id)));
-    expect(shared.system).toContain(JSON.stringify(join(fixture.info.dataDir, "workspaces", bot.id)));
+    expect(shared.prompt).toContain("You look after the garden");
+    expect(shared.prompt).toContain(JSON.stringify(join(fixture.info.dataDir, "task-workspaces", bot.id)));
+    expect(shared.prompt).toContain(JSON.stringify(join(fixture.info.dataDir, "workspaces", bot.id)));
     expect(readFileSync(oldFile, "utf8")).toContain("MOSS-42");
     const state = (await api("GET", "/api/bots")).bots.find((item: any) => item.id === bot.id);
     expect(state.modelSelection).toEqual(selection(b));

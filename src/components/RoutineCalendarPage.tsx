@@ -1,4 +1,3 @@
-import { boatCapableEngine } from "@/lib/remote-desktop";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type CSSProperties, type ReactNode, } from "react";
 import { ArrowLeft, CheckCheck, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, Clock3, Cloud, ExternalLink, FileText, Laptop, Loader2, Paperclip, Pause, Play, Plus, Repeat2, Search, Target, Trash2, UserRoundPlus, UsersRound, Video, Webhook, X, XCircle, } from "lucide-react";
 import { BotAvatar } from "@/components/Avatar";
@@ -24,7 +23,7 @@ import { MAUS_COLORS, type QuatiState } from "@/lib/mascot";
 import { addDays, atLocalTime, CALENDAR_SLOT_MINUTES, calendarRangeLabel, formatGmtOffset, fromLocalDateAndTime, intervalAnchorForSave, nextIntervalForSave, packCalendarCollisions, projectedRoutineItems, scheduleAt, slotAt, startOfDay, startOfWeek, toLocalDateInput, toLocalTimeInput, type RoutineCalendarItem, } from "@/lib/routine-calendar";
 import { DAY_NAMES, durationLabel, intervalLabel, niceDate, niceTime, scheduleLabel } from "@/lib/schedule-label";
 import { Select } from "./Select";
-import { isRoutineProblemRun, type Routine, type RoutineContextAttachment, type RoutineInput, type RoutineRunOn, type RoutineRun, type RoutineRunStatus, type RoutineRunStatusFilter, type RoutineSchedule, type RoutineScheduleInput, type RoutineTarget, } from "@/lib/routines";
+import { isRoutineProblemRun, type Routine, type RoutineContextAttachment, type RoutineInput, type RoutineRun, type RoutineRunStatus, type RoutineRunStatusFilter, type RoutineSchedule, type RoutineScheduleInput, type RoutineTarget, } from "@/lib/routines";
 import { api, openBotThread, openNotificationTarget, useStore, type Bot, type Group } from "@/state/store";
 import { RoutineScheduleNote } from "./RoutineScheduleNote";
 const HOUR_HEIGHT = 64;
@@ -234,11 +233,10 @@ function toContextAttachments(attachments: Attachment[]): Array<RoutineContextAt
             size: attachment.size,
         }]);
 }
-export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnly = false, onClose, onSavedCall, }: {
+export function EventEditor({ seed, bots, lockedBotId, routinesOnly = false, onClose, onSavedCall, }: {
     seed: EventSeed;
     bots: Bot[];
     lockedBotId?: string;
-    defaultRunOn?: RoutineRunOn;
     routinesOnly?: boolean;
     onClose: () => void;
     onSavedCall: (call: CalendarCall) => void;
@@ -296,7 +294,6 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
     };
     const [routineTarget, setRoutineTarget] = useState<RoutineTarget>(existingRoutine?.target ?? "bot");
     const [groupId, setGroupId] = useState(existingRoutine?.groupId ?? "");
-    const [runOn, setRunOn] = useState<RoutineRunOn>(existingRoutine?.runOn ?? defaultRunOn ?? "quati");
     const [attachments, setAttachments] = useState<Array<RoutineContextAttachment | CalendarCallAttachment>>(existingRoutine?.target === "room-goal" ? [] : existingRoutine?.attachments ?? existingCall?.attachments ?? []);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -304,7 +301,6 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
     const [attachmentPendingCount, setAttachmentPendingCount] = useState(0);
     const attachmentPending = attachmentPendingCount > 0;
     const fileInput = useRef<HTMLInputElement>(null);
-    const cloudReady = Boolean(state.config?.box.configured && botIds.length > 0 && botIds.every(id => boatCapableEngine(state.instances, bots.find(bot => bot.id === id)?.modelSelection.instanceId)?.snapshot.state === "available"));
     const rooms = state.groups.filter(roomCanRunGoal);
     const selectedRoom = rooms.find((group) => group.id === groupId);
     const roomMembers = activeRoomMembers(selectedRoom, state.bots);
@@ -368,7 +364,6 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
             setGroupId("");
             return;
         }
-        setRunOn("quati");
         setAttachments([]);
         setAttachmentNotice("");
         const room = selectedRoom ?? rooms[0];
@@ -395,8 +390,6 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
             const added = toContextAttachments(result.attachments);
             if (added.length) {
                 setAttachments((current) => [...current, ...added].slice(0, 20));
-                if (runOn === "cloud")
-                    setRunOn("quati");
             }
             if (result.notice)
                 setAttachmentNotice(result.notice);
@@ -431,7 +424,7 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
                     target: routineTarget,
                     botId: lockedBotId ?? botIds[0] ?? "",
                     groupId: routineTarget === "room-goal" ? groupId : null,
-                    runOn: routineTarget === "room-goal" ? "quati" : runOn,
+                    runOn: "quati",
                     enabled: existingRoutine ? undefined : true,
                     schedule: nextSchedule,
                     durationMinutes,
@@ -493,7 +486,6 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
     const [moreOpen, setMoreOpen] = useState(() => !(["none", "daily", "weekdays", "weekly"] as RecurrenceChoice[]).includes(recurrence)
         || routineTarget === "room-goal"
         || attachments.length > 0
-        || runOn === "cloud"
         || timeoutMinutes != null
         || runOnStartup
         || overlap === "queue");
@@ -680,14 +672,13 @@ export function EventEditor({ seed, bots, lockedBotId, defaultRunOn, routinesOnl
             </div>}
           </div>);
     const runOnRow = kind === "routine" && (<div className="flex items-start gap-4">
-              {isRoomGoal ? <Target size={18} className="mt-2.5 shrink-0 text-ink-secondary"/> : runOn === "cloud" ? <Cloud size={18} className="mt-2.5 shrink-0 text-ink-secondary"/> : <Laptop size={18} className="mt-2.5 shrink-0 text-ink-secondary"/>}
+              {isRoomGoal ? <Target size={18} className="mt-2.5 shrink-0 text-ink-secondary"/> : <Laptop size={18} className="mt-2.5 shrink-0 text-ink-secondary"/>}
               <div className="min-w-0 flex-1">
                 {isRoomGoal ? (<div className="rounded-xl border border-accent/35 bg-accent/[0.07] p-3">
                     <div className="text-[12.5px] font-medium text-ink">{"Runs on this computer"}</div>
                     <div className="mt-1 text-[11px] leading-relaxed text-ink-secondary">QuatiBot keeps the group and its member hand-offs together for the full goal.</div>
-                  </div>) : <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setRunOn("quati")} className={cn("rounded-xl border p-3 text-left", runOn === "quati" ? "border-accent/60 bg-accent/10" : "border-hairline/50 bg-inset hover:bg-raised")}><div className="text-[12.5px] font-medium text-ink">Bot’s current setup</div><div className="mt-1 text-[11px] text-ink-secondary">Keeps its model and configured computer, including a self-hosted VPS.</div></button>
-                  <button type="button" disabled={!cloudReady || attachments.length > 0} onClick={() => setRunOn("cloud")} className={cn("rounded-xl border p-3 text-left disabled:cursor-not-allowed disabled:opacity-45", runOn === "cloud" ? "border-accent/60 bg-accent/10" : "border-hairline/50 bg-inset hover:bg-raised")}><div className="text-[12.5px] font-medium text-ink">{t("routines.runsOn.boat")}</div><div className="mt-1 text-[11px] text-ink-secondary">{t("routines.runsOn.boatHint")}</div></button>
+                  </div>) : <div className="rounded-xl border border-accent/35 bg-accent/[0.07] p-3">
+                  <div className="text-[12.5px] font-medium text-ink">Bot’s current setup</div><div className="mt-1 text-[11px] text-ink-secondary">Keeps its model and configured computer.</div>
                 </div>}
               </div>
             </div>);
@@ -1441,11 +1432,10 @@ export function PausedList({ routines, bots, groups, onClose, onEdit, onOpenRoom
       </div>
     </div>);
 }
-export function RoutineEditor({ routine, bots, lockedBotId, defaultRunOn, onClose, }: {
+export function RoutineEditor({ routine, bots, lockedBotId, onClose, }: {
     routine?: Routine;
     bots: Bot[];
     lockedBotId?: string;
-    defaultRunOn?: RoutineRunOn;
     onClose: () => void;
 }) {
     const at = routine?.schedule.type === "once"
@@ -1457,7 +1447,7 @@ export function RoutineEditor({ routine, bots, lockedBotId, defaultRunOn, onClos
                 : routine?.schedule.type === "cron"
                     ? routine.nextRunAt ?? nextHour()
                     : nextHour();
-    return <EventEditor seed={{ kind: "routine", at, durationMinutes: routine?.durationMinutes ?? 30, botIds: lockedBotId ? [lockedBotId] : routine ? [routine.botId] : [], routine }} bots={bots} lockedBotId={lockedBotId} defaultRunOn={defaultRunOn} onClose={onClose} onSavedCall={() => { }}/>;
+    return <EventEditor seed={{ kind: "routine", at, durationMinutes: routine?.durationMinutes ?? 30, botIds: lockedBotId ? [lockedBotId] : routine ? [routine.botId] : [], routine }} bots={bots} lockedBotId={lockedBotId} onClose={onClose} onSavedCall={() => { }}/>;
 }
 export function RoutinesPage({ onBack, onOpenRoom }: {
     onBack: () => void;

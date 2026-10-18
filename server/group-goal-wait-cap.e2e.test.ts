@@ -2,16 +2,17 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SERVER_DIR, "..");
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
+const FAKE_ACP = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 
 let child: ChildProcess;
 let home = "";
@@ -36,35 +37,41 @@ const api = async (method: string, path: string, body?: unknown): Promise<{ stat
   return { status: response.status, body: await response.json() };
 };
 
-const fixture = (displayName: string, environment: Record<string, string>) => ({
-  driver: "claudeAgent",
-  displayName,
-  environment,
-  config: { cli: FAKE_CLAUDE },
-});
+const fixture = (displayName: string, environment: Record<string, string>) => {
+  const cli = join(home, `${displayName.replace(/\W/g, "-")}.mjs`);
+  const values = {
+    FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31",
+    FAKE_ACP_AGENT_NAME: "OpenCode", FAKE_ACP_MODELS: "fixture/test", ...environment,
+  };
+  writeFileSync(cli, `#!/usr/bin/env node\nfor (const [key, value] of Object.entries(${JSON.stringify(values)})) process.env[key] = value;\nawait import(${JSON.stringify(pathToFileURL(FAKE_ACP).href)});`, { mode: 0o700 });
+  return { driver: "opencodeGo", displayName, config: { cli } };
+};
 
 beforeAll(async () => {
   home = mkdtempSync(join(tmpdir(), "quati-goal-wait-cap-"));
   const data = join(home, ".quatibot");
   const staticDir = join(home, "static");
   mkdirSync(data, { recursive: true });
+  const marker = join(data, "providers", "opencode", "discovery", ".quati-project");
+  mkdirSync(dirname(marker), { recursive: true });
+  writeFileSync(marker, "fixture");
   mkdirSync(join(staticDir, "assets"), { recursive: true });
   writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>Goal wait cap test</title>");
   writeFileSync(join(staticDir, "assets", "smoke.css"), "body{}");
   writeFileSync(join(data, "config.json"), JSON.stringify({
     instances: {
       reassignLead: fixture("Reassigning lead", {
-        FAKE_CLAUDE_MODE: "happy",
-        FAKE_CLAUDE_REPLIES: JSON.stringify(reassignLeadReplies),
-        FAKE_CLAUDE_REPLY_STATE: join(home, "reassign-lead-replies.txt"),
+        FAKE_ACP_MODE: "reply-sequence",
+        FAKE_ACP_REPLIES: JSON.stringify(reassignLeadReplies),
+        FAKE_ACP_REPLY_STATE: join(home, "reassign-lead-replies.txt"),
       }),
-      hang: fixture("Hanging teammate", { FAKE_CLAUDE_MODE: "hang" }),
+      hang: fixture("Hanging teammate", { FAKE_ACP_MODE: "hang" }),
       helper: fixture("Helper", {
-        FAKE_CLAUDE_MODE: "happy",
-        FAKE_CLAUDE_REPLIES: JSON.stringify(["Here is the summary draft."]),
-        FAKE_CLAUDE_REPLY_STATE: join(home, "helper-replies.txt"),
+        FAKE_ACP_MODE: "reply-sequence",
+        FAKE_ACP_REPLIES: JSON.stringify(["Here is the summary draft."]),
+        FAKE_ACP_REPLY_STATE: join(home, "helper-replies.txt"),
       }),
-      crash: fixture("Crashing lead", { FAKE_CLAUDE_MODE: "exit-early" }),
+      crash: fixture("Crashing lead", { FAKE_ACP_MODE: "fail-after-text" }),
     },
   }));
   const port = await freePortBlock([0, 1]);
@@ -72,8 +79,7 @@ beforeAll(async () => {
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: ROOT,
     env: {
-      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+      ...verificationServerEnvironment({}, data, port),
       HOME: home,
       USERPROFILE: home,
       QUATI_PORT: String(port),
@@ -96,6 +102,14 @@ beforeAll(async () => {
     if (Date.now() >= deadline) throw new Error(`server never became healthy: ${stderr}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  const modelsDeadline = Date.now() + 15_000;
+  for (;;) {
+    const { body } = await api("GET", "/api/instances");
+    if (["reassignLead", "hang", "helper", "crash"].every((id) => body.instances.some((instance: { instanceId: string; models: { options: Array<{ id: string }> } }) =>
+      instance.instanceId === id && instance.models.options.some((model) => model.id === "fixture/test")))) break;
+    if (Date.now() >= modelsDeadline) throw new Error(`OpenCode fixture models never became ready: ${stderr}`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
 });
 
 afterAll(async () => {
@@ -106,7 +120,7 @@ afterAll(async () => {
 const createBot = async (name: string, instanceId: string) =>
   (await api("POST", "/api/bots", {
     name,
-    modelSelection: { instanceId, model: "claude-sonnet-5" },
+    modelSelection: { instanceId, model: "fixture/test" },
     requireAvailableModel: true,
   })).body.bot;
 

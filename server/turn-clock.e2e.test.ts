@@ -1,7 +1,5 @@
 // TZ pins the server's timezone, so the line does not depend on the runner.
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
 import type { WireBot } from "../shared/wire.ts";
@@ -10,14 +8,13 @@ import { turnClockLine } from "./turn-clock.ts";
 const ZONE = "Asia/Kolkata";
 // ICU may report the zone by its older alias (Asia/Calcutta), so the test asks the same runtime.
 const REPORTED = new Intl.DateTimeFormat("en-US", { timeZone: ZONE }).resolvedOptions().timeZone;
-const CLOCK = new RegExp(`^Current time when this message was sent: \\w+day, (\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}) ${REPORTED.replace("/", "\\/")} \\(UTC\\+05:30\\)\\.\n\n`);
+const CLOCK = new RegExp(`(?:^|\n)Current time when this message was sent: \\w+day, (\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}) ${REPORTED.replace("/", "\\/")} \\(UTC\\+05:30\\)\\.\n\n`);
 
 const minute = (at: number) => /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.exec(turnClockLine(at, REPORTED))![0];
 
 it("stamps every direct and room turn with the time it was sent", async () => {
-  const scratch = mkdtempSync(join(tmpdir(), "quati-turn-clock-"));
-  const prompts = join(scratch, "prompts.jsonl");
-  const fixture = await launchVerificationServer({ ...process.env, TZ: ZONE, FAKE_CLAUDE_PROMPTS: prompts });
+  const fixture = await launchVerificationServer({ ...process.env, TZ: ZONE });
+  const prompts = `${fixture.fixtureDumpPath}.prompts.jsonl`;
   const control = (...args: string[]) => runControlQuati([...args, "--url", fixture.info.url]);
   const api = async <T = any>(path: string, method = "GET", body?: unknown, status = 200): Promise<T> => {
     const response = await fetch(fixture.info.url + path, {
@@ -31,12 +28,9 @@ it("stamps every direct and room turn with the time it was sent", async () => {
   const sent = (): string[] => {
     try {
       return readFileSync(prompts, "utf8").trim().split("\n").filter(Boolean)
-        .map((line) => JSON.parse(line) as { message?: { content?: unknown } } | string)
-        // a stream-json user message: plain text, or text blocks beside images
-        .map((prompt) => {
-          const content = typeof prompt === "string" ? prompt : prompt.message?.content;
-          if (typeof content === "string") return content;
-          return Array.isArray(content) ? content.map((block: { text?: string }) => block.text ?? "").join("") : JSON.stringify(prompt);
+        .map((line) => JSON.parse(line) as { prompt: Array<{ text?: string }> })
+        .map(({ prompt }) => {
+          return prompt.map(block => block.text ?? "").join("");
         });
     } catch {
       return [];
@@ -76,6 +70,5 @@ it("stamps every direct and room turn with the time it was sent", async () => {
     expectStamped("Room message about the launch date", from, Date.now());
   } finally {
     await fixture.close();
-    rmSync(scratch, { recursive: true, force: true });
   }
 }, 120_000);

@@ -7,11 +7,11 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("shortcut hints", () => {
   it.each([
-    ["darwin", "⌘ N", "⌘ /"],
-    ["win32", "Ctrl N", "Ctrl /"],
-    ["linux", "Ctrl N", "Ctrl /"],
-  ])("uses the existing bindings on %s", (platform, newBot, help) => {
-    vi.stubGlobal("window", { quati: { platform } });
+    ["Mozilla/5.0 (Macintosh; Intel Mac OS X)", "⌘ N", "⌘ /"],
+    ["Mozilla/5.0 (Windows NT 10.0)", "Ctrl N", "Ctrl /"],
+    ["Mozilla/5.0 (X11; Linux x86_64)", "Ctrl N", "Ctrl /"],
+  ])("uses the browser's bindings for %s", (userAgent, newBot, help) => {
+    vi.stubGlobal("navigator", { userAgent });
     expect(shortcutLabel("new-bot")).toBe(newBot);
     expect(shortcutLabel("shortcuts-cheat-sheet")).toBe(help);
     expect(shortcutLabel("close-panel")).toBe("Esc");

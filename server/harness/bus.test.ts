@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EVENTS_DIR, ensureDirs } from "../config.ts";
 import type { RuntimeEvent } from "../contracts.ts";
 import { makeFakeDriver } from "../testing/fake-driver.ts";
+import { TurnStops } from "../turn-outcome.ts";
 import { EventBus } from "./bus.ts";
 
 const testEvent = (over: Partial<RuntimeEvent> = {}): RuntimeEvent =>
@@ -33,6 +34,24 @@ describe("EventBus", () => {
   beforeEach(() => {
     rmSync(EVENTS_DIR, { recursive: true, force: true });
     ensureDirs();
+  });
+
+  it("normalizes a harness stop before both live delivery and canonical logging", async () => {
+    const stops = new TurnStops();
+    const cause = "Loop guard stopped this turn.";
+    stops.stopping("thread-1", "turn-1", cause);
+    const bus = new EventBus(undefined, (event) => stops.normalize(event));
+    const seen: RuntimeEvent[] = [];
+    bus.subscribe((event) => seen.push(event));
+    const original = testEvent({ type: "turn.completed", turnId: "turn-1", ok: true, stopReason: "cancelled" });
+
+    bus.publish(original);
+    await bus.flush();
+
+    const canonical = JSON.parse(readFileSync(join(EVENTS_DIR, "thread-1.ndjson"), "utf8"));
+    expect(seen).toEqual([{ ...original, ok: false, stopReason: cause }]);
+    expect(canonical).toEqual(seen[0]);
+    expect(original).toMatchObject({ ok: true, stopReason: "cancelled" });
   });
 
   it("stamps events from an attached adapter with the instanceId", async () => {

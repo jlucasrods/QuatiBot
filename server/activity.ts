@@ -26,6 +26,7 @@ const TOOLKIT_NAMES: Record<string, string> = {
 };
 
 const BUILTIN_LABELS: Record<string, string> = {
+  shell: "Ran a command",
   Bash: "Ran a command",
   Read: "Read a file",
   Edit: "Edited a file",

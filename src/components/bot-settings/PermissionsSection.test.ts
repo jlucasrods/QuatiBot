@@ -76,10 +76,10 @@ describe("Full access in bot settings", () => {
     });
   });
 
-  it("still warns before Auto on this computer", () => {
-    render({ ...base, computer: "local" });
+  it("applies Auto for the agent browser without a host desktop warning", () => {
+    render({ ...base, computer: "browser" });
     choose("Approve for me");
-    expect(dispatch).not.toHaveBeenCalled();
-    expect(dialogs()).toBe(1);
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith({ type: "updateBot", botId: "pepper", patch: { approvalMode: "auto" } });
+    expect(dialogs()).toBe(0);
   });
 });

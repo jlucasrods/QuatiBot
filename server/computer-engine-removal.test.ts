@@ -15,20 +15,23 @@ describe("the Computer engine is not offered", () => {
     expect(Object.values(fleet).map(entry => entry.driver)).not.toContain("boxAgent");
   });
 
-  it("drops a saved fleet's entries for it, so the next save leaves them off disk", () => {
+  it("excludes inactive engines without deleting their stored settings", () => {
     const cfg: AppConfig = {
       box: { token: "box_fixture" },
       instances: {
-        claude: { driver: "claudeAgent" },
+        opencodeGo: { driver: "opencodeGo" },
         computer: { driver: "boxAgent", environment: { BOX_TOKEN: "box_instance" } },
         myBoat: { driver: "boxAgent", displayName: "My Boat" },
       },
     };
-    for (const map of [instanceConfigs(cfg), persistableInstanceConfigs(cfg)]) {
-      expect(Object.keys(map)).toContain("claude");
-      expect(map).not.toHaveProperty("computer");
-      expect(map).not.toHaveProperty("myBoat");
-    }
+    const active = instanceConfigs(cfg);
+    expect(Object.keys(active)).toContain("opencodeGo");
+    expect(active).not.toHaveProperty("computer");
+    expect(active).not.toHaveProperty("myBoat");
+
+    const persisted = persistableInstanceConfigs(cfg);
+    expect(persisted.computer).toEqual(cfg.instances!.computer);
+    expect(persisted.myBoat).toEqual(cfg.instances!.myBoat);
     expect(cfg.instances).toHaveProperty("computer");
   });
 

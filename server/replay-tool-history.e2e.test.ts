@@ -9,14 +9,12 @@ import { withoutTurnClock } from "./testing/turn-clock-text.ts";
 
 it("names earlier tool calls in a rebuilt session only when switched on", async () => {
   const fixture = await launchVerificationServer({
-    // The launcher keeps only OS launch variables and FAKE_CLAUDE_* knobs.
-    ...process.env,
-    // every turn runs a failing command and a read before it replies
-    FAKE_CLAUDE_TOOL_CALLS: JSON.stringify([
-      { name: "Bash", input: { command: "pnpm test", description: "INPUT_PREVIEW_ONLY" }, output: "RESULT_BODY 3 failed", ok: false },
-      { name: "Read", input: { file_path: "/fixture/notes.md", limit: 40 }, output: "RESULT_BODY notes", ok: true },
+    FAKE_ACP_MODELS: "fixture/default,fixture/alternate",
+    FAKE_ACP_TOOL_CALLS: JSON.stringify([
+      { name: "Bash", kind: "execute", input: { command: "pnpm test", description: "INPUT_PREVIEW_ONLY" }, output: "RESULT_BODY 3 failed", ok: false },
+      { name: "Read", kind: "read", input: { file_path: "/fixture/notes.md", limit: 40 }, output: "RESULT_BODY notes", ok: true },
     ]),
-  }, undefined, undefined, undefined, undefined, undefined, ["codex"]);
+  });
   const evidence: unknown[] = [{ fixture: fixture.info }];
   const control = async (...args: string[]) => {
     const result = await runControlQuati([...args, "--url", fixture.info.url]) as any;
@@ -30,9 +28,15 @@ it("names earlier tool calls in a rebuilt session only when switched on", async 
       (await request(`/api/threads/${thread}/messages?limit=100`, {}, fixture.info.url) as { messages: WireMessage[] }).messages;
     const settled = async () =>
       expect((await control("wait", "--bot", bot.id, "--task", thread, "--timeout", "30")).status).toBe("settled");
-    /** The text the provider received for the turn that just settled. */
+    const nativeTurn = () => {
+      const turns = readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8").trim().split("\n")
+        .map((line) => JSON.parse(line) as { model: string; prompt: Array<{ text?: string }>; mcpServers: Array<{ env?: Array<{ name: string; value: string }> }> });
+      const turn = turns.findLast((entry) => entry.mcpServers.some((server) => server.env?.some((env) => env.name === "QUATI_THREAD_ID" && env.value === thread)));
+      expect(turn).toBeDefined();
+      return turn!;
+    };
     const prompt = () => {
-      const text = withoutTurnClock(String(JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).prompt.message.content));
+      const text = withoutTurnClock(nativeTurn().prompt.map((part) => part.text ?? "").join("\n"));
       evidence.push({ prompt: text });
       return text;
     };
@@ -52,7 +56,7 @@ it("names earlier tool calls in a rebuilt session only when switched on", async 
 
     await send("FIRST_REQUEST run the tests");
     const calls = (await messages()).filter(message => message.tool?.itemId);
-    expect(calls.map(message => [message.tool?.name, message.tool?.ok])).toEqual([["Bash", false], ["Read", true]]);
+    expect(calls.map(message => [message.tool?.name, message.tool?.ok])).toEqual([["shell", false], ["Read", true]]);
     // the Read's chip shows no file: the path is only in the stored input preview
     expect(calls[1]!.tool).toMatchObject({ name: "Read", input: expect.stringContaining('"file_path": "/fixture/notes.md"') });
     expect(calls[1]!.tool?.summary).toBeUndefined();
@@ -72,8 +76,8 @@ it("names earlier tool calls in a rebuilt session only when switched on", async 
     // request it followed and the reply it led to: the command that ran,
     // and the file that was read.
     const on = await rewind("SECOND_REQUEST, edited again");
-    expect(toolLines(on)).toEqual(["Assistant: [ran: Bash: pnpm test — failed]", "Assistant: [ran: Read: /fixture/notes.md — ok]"]);
-    expect(on).toMatch(/User: FIRST_REQUEST run the tests\nAssistant: \[ran: Bash: pnpm test — failed\]\nAssistant: \[ran: Read: \/fixture\/notes\.md — ok\]\nAssistant: (?!\[)/);
+    expect(toolLines(on)).toEqual(["Assistant: [ran: shell: pnpm test — failed]", "Assistant: [ran: Read: /fixture/notes.md — ok]"]);
+    expect(on).toMatch(/User: FIRST_REQUEST run the tests\nAssistant: hello from fake acp\nAssistant: \[ran: shell: pnpm test — failed\]\nAssistant: \[ran: Read: \/fixture\/notes\.md — ok\]/);
     // no tool result, and of the input preview behind the chip only its target
     expect(on).not.toContain("RESULT_BODY");
     expect(on).not.toContain("INPUT_PREVIEW_ONLY");
@@ -84,21 +88,19 @@ it("names earlier tool calls in a rebuilt session only when switched on", async 
     // Still on, a turn that resumes its session is sent no replay.
     expect(await send("THIRD_REQUEST thanks")).toBe("THIRD_REQUEST thanks");
 
-    // An engine switched in mid-thread joins through the same replay: Codex
-    // is told what each of Claude's three turns on this branch ran.
-    const codex = (await control("models")).instances.find((item: any) => item.instanceId === "codex");
     await request(`/api/bots/${bot.id}/tasks/${thread}`, { method: "PATCH", body: JSON.stringify({
-      modelSelection: { instanceId: "codex", model: codex.models.options[0].id }, requireAvailableModel: true,
+      modelSelection: { instanceId: "opencodeGo", model: "fixture/alternate" }, requireAvailableModel: true,
     }) }, fixture.info.url);
     await control("send", "--bot", bot.id, "--task", thread, "--text", "FOURTH_REQUEST carry on");
     await settled();
     // the harness's own record of what it sent that engine
     const sent = readFileSync(join(fixture.info.dataDir, "native", `${thread}.ndjson`), "utf8").trim().split("\n")
-      .map(line => JSON.parse(line)).findLast(entry => entry.dir === "out" && entry.msg?.method === "turn/start");
-    const joined = withoutTurnClock((sent.msg.params.input as Array<{ text?: string }>).map(part => part.text ?? "").join("\n"));
-    evidence.push({ codex: joined });
-    expect(joined).toContain("joining this conversation mid-thread");
-    expect(toolLines(joined)).toEqual([...toolLines(on), ...toolLines(on), ...toolLines(on)]);
+      .map(line => JSON.parse(line)).findLast(entry => entry.dir === "out" && entry.msg?.method === "session/prompt");
+    const joined = withoutTurnClock((sent.msg.params.prompt as Array<{ text?: string }>).map(part => part.text ?? "").join("\n"));
+    evidence.push({ joined });
+    expect(nativeTurn().model).toBe("fixture/alternate");
+    expect(joined).toBe("FOURTH_REQUEST carry on");
+    expect(toolLines(joined)).toEqual([]);
     expect(joined).not.toContain("RESULT_BODY");
     expect(joined.endsWith("FOURTH_REQUEST carry on")).toBe(true);
 

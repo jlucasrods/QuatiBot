@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { launchVerificationServer, runControlQuati, type VerificationServer } from "./control-quati.ts";
+import { launchVerificationServer, runControlQuati, verificationServerEnvironment, type VerificationServer } from "./control-quati.ts";
 import { waitForExit } from "../server/testing/cleanup.ts";
 import { escapeAttribute } from "../src/lib/composer-attachments.ts";
 
@@ -18,25 +18,14 @@ async function restartFixture(fixture: VerificationServer): Promise<ChildProcess
   await waitForExit(fixture.child, { signal: "SIGTERM" });
   const dataDir = fixture.info.dataDir;
   const config = JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8"));
-  assert.equal(resolve(config.instances.claude.config.cli), join(ROOT, "server", "testing", "fake-claude-cli.ts"));
-  const env: NodeJS.ProcessEnv = {};
-  for (const key of ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"]) {
-    if (process.env[key]) env[key] = process.env[key];
-  }
-  const temp = join(dataDir, "tmp");
+  assert.equal(resolve(config.instances.opencodeGo.config.cli), join(ROOT, "server", "testing", "fake-acp-cli.ts"));
   const home = join(dataDir, "providers", "fixture-home");
-  mkdirSync(temp, { recursive: true });
   mkdirSync(home, { recursive: true });
-  Object.assign(env, {
-    HOME: home, USERPROFILE: home, APPDATA: join(home, "AppData", "Roaming"),
-    LOCALAPPDATA: join(home, "AppData", "Local"), XDG_CONFIG_HOME: join(home, ".config"),
-    XDG_CACHE_HOME: join(home, ".cache"), XDG_DATA_HOME: join(home, ".local", "share"),
-    TEMP: temp, TMP: temp, TMPDIR: temp, HERMES_HOME: join(home, ".hermes"),
-    QUATI_DATA_DIR: dataDir, QUATI_PORT: new URL(fixture.info.url).port,
-    QUATI_WEBHOOK_PORT: String(Number(new URL(fixture.info.url).port) + 1),
-    FAKE_CLAUDE_MODE: "happy", FAKE_CLAUDE_DUMP: fixture.fixtureDumpPath,
-    PATH: dirname(process.execPath),
-  });
+  const env = {
+    ...verificationServerEnvironment({}, home, Number(new URL(fixture.info.url).port)),
+    QUATI_DATA_DIR: dataDir,
+    FAKE_ACP_DUMP: fixture.fixtureDumpPath,
+  };
   const log = openSync(fixture.info.logPath, "a", 0o600);
   const child = spawn(process.execPath, ["--experimental-strip-types", join(ROOT, "server", "index.ts")], {
     cwd: ROOT, env, stdio: ["ignore", log, log],
@@ -147,7 +136,7 @@ export async function verifyWorkspaceBackup(report: (event: unknown) => void = (
     await control(source, "messages", "--bot", bot.id, "--limit", "20");
     const before = (await api(source, "GET", "/api/bots?messages=200")).body;
     const original = before.bots.find((candidate: { id: string }) => candidate.id === bot.id);
-    assert.ok(original.messages.some((message: { text?: string }) => message.text?.includes("hello from fake claude")));
+    assert.ok(original.messages.some((message: { text?: string }) => message.text?.includes("hello from fake acp")));
     const oldBytes = readFileSync(join(destination.info.dataDir, "bots.json"));
     const clientState = { "quati-skin": "default", "quati-drafts": JSON.stringify({ [bot.threadId]: "Keep draft" }), "quati-webhook-credentials": "private-source-webhook-url", "unrelated-auth-token": "must-not-transfer" };
     const exported = await api(source, "POST", "/api/workspace-backup/export", { password: PASSWORD, clientState });

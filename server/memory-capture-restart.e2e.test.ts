@@ -1,4 +1,3 @@
-// POSIX only: a Windows SIGTERM ends the process without its shutdown hooks.
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,13 +11,13 @@ import { waitForExit } from "./testing/cleanup.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-it.skipIf(process.platform === "win32")("captures a turn that was still waiting when the server stopped, after the next start", async () => {
+it("captures a turn that was still waiting when the server stopped, after the next start", async () => {
   const scratch = mkdtempSync(join(tmpdir(), "quati-capture-restart-"));
   const routes = join(scratch, "routes.json");
   writeFileSync(routes, JSON.stringify({
     [CAPTURE_MARKER]: JSON.stringify([{ text: "The person plays the cello on Sundays", kind: "fact", confidence: 0.9 }]),
   }));
-  const parentEnv = { ...process.env, FAKE_CLAUDE_TEXT_ROUTES: routes };
+  const parentEnv = { FAKE_ACP_TEXT_ROUTES: routes };
   const fixture = await launchVerificationServer(parentEnv);
   const { url, dataDir } = fixture.info;
   let restarted: ChildProcess | undefined;

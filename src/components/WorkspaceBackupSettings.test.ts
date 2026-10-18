@@ -174,40 +174,6 @@ describe("Settings full backups", () => {
         expect(storage.has("quati-pending-workspace-restore")).toBe(false);
         expect(window.location.reload).toHaveBeenCalledOnce();
     });
-    it("offers a real desktop restart without clearing the restore marker or drafts, once only", async () => {
-        const relaunch = vi.fn().mockResolvedValue(true);
-        vi.stubGlobal("window", { ...window, quati: { relaunch } });
-        storage.set("quati-pending-workspace-restore", "stage-id");
-        storage.set("quati-drafts", "keep");
-        fixture.api.mockResolvedValueOnce({ busy: true, pendingRestore: true });
-        render(true);
-        fixture.effects[0]();
-        await flush();
-        expect(render(true).html).toContain("Restart and restore");
-        expect(render(true).html).not.toContain(">Retry<");
-        fixture.values = [];
-        const restart = render("restart").nodes.find(node => node.type === "button")!;
-        restart.props.onClick!();
-        restart.props.onClick!();
-        await flush();
-        expect(relaunch).toHaveBeenCalledOnce();
-        expect(render("restart").nodes.find(node => node.type === "button")!.props.disabled).toBe(true);
-        expect(storage.get("quati-pending-workspace-restore")).toBe("stage-id");
-        expect(storage.get("quati-drafts")).toBe("keep");
-        expect(window.location.reload).not.toHaveBeenCalled();
-    });
-    it.each([false, new Error("Fixture restart unavailable")])("keeps recovery intact and offers a retry when native restart fails (%s)", async (result) => {
-        const relaunch = result === false ? vi.fn().mockResolvedValue(false) : vi.fn().mockRejectedValue(result);
-        vi.stubGlobal("window", { ...window, quati: { relaunch } });
-        storage.set("quati-pending-workspace-restore", "stage-id");
-        render("restart").nodes.find(node => node.type === "button")!.props.onClick!();
-        await flush();
-        const view = render("restart");
-        expect(view.html).toContain("Could not restart QuatiBot");
-        expect(view.nodes.find(node => node.type === "button")!.props.disabled).toBe(false);
-        expect(storage.get("quati-pending-workspace-restore")).toBe("stage-id");
-        expect(window.location.reload).not.toHaveBeenCalled();
-    });
     it("asks the operator to restart the server for a workspace restore", () => {
         const view = render("restart");
         expect(view.html).toContain("restart the server process");
@@ -291,26 +257,5 @@ describe("Settings full backups", () => {
         expect(storage.get("quati-drafts")).toBe("keep");
         expect(storage.get("quati-pending-workspace-restore")).toBe("stage-id");
         expect(window.location.reload).not.toHaveBeenCalled();
-    });
-    it("on a server open in the desktop app, offers Import from this computer beside the file import: the same copy as the server's own offer", async () => {
-        const move = { state: vi.fn().mockResolvedValue({ phase: "idle", local: { bots: 4, rooms: 1, chats: 37, bytes: 1024 ** 3, files: 9 }, cloud: { contents: { bots: 1, rooms: 0, chats: 0 }, empty: true, freeBytes: 1024 ** 4, previous: null, heldBytes: 0 },
-                suggest: false, destination: { id: "vps", name: "bots.example.test", origin: "https://bots.example.test", kind: "server" }, blocked: null }),
-            start: vi.fn(), cancel: vi.fn(), restorePrevious: vi.fn(), dismiss: vi.fn(), onState: vi.fn(() => () => { }) };
-        vi.stubGlobal("window", { location: { reload: vi.fn() }, quati: { cloudMove: move } });
-        await ready();
-        render();
-        for (const effect of fixture.effects.slice(1))
-            effect();
-        await flush();
-        const html = render().html;
-        expect(move.state.mock.calls).toEqual([[undefined]]);
-        expect(html).toContain("Import from this computer");
-        expect(html).toContain("no file or password");
-        expect(html).toContain("bots.example.test is empty. Copy 4 bots and 37 chats here");
-        expect(html.indexOf("Import from this computer")).toBeLessThan(html.indexOf("Import backup"));
-        vi.stubGlobal("window", { location: { reload: vi.fn() } });
-        fixture.values = [];
-        await ready();
-        expect(render().html).not.toContain("Import from this computer");
     });
 });

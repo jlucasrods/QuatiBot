@@ -8,9 +8,9 @@ import { launchVerificationServer, runControlQuati, verificationServerEnvironmen
 import { waitForExit } from "./testing/cleanup.ts";
 
 const EMPTY = { instanceId: "", model: "" };
-const DEFAULT = { instanceId: "claude", model: "claude-sonnet-5" };
-const CHOSEN = { instanceId: "claude", model: "claude-opus-5" };
-const FAKE_CLI = fileURLToPath(new URL("./testing/fake-claude-cli.ts", import.meta.url));
+const DEFAULT = { instanceId: "opencodeGo", model: "fixture/default" };
+const CHOSEN = { instanceId: "opencodeGo", model: "fixture/alternate" };
+const FAKE_CLI = fileURLToPath(new URL("./testing/fake-acp-cli.ts", import.meta.url));
 
 type Fixture = {
   api: (method: string, path: string, body?: unknown) => Promise<any>;
@@ -28,7 +28,8 @@ async function withUnselectedStarter(check: (fixture: Fixture) => Promise<void>)
   const { dataDir, url, logPath } = fixture.info;
   const configPath = join(dataDir, "config.json");
   const botsPath = join(dataDir, "bots.json");
-  const lateCli = join(dataDir, "late-claude.mjs");
+  const lateCli = join(dataDir, "late-opencode.mjs");
+  const authPath = join(dataDir, "provider-auth");
   const starterId = JSON.parse(readFileSync(botsPath, "utf8"))[0].id;
   let server: ChildProcess | undefined;
   const request: Fixture["request"] = async (method, path, body) => {
@@ -52,10 +53,10 @@ async function withUnselectedStarter(check: (fixture: Fixture) => Promise<void>)
       writeFileSync(botsPath, JSON.stringify(bots));
     }
     const config = JSON.parse(readFileSync(configPath, "utf8"));
-    config.instances.claude = { ...config.instances.claude, enabled: options.enabled ?? true,
-      config: { ...config.instances.claude.config, cli: lateCli },
-      environment: options.signedOut ? { FAKE_CLAUDE_AUTH: "out", FAKE_CLAUDE_MODE: "not-logged-in" } : {},
+    config.instances.opencodeGo = { ...config.instances.opencodeGo, enabled: options.enabled ?? true,
+      config: { ...config.instances.opencodeGo.config, cli: lateCli },
     };
+    writeFileSync(authPath, options.signedOut ? "0" : "1");
     writeFileSync(configPath, JSON.stringify(config));
     const log = openSync(logPath, "a", 0o600);
     server = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
@@ -66,30 +67,45 @@ async function withUnselectedStarter(check: (fixture: Fixture) => Promise<void>)
     await expect.poll(async () => {
       try { return (await fetch(url + "/api/health", { signal: AbortSignal.timeout(1_000) })).ok; } catch { return false; }
     }, { timeout: 20_000 }).toBe(true);
+    if (existsSync(lateCli) && options.enabled !== false) {
+      await expect.poll(async () => {
+        const instance = (await api("GET", "/api/instances")).instances.find((candidate: { instanceId: string }) => candidate.instanceId === "opencodeGo");
+        return instance.snapshot.authenticated;
+      }, { timeout: 15_000 }).toBe(!options.signedOut);
+    }
   };
   try {
     await check({ api, request, saved, restart,
       control: (...args) => runControlQuati([...args, "--url", url]) as Promise<any>,
-      connect: async () => { await api("PATCH", "/api/instances/claude", { cli: FAKE_CLI }); },
+      connect: async () => { await api("PATCH", "/api/instances/opencodeGo", { cli: FAKE_CLI }); },
       makeCliAvailable: (holdProbe = false) => {
         const gate = join(dataDir, "probe-release");
         const probes = join(dataDir, "probe-log");
-        const turns = join(dataDir, "probe-turns.jsonl");
+        const prompts = `${fixture.fixtureDumpPath}.prompts.jsonl`;
+        const promptCount = () => {
+          if (!existsSync(prompts)) return 0;
+          return readFileSync(prompts, "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line))
+            .filter(turn => turn.mcpServers.some((server: { name: string }) => server.name === "agents")).length;
+        };
+        const initialPrompts = promptCount();
         writeFileSync(lateCli, ["#!/usr/bin/env node",
+          'import { appendFileSync, existsSync, readFileSync } from "node:fs";',
+          `process.env.FAKE_ACP_AUTH = existsSync(${JSON.stringify(authPath)}) ? readFileSync(${JSON.stringify(authPath)}, "utf8") : "1";`,
+          'process.env.FAKE_ACP_MODE = process.env.FAKE_ACP_AUTH === "0" ? "auth-required" : "happy";',
           ...(holdProbe ? [
-            `process.env.FAKE_CLAUDE_PROBE_LOG = ${JSON.stringify(probes)};`,
-            `process.env.FAKE_CLAUDE_HOLD_VERSION = ${JSON.stringify(gate)};`,
-            `process.env.FAKE_CLAUDE_HOLD_AUTH = ${JSON.stringify(gate)};`,
-            `process.env.FAKE_CLAUDE_PROMPTS = ${JSON.stringify(turns)};`,
+            `if (process.argv.includes("--version")) {`,
+            `  appendFileSync(${JSON.stringify(probes)}, String(process.pid) + "\\n");`,
+            `  while (!existsSync(${JSON.stringify(gate)})) await new Promise(resolve => setTimeout(resolve, 25));`,
+            `}`,
           ] : []),
-          `await import(${JSON.stringify(new URL("./testing/fake-claude-cli.ts", import.meta.url).href)});`,
+          `await import(${JSON.stringify(new URL("./testing/fake-acp-cli.ts", import.meta.url).href)});`,
         ].join("\n"), { mode: 0o700 });
-        return { started: () => existsSync(probes), release: () => writeFileSync(gate, "ready"), dispatched: () => existsSync(turns) };
+        return { started: () => existsSync(probes), release: () => writeFileSync(gate, "ready"), dispatched: () => promptCount() > initialPrompts };
       },
       receipt: () => {
-        const dump = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
-        // Do not retain the fake provider's environment or MCP credentials.
-        return { model: dump.argv[dump.argv.indexOf("--model") + 1], prompt: dump.prompt };
+        const dump = readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8").trim().split("\n")
+          .map(line => JSON.parse(line)).findLast(turn => turn.mcpServers.some((server: { name: string }) => server.name === "agents"));
+        return { model: dump.model, prompt: dump.prompt };
       },
     });
   } finally {
@@ -115,7 +131,7 @@ it("connecting a provider selects a blank starter and future bot defaults withou
     await fixture.api("PATCH", `/api/bots/${starter.id}/tasks/${pinned.threadId}`, { modelSelection: CHOSEN });
     const intentional = (await fixture.api("POST", "/api/bots", { name: "Chosen model", modelSelection: CHOSEN })).bot;
     await fixture.restart({ clearStarter: true });
-    const missing = (await fixture.api("GET", "/api/instances")).instances.find((instance: any) => instance.instanceId === "claude");
+    const missing = (await fixture.api("GET", "/api/instances")).instances.find((instance: any) => instance.instanceId === "opencodeGo");
     expect(missing.snapshot.state).not.toBe("available");
     expect((await fixture.api("GET", "/api/bots")).bots.find((bot: any) => bot.id === starter.id).modelSelection).toEqual(EMPTY);
 
@@ -159,9 +175,9 @@ it.each(["signed-out", "disabled"] as const)("does not select a %s provider for 
   await withUnselectedStarter(async (fixture) => {
     fixture.makeCliAvailable();
     await fixture.restart({ clearStarter: true, signedOut: state === "signed-out", enabled: state !== "disabled" });
-    const claude = (await fixture.api("GET", "/api/instances")).instances.find((instance: any) => instance.instanceId === "claude");
-    if (state === "signed-out") expect(claude.snapshot.authenticated).toBe(false);
-    else expect(claude.enabled).toBe(false);
+    const instance = (await fixture.api("GET", "/api/instances")).instances.find((instance: any) => instance.instanceId === "opencodeGo");
+    if (state === "signed-out") expect(instance.snapshot.authenticated).toBe(false);
+    else expect(instance.enabled).toBe(false);
     expect((await fixture.api("GET", "/api/bots")).bots[0].modelSelection).toEqual(EMPTY);
     expect(fixture.saved()[0].modelSelection).toEqual(EMPTY);
   });
@@ -212,7 +228,7 @@ it.each(["permissions", "branch"] as const)("rechecks guarded %s after held firs
 }, 120_000);
 
 it("a genuine first install stays unset until its provider account becomes ready", async () => {
-  const fixture = await launchVerificationServer({ FAKE_CLAUDE_AUTH: "out", FAKE_CLAUDE_MODE: "not-logged-in" });
+  const fixture = await launchVerificationServer({ FAKE_ACP_AUTH: "0", FAKE_ACP_MODE: "auth-required" });
   const { url, dataDir, logPath } = fixture.info;
   const api = async (method: string, path: string, body?: unknown): Promise<any> => {
     const response = await fetch(url + path, { method, headers: { "content-type": "application/json", origin: url },
@@ -225,11 +241,11 @@ it("a genuine first install stays unset until its provider account becomes ready
   try {
     const starter = (await api("GET", "/api/bots")).bots[0];
     expect(starter.modelSelection).toEqual(EMPTY);
-    const signedInCli = join(dataDir, "signed-in-claude.mjs");
+    const signedInCli = join(dataDir, "signed-in-opencode.mjs");
     writeFileSync(signedInCli,
-      `#!/usr/bin/env node\nprocess.env.FAKE_CLAUDE_AUTH = "in";\nprocess.env.FAKE_CLAUDE_MODE = "happy";\nawait import(${JSON.stringify(new URL("./testing/fake-claude-cli.ts", import.meta.url).href)});\n`,
+      `#!/usr/bin/env node\nprocess.env.FAKE_ACP_AUTH = "1";\nprocess.env.FAKE_ACP_MODE = "happy";\nawait import(${JSON.stringify(new URL("./testing/fake-acp-cli.ts", import.meta.url).href)});\n`,
       { mode: 0o700 });
-    await api("PATCH", "/api/instances/claude", { cli: signedInCli });
+    await api("PATCH", "/api/instances/opencodeGo", { cli: signedInCli });
     expect((await api("GET", "/api/bots")).bots[0].modelSelection).toEqual(DEFAULT);
     const target = ["--bot", starter.id, "--task", starter.threadId, "--url", url];
     await runControlQuati(["send", ...target, "--text", "FIRST_INSTALL_PROVIDER_READY_1R"]);

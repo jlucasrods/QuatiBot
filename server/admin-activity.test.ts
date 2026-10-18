@@ -39,6 +39,13 @@ afterEach(async () => {
 const BOSS = { kind: "session" as const, sessionId: "s1", label: "Boss's laptop", email: "boss@example.test" };
 
 describe("what a row records", () => {
+  it.each(["imageGen.key", "tts.key", "decider.key", "live.key"])("records changed encrypted %s without receiving its value", (path) => {
+    expect(configChangeRows({}, {}, [path])).toEqual([{
+      category: "config", action: "config.update", target: { kind: "settings" },
+      changed: [path], before: { [path]: null }, after: { [path]: "[hidden]" },
+    }]);
+  });
+
   it("names the paths that changed, never a secret's value", () => {
     const before = { anthropic: { key: "sk-ant-old-secret-value-1234567890" }, features: { browser: true }, profile: { name: "A" } };
     const after = { anthropic: { key: "sk-ant-new-secret-value-0987654321" }, features: { browser: false }, profile: { name: "A" }, decisions: { retentionDays: 365 } };

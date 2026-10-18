@@ -34,7 +34,7 @@ async function doctorOnce(ctx: VerbContext): Promise<VerbOutcome> {
   if (!isQuati) problems.push(`${client.baseUrl} answered, but it is not QuatiBot`);
   const tooOld = Boolean(server) && server!.capabilities?.jobs !== true;
   if (tooOld) problems.push(`QuatiBot ${server!.version ?? "(unknown version)"} is too old for the headless commands: it cannot report a conversation's job`);
-  if (isQuati && !availableEngines.length) problems.push("no engine is available: set one up with `quatibot engine set KIND --key-env VAR`");
+  if (isQuati && !availableEngines.length) problems.push("OpenCode V2 is unavailable: configure providers and credentials in OpenCode");
   if (session?.kind === "session" && typeof session.expiresAt === "number" && session.expiresAt - Date.now() < 14 * DAY) {
     warnings.push(`this session expires in ${Math.max(0, Math.floor((session.expiresAt - Date.now()) / DAY))} days: get a new one with quatibot connect`);
   }

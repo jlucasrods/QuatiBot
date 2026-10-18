@@ -5,7 +5,7 @@ import { launchVerificationServer, runControlQuati } from "../scripts/control-qu
 import { nextCronRuns } from "../shared/routine-schedule.ts";
 
 it("takes cron through the real routine tools, applying the bot's own routine at once, preserving its zone and rejecting invalid API input", async () => {
-  const fixture = await launchVerificationServer(process.env, undefined, undefined, undefined, undefined, { scripted: true });
+  const fixture = await launchVerificationServer({}, undefined, undefined, undefined, undefined, { scripted: true });
   const evidence: unknown[] = [{ fixture: fixture.info }];
   const planPath = join(fixture.info.dataDir, "room-plan.json");
   const providerEvidence = () => existsSync(`${planPath}.evidence.jsonl`)
@@ -30,7 +30,7 @@ it("takes cron through the real routine tools, applying the bot's own routine at
     const proposal = async (tool: string, args: unknown, text: string, expectError = false) => {
       const previousTurns = providerEvidence().length;
       writeFileSync(planPath, JSON.stringify({ [bot.id]: {
-        expectSystemIncludes: ["five-field cron expression", "Never replace a calendar rule with daily AI date checking", "including its VPS"],
+        ...(previousTurns === 0 ? { expectContextIncludes: ["five-field cron expression", "Never replace a calendar rule with daily AI date checking"] } : {}),
         steps: [{ tool: "list_routines", arguments: {} }, { tool, arguments: args, expectError }],
         reply: expectError ? "That invalid schedule was refused." : "The routine change is applied.",
       } }));
@@ -98,11 +98,10 @@ it("takes cron through the real routine tools, applying the bot's own routine at
 
     await proposal("propose_routine", { name: "Impossible date", instructions: "Must not run.", schedule: { ...schedule, expression: "0 9 31 2 *" } }, "Try an invalid calendar rule.", true);
     await proposal("propose_routine", {
-      name: "Explicit Boat", instructions: "Run on the Boat-hosted agent.", schedule, run_on: "box",
-    }, "Try the separate Boat runner without a Boat account.", true);
-    const boatResponse = providerEvidence().at(-1).evidence.find((entry: any) => entry.step?.tool === "propose_routine").response;
-    expect(boatResponse.result.content[0].text).toContain('run_on="quati"');
-    expect(boatResponse.result.content[0].text).toContain("self-hosted VPS");
+      name: "Unsupported destination", instructions: "Must not run remotely.", schedule, run_on: "box",
+    }, "Refuse an unsupported remote destination.", true);
+    const remoteResponse = providerEvidence().at(-1).evidence.find((entry: any) => entry.step?.tool === "propose_routine").response;
+    expect(remoteResponse.result.content[0].text).toBe("Remote computers are not supported");
     const before = await current();
     for (const invalid of [
       { type: "cron", expression: "0 9 1 * *" },

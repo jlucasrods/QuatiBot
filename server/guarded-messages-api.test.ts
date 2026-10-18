@@ -41,14 +41,13 @@ describe("guarded external messages through an isolated runtime", () => {
   const file = (threadId: string, extension: string) => join(fixture.info.dataDir, `${threadId}.${extension}`);
   const launched = async (threadId: string) => {
     await expect.poll(() => {
-      try { return Boolean(JSON.parse(readFileSync(file(threadId, "launch.json"), "utf8")).pid); }
+      try { return Boolean(JSON.parse(readFileSync(file(threadId, "json"), "utf8")).pid); }
       catch (error) { if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
     }, { timeout: 15_000 }).toBe(true);
   };
   const initialOutputProcessed = async (threadId: string) => {
-    // The launch dump precedes stdout: wait for the first tool result before snapshotting the leaf.
     await expect.poll(async () => (await page(threadId)).messages.some(message =>
-      message.kind === "activity" && message.tool?.name === "Bash" && message.tool.ok === true,
+      message.kind === "activity" && message.tool?.name === "shell" && message.tool.ok === true,
     ), { timeout: 15_000 }).toBe(true);
   };
   const finish = async (bot: Bot, threadId = bot.activeTaskId) => {
@@ -67,18 +66,16 @@ describe("guarded external messages through an isolated runtime", () => {
   beforeEach(async () => {
     evidence = [];
     fixture = await launchVerificationServer();
-    const wrapper = join(fixture.info.dataDir, "guarded-fake-claude.mjs");
+    const wrapper = join(fixture.info.dataDir, "guarded-opencode.mjs");
     writeFileSync(wrapper, [
       "#!/usr/bin/env node",
-      'import { basename, join } from "node:path";',
-      'const thread = basename(process.cwd());',
-      'process.env.FAKE_CLAUDE_MODE = "slow";',
-      `process.env.FAKE_CLAUDE_SLOW_FINISH_GATE = join(${JSON.stringify(fixture.info.dataDir)}, thread + ".gate");`,
-      `process.env.FAKE_CLAUDE_DUMP = join(${JSON.stringify(fixture.info.dataDir)}, thread + ".launch.json");`,
-      `process.env.FAKE_CLAUDE_STEER_RECEIVED = join(${JSON.stringify(fixture.info.dataDir)}, thread + ".steered");`,
-      `await import(${JSON.stringify(pathToFileURL(join(process.cwd(), "server/testing/fake-claude-cli.ts")).href)});`,
+      'process.env.FAKE_ACP_MODE = "controlled";',
+      'process.env.FAKE_ACP_CONTROL_KEY = "thread";',
+      `process.env.FAKE_ACP_CONTROL_DIR = ${JSON.stringify(fixture.info.dataDir)};`,
+      `process.env.FAKE_ACP_TOOL_CALLS = ${JSON.stringify(JSON.stringify([{ name: "Bash", kind: "execute", input: { command: "fixture_probe" }, ok: true }]))};`,
+      `await import(${JSON.stringify(pathToFileURL(join(process.cwd(), "server/testing/fake-acp-cli.ts")).href)});`,
     ].join("\n"), { mode: 0o700 });
-    expect((await api("PATCH", "/api/instances/claude", { cli: wrapper })).status).toBe(200);
+    expect((await api("PATCH", "/api/instances/opencodeGo", { cli: wrapper })).status).toBe(200);
   }, 30_000);
 
   afterEach(async () => {
@@ -165,10 +162,10 @@ describe("guarded external messages through an isolated runtime", () => {
     await noQueuedWork(bot.activeTaskId); await noQueuedWork(blockedThread);
     expect((await page(bot.activeTaskId)).messages.filter(message => message.role === "user").map(message => message.text)).toEqual(["NORMAL_TURN_OWNS_THE_THREAD"]);
     expect((await page(blockedThread)).messages).toEqual([]);
-    expect(existsSync(file(bot.activeTaskId, "steered"))).toBe(false);
+    expect(readFileSync(file(bot.activeTaskId, "prompts.jsonl"), "utf8").trim().split("\n")).toHaveLength(1);
     await finish(bot);
     expect((await page(blockedThread)).messages).toEqual([]);
-    expect(existsSync(file(blockedThread, "launch.json"))).toBe(false);
+    expect(existsSync(file(blockedThread, "json"))).toBe(false);
   }, 30_000);
 
   it("admits only one concurrent guarded send while duplicate identities share its receipt", async () => {
@@ -183,7 +180,7 @@ describe("guarded external messages through an isolated runtime", () => {
     expect(retries.every(result => result.body.message.id === accepted.body.message.id)).toBe(true);
     expect(retries.every(result => !result.body.steered && !result.body.queued)).toBe(true);
     await launched(bot.activeTaskId);
-    expect(existsSync(file(bot.activeTaskId, "steered"))).toBe(false);
+    expect(readFileSync(file(bot.activeTaskId, "prompts.jsonl"), "utf8").trim().split("\n")).toHaveLength(1);
     expect((await page(bot.activeTaskId)).messages.filter(message => message.role === "user")).toHaveLength(1);
     await noQueuedWork(bot.activeTaskId);
     await finish(bot);

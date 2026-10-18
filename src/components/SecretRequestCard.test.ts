@@ -127,22 +127,25 @@ describe("SecretRequestCard credential persistence", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it("saves a voice key over the desktop bridge once, even when only the resume is retried", async () => {
-    const setCredential = vi.fn().mockResolvedValue({ tts: { configured: true } });
-    vi.stubGlobal("window", { quati: { setCredential } });
-    fixture.api.mockRejectedValueOnce(new Error("resume failed")).mockResolvedValueOnce({ ok: true });
+  it("saves a voice key over HTTP once, even when only the resume is retried", async () => {
+    fixture.api.mockResolvedValueOnce({ tts: { configured: true } })
+      .mockRejectedValueOnce(new Error("resume failed"))
+      .mockResolvedValueOnce({ ok: true });
     await submit("ttsKey");
     card("ttsKey").find((node) => node.type === "form")!.props.onSubmit!({ preventDefault: () => {} });
     await flush();
-    expect(setCredential).toHaveBeenCalledExactlyOnceWith("ttsKey", KEY);
-    expect(fixture.api).toHaveBeenCalledTimes(2);
+    expect(fixture.api.mock.calls).toEqual([
+      ["/api/config", { method: "PUT", body: JSON.stringify({ tts: { key: KEY } }) }],
+      ["/api/bots/bot-1/secret-cards/secret-card/provided", { method: "POST", body: JSON.stringify({ threadId: "thread-1" }) }],
+      ["/api/bots/bot-1/secret-cards/secret-card/provided", { method: "POST", body: JSON.stringify({ threadId: "thread-1" }) }],
+    ]);
   });
 
   it("keeps the error and does not resume when saving the credential fails", async () => {
     const error = new Error("The voice provider rejected that key");
-    vi.stubGlobal("window", { quati: { setCredential: vi.fn().mockRejectedValue(error) } });
+    fixture.api.mockRejectedValueOnce(error);
     await submit("ttsKey");
-    expect(fixture.api).not.toHaveBeenCalled();
+    expect(fixture.api).toHaveBeenCalledExactlyOnceWith("/api/config", { method: "PUT", body: JSON.stringify({ tts: { key: KEY } }) });
     expect(fixture.values).toContain(error.message);
   });
 

@@ -7,13 +7,13 @@ import { launchVerificationServer, runControlQuati, verificationServerEnvironmen
 import { request } from "../scripts/mcp-server.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 
-async function fixture(test: (f: Awaited<ReturnType<typeof setup>>) => Promise<void>, hang = false, fakeEnv: NodeJS.ProcessEnv = {}) {
-  const f = await setup(hang, fakeEnv);
+async function fixture(test: (f: Awaited<ReturnType<typeof setup>>) => Promise<void>) {
+  const f = await setup();
   try { await test(f); } finally { await f.close(); }
 }
 
-async function setup(hang: boolean, fakeEnv: NodeJS.ProcessEnv) {
-  const env = { ...process.env, ...fakeEnv, FAKE_CLAUDE_VERSION: "2.1.270", ...(hang ? { FAKE_CLAUDE_TEXT_HANG: "1" } : {}) };
+async function setup() {
+  const env = { FAKE_ACP_UNIQUE_SESSIONS: "1" };
   const session = await launchVerificationServer(env, undefined, undefined, undefined, undefined, { scripted: true });
   let ready = false;
   try {
@@ -47,12 +47,12 @@ async function setup(hang: boolean, fakeEnv: NodeJS.ProcessEnv) {
     ready = true;
     return { session, api, cli, bot, thread, messages, task, idle, send, turns,
       compact: () => api(`/api/bots/${bot.id}/compact`, { threadId: thread }),
-      restart: async (beforeLaunch?: () => void) => {
+      restart: async () => {
         await waitForExit(restarted ?? session.child, { signal: "SIGTERM" });
-        beforeLaunch?.();
         const log = openSync(session.info.logPath, "a", 0o600);
         restarted = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
-          cwd: process.cwd(), env: verificationServerEnvironment(env, session.info.dataDir, Number(new URL(session.info.url).port)), stdio: ["ignore", log, log],
+          cwd: process.cwd(), env: { ...verificationServerEnvironment(env, session.info.dataDir, Number(new URL(session.info.url).port)),
+            FAKE_ACP_ROOM_PLAN: plan, FAKE_ACP_DUMP: session.fixtureDumpPath }, stdio: ["ignore", log, log],
         });
         closeSync(log);
         await expect.poll(async () => {
@@ -76,7 +76,8 @@ it("compacts durably, keeps corrections and starts a fresh native session withou
   const before = await f.messages();
   const previousRequest = before.findLast(message => message.role === "user");
   expect(previousRequest.requestPending).toBe(false);
-  const oldSession = f.task().resumeCursors.claude;
+  const oldSession = f.task().resumeCursors.opencodeGo;
+  expect(oldSession).toBeTruthy();
   const turnsBefore = f.turns().length;
   const sibling = (await f.cli("new-bot", "--name", "Separate context")).bot;
   await expect(f.api(`/api/bots/${sibling.id}/compact`, { threadId: f.thread })).rejects.toThrow(/no such task/);
@@ -97,19 +98,19 @@ it("compacts durably, keeps corrections and starts a fresh native session withou
   await f.restart();
   await f.send("What port did we settle on?");
   const next = f.turns().at(-1);
-  expect(next.resumed).toBe(false);
   expect(String(next.prompt.message.content)).toContain("Earlier conversation summary");
   expect(String(next.prompt.message.content)).toContain("CORRECTION");
-  expect(f.task().resumeCursors.claude).not.toBe(oldSession);
+  expect(f.task().resumeCursors.opencodeGo).not.toBe(oldSession);
+  expect(next.sessionId).toBe(f.task().resumeCursors.opencodeGo);
   expect(f.task().appliedCompactionId).toBe(record.id);
-  const compactedSession = f.task().resumeCursors.claude;
+  const compactedSession = f.task().resumeCursors.opencodeGo;
   await f.send("Continue with the corrected port");
-  expect(f.task().resumeCursors.claude).toBe(compactedSession);
+  expect(f.task().resumeCursors.opencodeGo).toBe(compactedSession);
   expect(String(f.turns().at(-1).prompt.message.content)).not.toContain("Earlier conversation summary");
   const original = before.find(m => m.text === "OLDER_REQUEST use port 9000");
   await f.cli("edit", "--bot", f.bot.id, "--task", f.thread, "--message", original.id, "--text", "NEW_BRANCH only port 9100");
   await f.idle();
-  expect(f.turns().at(-1).resumed).toBe(false);
+  expect(f.turns().at(-1).sessionId).not.toBe(compactedSession);
   expect(String(f.turns().at(-1).prompt.message.content)).not.toContain("CORRECTION");
   expect((await f.messages()).some(m => m.id === record.id)).toBe(true);
 }), 90_000);
@@ -128,59 +129,5 @@ it("automatically folds old exchanges while keeping the two latest and the incom
   expect(prompt).toContain("SECOND_EXCHANGE keep verbatim");
   expect(prompt).toContain("THIRD_EXCHANGE correction -5 != 5");
   expect(prompt).toContain("INCOMING do not summarize this request");
-  expect(f.turns().at(-1).resumed).toBe(false);
+  expect(f.turns().at(-1).sessionId).not.toBe(f.turns().at(-2).sessionId);
 }), 70_000);
-
-it("Stop cancels a stalled summary without writing a late record or starting an agent", () => fixture(async f => {
-  await f.send("Keep this original chat intact");
-  const before = await f.messages();
-  const previousRequest = before.findLast(message => message.role === "user");
-  expect(previousRequest.requestPending).toBe(false);
-  const count = f.turns().length;
-  await f.compact();
-  await expect.poll(() => {
-    const dump = JSON.parse(readFileSync(f.session.fixtureDumpPath, "utf8"));
-    return typeof dump.prompt === "string" && dump.prompt.startsWith("Summarize this conversation");
-  }).toBe(true);
-  await expect(f.compact()).rejects.toThrow(/already working/);
-  await f.cli("interrupt", "--bot", f.bot.id, "--task", f.thread);
-  await f.idle();
-  expect((await f.messages()).filter(m => m.kind === "compaction")).toHaveLength(0);
-  expect((await f.messages()).slice(0, before.length)).toEqual(before.map(message =>
-    message.id === previousRequest.id ? { ...message, requestPending: true } : message));
-  expect(f.turns()).toHaveLength(count);
-  await f.send("Continue without a summary");
-  expect(f.turns()).toHaveLength(count + 1);
-}, true), 60_000);
-
-it.each([
-  { native: undefined, tokens: 190_000, compactions: 1 },
-  { native: "100000", tokens: 95_000, compactions: 1 },
-  { native: "off", tokens: 190_000, compactions: 0 },
-  { native: "auto", tokens: 190_000, compactions: 0 },
-])("respects the selected account's native compaction setting ($native)", ({ native, tokens, compactions }) => fixture(async f => {
-  if (native !== undefined) {
-    // Account environment is a persisted config setting, not writable through
-    // the public config patch. Change only this stopped fixture's own config.
-    await f.restart(() => {
-      const path = join(f.session.info.dataDir, "config.json");
-      const config = JSON.parse(readFileSync(path, "utf8"));
-      config.instances.claude.environment.QUATI_CLAUDE_AUTOCOMPACT = native;
-      writeFileSync(path, JSON.stringify(config));
-    });
-  }
-  await f.api(`/api/bots/${f.bot.id}/tasks/${f.thread}`, {
-    modelSelection: { instanceId: "claude", model: "claude-sonnet-4-6[1m]" },
-  }, "PATCH");
-  for (const text of ["FIRST historical request", "SECOND keep recent", "THIRD correction", "INCOMING follow-up"]) await f.send(text);
-  expect(f.task().usage.context).toMatchObject({ tokens, window: 1_000_000 });
-  expect((await f.messages()).filter(m => m.kind === "compaction")).toHaveLength(compactions);
-  const launch = JSON.parse(readFileSync(f.session.fixtureDumpPath, "utf8"));
-  if (native === "off") expect(launch.argv).not.toContain("--autocompact");
-  else expect(launch.argv[launch.argv.indexOf("--autocompact") + 1]).toBe(native ?? "200000");
-  if (compactions) {
-    await f.send("NEXT keep the native headroom after the first fold");
-    expect((await f.messages()).filter(m => m.kind === "compaction")).toHaveLength(2);
-    expect(f.turns().at(-1).resumed).toBe(false);
-  }
-}, false, { FAKE_CLAUDE_CONTEXT_TOKENS: String(tokens) }), 90_000);

@@ -1,4 +1,3 @@
-// A stub executable records the environment the CLI probe and the Claude update hand it. Disposable home; no network.
 import { randomBytes } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -11,12 +10,10 @@ import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
-// Every shared-list name plus one more under QUATI_CLOUD_, so a credential added later is covered. Not the hosted model pair:
-// a desktop holding either refuses to boot unless it is a complete portal-managed workspace.
-const HOSTED_ONLY = ["QUATI_HOSTED_MODELS", "QUATI_HOSTED_MODEL_TOKEN"];
 const secretNames = [...new Set<string>([
-  ...WORKSPACE_CREDENTIAL_ENV, ...PROVIDER_CREDENTIAL_ENV, ...CONTROL_PLANE_ENV, "QUATI_CLOUD_FIXTURE_TOKEN",
-])].filter((name) => !HOSTED_ONLY.includes(name));
+  ...WORKSPACE_CREDENTIAL_ENV, ...PROVIDER_CREDENTIAL_ENV, ...CONTROL_PLANE_ENV,
+])].filter((name) => !name.startsWith("QUATI_CLOUD_") && !name.startsWith("QUATI_HOSTED_MODEL")
+  && !["QUATI_ADMIN_URL", "QUATI_ADMIN_WORKSPACE", "QUATI_ADMIN_MEMBERSHIP"].includes(name));
 const secrets: Record<string, string> = Object.fromEntries(secretNames.map((name) => {
   const unique = randomBytes(12).toString("hex");
   return [name, name.endsWith("_URL") ? `https://fixture-${unique}.example.test/v1` : `fixture-${name.toLowerCase()}-${unique}`];
@@ -36,8 +33,6 @@ async function post(path: string, body: unknown) {
   return { status: response.status, body: await response.json().catch(() => null) as any };
 }
 
-/** `node <stub>` plus fixed arguments, as a wrapper string the Engines panel
- * accepts: no shebang or exec bit, so it runs the same on every platform. */
 const stubCli = (...fixed: string[]) =>
   [process.execPath, join(home, "stub-cli.mjs"), ...fixed].map((part) => JSON.stringify(part)).join(" ");
 
@@ -57,20 +52,15 @@ beforeAll(async () => {
   home = mkdtempSync(join(tmpdir(), "quati-cli-probe-env-"));
   const dataDir = join(home, ".quatibot");
   mkdirSync(dataDir, { recursive: true });
-  // Answers like a signed-in Claude Code; `probe` (the CLI test) and
-  // `update` (the Claude update) record the environment they ran with.
   writeFileSync(join(home, "stub-cli.mjs"), `import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 const args = process.argv.slice(2);
-if (args[0] === "probe" || args[0] === "update") writeFileSync(join(${JSON.stringify(home)}, args[0] + "-env.json"), JSON.stringify(process.env));
-if (args[0] === "auth") console.log(JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty" }));
-else if (args.at(-1) === "--version") console.log("9.9.9 (Claude Code)");
+if (args[0] === "probe") writeFileSync(join(${JSON.stringify(home)}, "probe-env.json"), JSON.stringify(process.env));
+if (args.at(-1) === "--version") console.log("2.0.31");
 `);
   writeFileSync(join(dataDir, "config.json"), JSON.stringify({
     instances: {
-      // Pin the fleet's other defaults so this never probes an installed CLI.
-      ...Object.fromEntries(["codex", "cursor", "openaiCompat", "mistral", "qwen", "hermes", "pi"].map((id) => [id, { driver: "not-a-real-driver" }])),
-      claude: { driver: "claudeAgent", displayName: "Claude", config: { cli: stubCli() } },
+      opencode: { driver: "opencodeGo", displayName: "OpenCode", config: { cli: stubCli() } },
     },
   }));
   const port = await freePortBlock([0, 1]);
@@ -108,13 +98,7 @@ afterAll(async () => {
 });
 
 it("probes a CLI chosen in Settings without handing it any credential the server holds", async () => {
-  const probe = await post("/api/cli-test", { cli: stubCli("probe") });
-  expect(probe.body, JSON.stringify(probe.body)).toMatchObject({ ok: true, version: "9.9.9 (Claude Code)" });
+  const probe = await post("/api/cli-test", { cli: stubCli("probe"), driver: "opencodeGo" });
+  expect(probe.body, JSON.stringify(probe.body)).toMatchObject({ ok: true, version: "2.0.31" });
   expectNoCredentials(join(home, "probe-env.json"));
-});
-
-it("updates Claude Code without handing the updater any credential the server holds", async () => {
-  const updated = await post("/api/instances/claude/claude-update", {});
-  expect(updated.body, JSON.stringify(updated.body)).toEqual({ ok: true, version: "9.9.9 (Claude Code)" });
-  expectNoCredentials(join(home, "update-env.json"));
 });

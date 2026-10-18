@@ -1,17 +1,5 @@
-// The agents tool bridge on a real turn, in an isolated fixture: the saved
-// switch reaches the agents proxy a turn is launched with, the prompt says
-// so, and the proxy the engine was handed answers find_tool and use_tool
-// against the fixture's own harness with that turn's capability, under the
-// harness's own gates and limits. And what the harness then calls a bridged
-// call: the tool it ran.
-//
-// The fake engine dumps what it was launched with (its system prompt and its
-// MCP servers) and then holds the turn open, so the turn's capability is
-// still good while this test starts the dumped agents server itself and
-// talks to it the way the engine would. Nothing here touches a person's
-// QuatiBot: the server, its data and its home are the fixture's.
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlQuati } from "../scripts/control-quati.ts";
 import type { WireMessage } from "../shared/wire.ts";
@@ -24,7 +12,12 @@ import { hostTimeout } from "./testing/host-timeout.ts";
 import { childEnv } from "./testing/quati-env.ts";
 
 type McpServer = { command: string; args: string[]; env: Record<string, string> };
-type Launched = { pid: number; systemPrompt: string; mcpConfig: { mcpServers: Record<string, McpServer> } };
+type Launched = { pid: number; prompt: string; agents: McpServer };
+type PromptEvidence = {
+  pid: number;
+  prompt: Array<{ type: string; text?: string }>;
+  mcpServers: Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }>;
+};
 type Answer = {
   id: number;
   result?: { tools?: BridgeTool[]; content?: Array<{ text: string }>; isError?: boolean };
@@ -38,8 +31,9 @@ async function withFixture(run: (helpers: {
   /** What the fake engine was launched with for the turn just sent. */
   launched(): Promise<Launched>;
   // hang: the engine keeps its turn open until it is interrupted
-}) => Promise<void>, engine: Record<string, string> = { FAKE_CLAUDE_MODE: "hang" }) {
-  const fixture = await launchVerificationServer({ ...process.env, ...engine });
+}) => Promise<void>, engine: Record<string, string> = { FAKE_ACP_MODE: "hang" }) {
+  const fixture = await launchVerificationServer(engine);
+  let consumed = 0;
   try {
     await run({
       api: async (method, path, body) => {
@@ -48,10 +42,22 @@ async function withFixture(run: (helpers: {
       },
       control: (args) => runControlQuati([...args, "--url", fixture.info.url]),
       launched: async () => {
-        await expect.poll(() => existsSync(fixture.fixtureDumpPath), { timeout: 30_000 }).toBe(true);
-        const value = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")) as Launched;
-        rmSync(fixture.fixtureDumpPath, { force: true });
-        return value;
+        const path = `${fixture.fixtureDumpPath}.prompts.jsonl`;
+        let turns: PromptEvidence[] = [];
+        await expect.poll(() => {
+          turns = existsSync(path) ? readFileSync(path, "utf8").trim().split("\n").filter(Boolean)
+            .map((line) => JSON.parse(line)).filter((turn: PromptEvidence) => turn.mcpServers.some((server) => server.name === "agents")) : [];
+          return turns.length;
+        }, { timeout: 30_000 }).toBeGreaterThan(consumed);
+        consumed = turns.length;
+        const value = turns.at(-1)!;
+        const agents = value.mcpServers.find((server) => server.name === "agents")!;
+        expect(agents).toBeDefined();
+        return {
+          pid: value.pid,
+          prompt: value.prompt.filter((block) => block.type === "text").map((block) => block.text ?? "").join("\n"),
+          agents: { command: agents.command, args: agents.args, env: Object.fromEntries(agents.env.map(({ name, value }) => [name, value])) },
+        };
       },
     });
   } finally { await fixture.close(); }
@@ -111,9 +117,9 @@ it("keeps a turn on the whole catalog until the switch is on, then mounts the br
     // Off by default: the whole catalog, no bridge tools, nothing in the prompt.
     await control(["send", "--bot", bot.id, "--text", "Stay active."]);
     const before = await launched();
-    const unbridged = before.mcpConfig.mcpServers.agents!;
+    const unbridged = before.agents;
     expect(unbridged.env.QUATI_AGENTS_TOOL_BRIDGE).toBe("0");
-    expect(before.systemPrompt).not.toContain("find_tool");
+    expect(before.prompt).not.toContain("find_tool");
     let whole: BridgeTool[] = [];
     await withServer(unbridged, async (ask) => {
       whole = (await ask("tools/list")).result!.tools!;
@@ -130,14 +136,13 @@ it("keeps a turn on the whole catalog until the switch is on, then mounts the br
     expect((await api("PATCH", "/api/config", { features: { agentsToolBridge: true } })).status).toBe(200);
     await control(["send", "--bot", bot.id, "--text", "Stay active again."]);
     const after = await launched();
-    expect(after.pid).not.toBe(before.pid);
-    const bridged = after.mcpConfig.mcpServers.agents!;
+    const bridged = after.agents;
     expect(bridged.env.QUATI_AGENTS_TOOL_BRIDGE).toBe("1");
-    expect(after.systemPrompt).toContain(AGENTS_TOOL_BRIDGE_PROMPT);
+    expect(after.prompt).toContain(AGENTS_TOOL_BRIDGE_PROMPT);
     // the rest of the prompt still names its tools as it did; the one rule covers them
-    for (const prompt of [before.systemPrompt, after.systemPrompt]) expect(prompt).toContain("use list_routines and propose_routine or propose_routine_action");
+    for (const prompt of [before.prompt, after.prompt]) expect(prompt).toContain("use list_routines and propose_routine or propose_routine_action");
     // said once
-    expect(after.systemPrompt.split(AGENTS_TOOL_BRIDGE_PROMPT)).toHaveLength(2);
+    expect(after.prompt.split(AGENTS_TOOL_BRIDGE_PROMPT)).toHaveLength(2);
     // a fixture bot is not a Chief of Staff, so create_bot is not one of its tools
     expect(bridged.env.QUATI_CHIEF_OF_STAFF).toBe("0");
 
@@ -195,7 +200,7 @@ it("keeps a turn on the whole catalog until the switch is on, then mounts the br
       expect(textOf(await call(ask, "list_routines", {}))).toMatch(/^This bot has no routines\. Current time: /);
     });
     // the prompt this turn was given is still true of that mount: it speaks of the bridge tools only if they are listed
-    expect(after.systemPrompt).toContain(" If find_tool and use_tool are in your tool list, ");
+    expect(after.prompt).toContain(" If find_tool and use_tool are in your tool list, ");
     await control(["interrupt", "--bot", bot.id]);
     await control(["wait", "--bot", bot.id, "--timeout", "30"]);
 
@@ -203,8 +208,8 @@ it("keeps a turn on the whole catalog until the switch is on, then mounts the br
     const { channel } = await control(["new-channel", "--name", "Bridge room", "--members", bot.id]);
     await control(["send-channel", "--channel", channel.id, "--text", "Stay active in this room."]);
     const room = await launched();
-    expect(room.mcpConfig.mcpServers.agents!.env.QUATI_AGENTS_TOOL_BRIDGE).toBe("1");
-    expect(room.systemPrompt).toContain(AGENTS_TOOL_BRIDGE_PROMPT);
+    expect(room.agents.env.QUATI_AGENTS_TOOL_BRIDGE).toBe("1");
+    expect(room.prompt).toContain(AGENTS_TOOL_BRIDGE_PROMPT);
     await control(["interrupt", "--channel", channel.id]);
     await control(["wait", "--channel", channel.id, "--timeout", "30"]);
   });
@@ -223,10 +228,10 @@ it("leaves every gate and limit where it was: a tool selection, a Chief-only too
     await control(["send", "--bot", selected.id, "--text", "Stay active."]);
     const gatedTurn = await launched();
     // With a selection the engine is handed the gate, which starts the proxy.
-    const gate = gatedTurn.mcpConfig.mcpServers.agents!;
+    const gate = gatedTurn.agents;
     expect(JSON.parse(gate.env.QUATI_GATE_TOOL_SCOPE!)).toEqual(toolScope);
     expect((JSON.parse(gate.env.QUATI_GATE_UPSTREAM!) as McpServer).env.QUATI_AGENTS_TOOL_BRIDGE).toBe("0");
-    expect(gatedTurn.systemPrompt).not.toContain("find_tool");
+    expect(gatedTurn.prompt).not.toContain("find_tool");
     await withServer(gate, async (ask) => {
       const list = await ask("tools/list");
       // the whole catalog but the one tool the selection leaves out, and no way round it
@@ -243,7 +248,7 @@ it("leaves every gate and limit where it was: a tool selection, a Chief-only too
     const { bot } = await control(["new-bot", "--name", "Limits bridge fixture"]);
     await control(["send", "--bot", bot.id, "--text", "Stay active."]);
     const turn = await launched();
-    const bridged = turn.mcpConfig.mcpServers.agents!;
+    const bridged = turn.agents;
     expect(bridged.env.QUATI_AGENTS_TOOL_BRIDGE).toBe("1");
     expect(bridged.env.QUATI_BOT_ID).toBe(bot.id);
 
@@ -347,5 +352,5 @@ it("knows a bridged call by the tool it ran, in the activity row, the work summa
     expect(logged("mcp__agents__post_to_room")).toHaveLength(2);
     // what named no tool of the catalog is still a use_tool call, there as here
     expect(logged("mcp__agents__use_tool")).toEqual(Array.from({ length: 4 }, () => ({ app: "Team", label: "Use tool", outcome: "failed" })));
-  }, { FAKE_CLAUDE_TOOL_CALLS: JSON.stringify(calls) });
+  }, { FAKE_ACP_TOOL_CALLS: JSON.stringify(calls) });
 }, hostTimeout(90_000));

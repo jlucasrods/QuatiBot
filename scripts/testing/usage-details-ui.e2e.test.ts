@@ -18,7 +18,10 @@ if (!enabled) console.log("skipping usage details UI: set QUATI_UI_E2E=1 to inst
   try {
     let stdout = "", stderr = "";
     child = spawn(process.execPath, ["--experimental-strip-types", join(ROOT, "scripts/control-quati.ts"), "ui", "launch"], {
-      cwd: ROOT, env: process.env, stdio: ["ignore", "pipe", "pipe"],
+      cwd: ROOT, env: {
+        ...process.env,
+        FAKE_ACP_TOKEN_USAGE: JSON.stringify({ inputTokens: 10, outputTokens: 5, cachedReadTokens: 2, totalTokens: 17 }),
+      }, stdio: ["ignore", "pipe", "pipe"],
     });
     child.stdout!.on("data", chunk => { stdout += String(chunk); });
     child.stderr!.on("data", chunk => { stderr += String(chunk); });
@@ -39,7 +42,7 @@ if (!enabled) console.log("skipping usage details UI: set QUATI_UI_E2E=1 to inst
     })()`);
     await expect.poll(async () => (await read()).result?.title, { timeout: 15_000 }).toContain("Last message: 10 uncached input · 2 cached input · 5 output");
     const chip = (await read()).result;
-    expect(chip.text).toContain("$0.01");
+    expect(chip.text).toBe("10 uncached");
     expect(chip.title).not.toContain("17 read");
     expect(chip.title).not.toContain("15 new");
     // Header actions stay usable in the consolidated menu, including a
@@ -65,14 +68,14 @@ if (!enabled) console.log("skipping usage details UI: set QUATI_UI_E2E=1 to inst
         return { viewport: innerWidth, scroll: document.documentElement.scrollWidth,
           menu: rect('[role=menu][aria-label=More]'), editor: rect('.mention-editor'),
           row: rect('[data-composer-row]'), controls: rect('[data-composer-actions]'),
-          threads: Boolean(document.querySelector('button[aria-label="All threads"]')) };
+          computer: Boolean(document.querySelector('[data-chathead-controls] button[data-tour="computer"]')) };
       })()`);
       expect(await evaluate("document.querySelectorAll('[data-chathead-controls] > div').length")).toBeLessThan(6);
       expect(layout.scroll).toBeLessThanOrEqual(width);
       expect(layout.viewport).toBe(width);
       expect(layout.menu.left).toBeGreaterThanOrEqual(0);
       expect(layout.menu.right).toBeLessThanOrEqual(width);
-      expect(layout.threads).toBe(true);
+      expect(layout.computer).toBe(true);
       expect(layout.controls.width).toBeGreaterThan(0);
       if (layout.row.width < 480) {
         expect(layout.editor.width).toBeGreaterThanOrEqual(layout.row.width - 1);

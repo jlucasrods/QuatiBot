@@ -50,7 +50,8 @@ export function ActivityPanel({ bot }: {
         void load();
         return () => loadAbort.current?.abort();
     }, [load]);
-    const threadIds = useMemo(() => new Set([bot.threadId, ...(bot.tasks ?? []).map((task) => task.threadId)]), [bot.threadId, bot.tasks]);
+    const threadKey = [bot.threadId, ...(bot.tasks ?? []).map((task) => task.threadId)].join("\n");
+    const threadIds = useMemo(() => new Set(threadKey.split("\n")), [threadKey]);
     useEffect(() => {
         let settle: ReturnType<typeof setTimeout> | null = null;
         const stopLive = listenLiveFrames({

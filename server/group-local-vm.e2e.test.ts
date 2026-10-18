@@ -1,11 +1,12 @@
+import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { createServer, type Server } from "node:http";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { CONTROL_BUSY, CONTROL_REFUSAL_PLAIN, controlRefusal, createControlClient } from "./control-client.ts";
 import { freePortBlock } from "./testing/ports.ts";
@@ -20,13 +21,12 @@ let base = "";
 let stateFile = "";
 let dumpFile = "";
 let finishFile = "";
-let cuaDescriptor = "";
 let stderr = "";
-let boatServer: Server;
-let boatRow: { id: string; name: string; state: string } | null = null;
-let allowBoatCreation = false;
-const boatCalls: Array<{ method: string; path: string }> = [];
-const boatPrompts: Array<Record<string, unknown>> = [];
+type VmTurn = {
+  pid: number;
+  prompt: Array<{ type: string; text?: string }>;
+  mcpServers: Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }>;
+};
 const vmState = (state: Record<string, unknown> = {}) => writeFileAtomic(stateFile, JSON.stringify(state));
 const api = async (method: string, path: string, body?: unknown) => {
   const r = await fetch(base + path, { method, headers: { "content-type": "application/json" },
@@ -44,73 +44,54 @@ async function until<T>(read: () => T | Promise<T>, accept: (value: T) => boolea
     await new Promise(r => setTimeout(r, 40));
   }
 }
-// A poll can land mid-write (macOS CI read truncated JSON): a parse error means "not yet".
-const dump = () => until(() => {
-  if (!existsSync(dumpFile)) return null;
-  try { return JSON.parse(readFileSync(dumpFile, "utf8")); } catch { return null; }
-}, Boolean);
+const dump = async () => {
+  const turn = await until(() => {
+    if (!existsSync(dumpFile)) return undefined;
+    const turns: VmTurn[] = readFileSync(dumpFile, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    return turns.findLast((turn) => turn.mcpServers.some((server) => server.name === "agents"));
+  }, Boolean);
+  if (!turn) throw new Error("No provider prompt arrived");
+  return turn;
+};
 const idle = (botId: string) => until(() => api("GET", "/api/bots?messages=0"), s => !s.bots.find((b: any) => b.id === botId)?.busy);
-const computer = (d: any) => d.mcpConfig.mcpServers.computer;
+const computer = (turn: VmTurn) => {
+  const server = turn.mcpServers.find((server) => server.name === "computer");
+  return server ? { ...server, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) } : undefined;
+};
+const agentsEnvironment = (turn: VmTurn) => {
+  const server = turn.mcpServers.find((server) => server.name === "agents");
+  return Object.fromEntries(server?.env.map(({ name, value }) => [name, value]) ?? []);
+};
 const gate = (c: any) => fetch(c.env.QUATI_CONTROL_URL, { headers: { authorization: `Bearer ${c.env.QUATI_CONTROL_TOKEN}` } });
 const check = (c: any) => createControlClient({ url: c.env.QUATI_CONTROL_URL, token: c.env.QUATI_CONTROL_TOKEN }).state(true);
 
 beforeAll(async () => {
   fixtureHome = mkdtempSync(join(tmpdir(), "quati-group-vm-"));
   stateFile = join(fixtureHome, "vm.json");
-  dumpFile = join(fixtureHome, "dump.json");
+  const providerDump = join(fixtureHome, "dump.json");
+  dumpFile = `${providerDump}.prompts.jsonl`;
   finishFile = join(fixtureHome, "finish");
-  cuaDescriptor = join(fixtureHome, "user-data", "cua-connection.json");
   vmState();
   const data = join(fixtureHome, "data");
   const ui = join(fixtureHome, "static");
   mkdirSync(data); mkdirSync(join(ui, "assets"), { recursive: true });
   writeFileSync(join(ui, "index.html"), "<title>Isolated VM routing</title>");
   writeFileSync(join(ui, "assets", "test.css"), "body{}");
-  boatServer = createServer(async (req, res) => {
-    const path = new URL(req.url ?? "/", "http://box.fixture").pathname;
-    boatCalls.push({ method: req.method ?? "GET", path });
-    res.setHeader("content-type", "application/json");
-    let raw = ""; for await (const chunk of req) raw += chunk;
-    const body = raw ? JSON.parse(raw) : {};
-    if (path === "/sandboxes" && req.method === "POST") {
-      if (!allowBoatCreation) { res.statusCode = 409; return res.end(JSON.stringify({ error: "Unexpected Boat creation in routing fixture" })); }
-      boatRow = { id: "bx_23456789", name: body.name ?? "fixture-new-box", state: "idle" };
-      return res.end(JSON.stringify({ sandbox: boatRow }));
-    }
-    if (path === "/sandboxes") return res.end(JSON.stringify({ sandboxes: boatRow ? [boatRow] : [] }));
-    if (/^\/sandboxes\/bx_[^/]+$/.test(path)) {
-      if (req.method === "DELETE") { boatRow = null; return res.end("{}"); }
-      if (!boatRow) res.statusCode = 404;
-      else if (req.method === "PATCH" && body.name) boatRow.name = body.name;
-      return res.end(JSON.stringify(boatRow ? { sandbox: boatRow } : { error: "missing" }));
-    }
-    if (path.endsWith("/desktop")) return res.end(JSON.stringify({ desktopUrl: "https://desktop.fixture.invalid/" }));
-    if (path.endsWith("/resume") && boatRow) { boatRow.state = "idle"; return res.end("{}"); }
-    // Boat's own agent: no turn may ever be handed to it.
-    if (path.endsWith("/prompt") && req.method === "POST") {
-      boatPrompts.push(body);
-      return res.end(JSON.stringify({ promptRun: { id: "fixture-prompt" } }));
-    }
-    return res.end("{}");
-  });
-  await new Promise<void>(resolve => boatServer.listen(0, "127.0.0.1", resolve));
-  const boatPort = (boatServer.address() as { port: number }).port;
-  writeFileSync(join(data, "config.json"), JSON.stringify({ instances: { claude: {
-    driver: "claudeAgent", config: { cli: join(ROOT, "server/testing/fake-claude-cli.ts") },
-    // Its first computer call is what creates or wakes the Boat, as with a real model.
-    environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_DUMP: dumpFile, FAKE_CLAUDE_SLOW_FINISH_GATE: finishFile, FAKE_CLAUDE_USES_CLOUD_COMPUTER: "1" },
-  } } }));
+  mkdirSync(join(data, "providers", "opencode", "discovery"), { recursive: true });
+  writeFileSync(join(data, "providers", "opencode", "discovery", ".quati-project"), "");
+  writeFileSync(join(data, "config.json"), JSON.stringify({
+    defaultModelSelection: { instanceId: "opencodeGo", model: "fixture/test" },
+    instances: { opencodeGo: { driver: "opencodeGo", config: { cli: join(ROOT, "server/testing/fake-acp-cli.ts") } } },
+  }));
   const port = await freePortBlock([0, 1]);
   base = `http://127.0.0.1:${port}`;
   startServer = async (computerWaitMaxMs) => {
     child = spawn(process.execPath, ["--import", pathToFileURL(join(ROOT, "server/testing/group-local-vm-hooks.mjs")).href, join(ROOT, "server/index.ts")], {
       cwd: ROOT, env: {
-        PATH: dirname(process.execPath), ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-        HOME: fixtureHome, USERPROFILE: fixtureHome, QUATI_DATA_DIR: data,
-        APPDATA: join(fixtureHome, "appdata"), LOCALAPPDATA: join(fixtureHome, "localappdata"),
-        TEMP: fixtureHome, TMP: fixtureHome, TMPDIR: fixtureHome,
-        QUATI_PORT: String(port), QUATI_WEBHOOK_PORT: String(port + 1), QUATI_STATIC_DIR: ui, QUATI_TEST_VM_STATE: stateFile,
-        QUATI_BOAT_API: `http://127.0.0.1:${boatPort}`,
+        ...verificationServerEnvironment({}, data, port),
+        HOME: fixtureHome, QUATI_STATIC_DIR: ui, QUATI_TEST_VM_STATE: stateFile,
+        FAKE_ACP_MODE: "echo-gated", FAKE_ACP_DUMP: providerDump, FAKE_ACP_GATE_FILE: finishFile,
+        FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_AGENT_NAME: "OpenCode", FAKE_ACP_MODELS: "fixture/test",
         ...(computerWaitMaxMs ? { QUATI_COMPUTER_WAIT_MAX_MS: String(computerWaitMaxMs) } : {}),
         QUATI_COMPUTER_CALL_WAIT_MS: String(CALL_WAIT_MS),
         QUATI_USER_DATA: join(fixtureHome, "user-data"),
@@ -122,6 +103,8 @@ beforeAll(async () => {
       if (child.exitCode !== null) throw new Error(stderr);
       try { return (await fetch(base + "/api/health")).ok; } catch { return false; }
     }, Boolean);
+    await until(() => api("GET", "/api/instances"), (snapshot) => snapshot.instances.some((instance: { instanceId: string; models: { options: Array<{ id: string }> } }) =>
+      instance.instanceId === "opencodeGo" && instance.models.options.some((model) => model.id === "fixture/test")));
   };
   await startServer();
 });
@@ -129,7 +112,6 @@ afterAll(async () => {
   if (stateFile) vmState();
   if (finishFile) writeFileSync(finishFile, "finish");
   await waitForExit(child, { signal: "SIGTERM" });
-  if (boatServer) await new Promise<void>(resolve => boatServer.close(() => resolve()));
   if (fixtureHome) await removeTempDir(fixtureHome);
 });
 const rooms = new Map<string, string[]>();
@@ -244,6 +226,7 @@ describe("Group Local VM ownership on the real isolated server", () => {
     const next = await room();
     await send(next.group.id);
     const current = computer(await dump());
+    assert(current);
     expect(current.env.QUATI_CONTROL_URL).toContain(next.bots[0].id);
     expect((await gate(current)).status).toBe(200);
     expect((await gate(previous)).status).toBe(401);
@@ -380,7 +363,7 @@ describe("Group Local VM ownership on the real isolated server", () => {
     const { bots, group } = await room();
     await send(group.id);
     const mounted: any = await dump();
-    const token = mounted.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+    const token = agentsEnvironment(mounted).QUATI_COMMS_TOKEN;
     const call = (path: string, body: unknown) => fetch(base + path, {
       method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -426,7 +409,7 @@ describe("Group Local VM ownership on the real isolated server", () => {
       await api("POST", `/api/bots/${bot.id}/messages`, { text: "Run a command on the VM" });
       const mounted: any = await dump();
       expect(computer(mounted)).toBeTruthy();
-      const token = mounted.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+      const token = agentsEnvironment(mounted).QUATI_COMMS_TOKEN;
       const response = await fetch(base + "/api/internal/vm-exec", {
         method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify({ command: "printf auto" }),
@@ -439,140 +422,34 @@ describe("Group Local VM ownership on the real isolated server", () => {
     }
   });
 
-  it("does not stall an admitted turn waiting for another turn's shared computer", async () => {
-    const section = `Watchdog fixture ${randomUUID()}`;
-    const bots: any[] = [];
-    try {
-      vmState(); rmSync(dumpFile, { force: true }); rmSync(finishFile, { force: true });
-      allowBoatCreation = true;
-      await api("PUT", "/api/config", { box: { token: "box_fixture" } });
-      // A team's shared computer is held for the whole turn, so the gated slow fake is the holder.
-      for (const name of ["Computer holder", "Computer waiter"]) {
-        const { bot } = await api("POST", "/api/bots", { name, section });
-        bots.push(bot);
-      }
-      const requestId = randomUUID();
-      await api("POST", "/api/team-computers", { requestId, name: "Wait watchdog fixture", acknowledgeCost: true });
-      await api("PATCH", `/api/team-computers/${requestId}`, { section, acknowledgeSharedAccess: true });
-      const count = boatPrompts.length;
-      await api("POST", `/api/bots/${bots[0].id}/messages`, { text: "Hold the shared computer" });
-      await dump();
-      await api("POST", `/api/bots/${bots[1].id}/messages`, { text: "Wait for the shared computer" });
-      const transcript = () => api("GET", `/api/threads/${bots[1].threadId}/messages?limit=50`);
-      await until(transcript, value => JSON.stringify(value).includes("Waiting for"));
-      // Only the waiting thread gets the short clock; the holder is deliberately gated.
-      vmState({ stallThread: bots[1].threadId });
-      await new Promise(resolve => setTimeout(resolve, 400));
-      expect(JSON.stringify(await transcript())).not.toContain("the turn was stopped");
-      const state = await api("GET", "/api/bots?messages=0");
-      expect(state.bots.find((bot: any) => bot.id === bots[1].id).busy).toBe(true);
-      vmState();
-      writeFileSync(finishFile, "finish");
-      await idle(bots[0].id);
-      await idle(bots[1].id);
-      expect(boatPrompts.length).toBe(count);
-      const settled = await transcript();
-      expect(JSON.stringify(settled)).not.toContain("the turn was stopped");
-      expect(JSON.stringify(settled)).toContain("reply to:");
-    } finally {
-      vmState();
-      writeFileSync(finishFile, "finish");
-      allowBoatCreation = false;
-      for (const bot of bots) {
-        await api("POST", `/api/bots/${bot.id}/interrupt`, {});
-        await idle(bot.id);
-        await api("DELETE", `/api/bots/${bot.id}`);
-      }
-      boatRow = null;
-      await api("PUT", "/api/config", { box: { token: "" } });
-    }
-  });
-
-  it.each(["wake", "removed", "missing-auto"])("chat selection starts or provisions a configured cloud computer (%s) only after selecting it", async state => {
-    vmState(); rmSync(dumpFile, { force: true }); rmSync(finishFile, { force: true });
-    const { bot } = await api("POST", "/api/bots", { name: "Chat cloud selection" });
-    try {
-      await api("PUT", "/api/config", { box: { token: "box_fixture" } });
-      await api("PATCH", `/api/bots/${bot.id}`, { computer: state === "missing-auto" ? "browser" : "vm", browser: false });
-      const environmentId = readFileSync(join(fixtureHome, "data", "environment-id"), "utf8").trim();
-      const scope = createHash("sha256").update(environmentId).digest("hex").slice(0, 12);
-      const prefix = bot.id.slice(0, 8).replace(/[^a-z0-9]/g, "");
-      const suffix = createHash("sha256").update(bot.id).digest("hex").slice(0, 6);
-      boatRow = { id: "bx_23456789", name: `quati-${scope}-${prefix}-${suffix}`, state: "archived" };
-      allowBoatCreation = true;
-      if (state === "missing-auto") { boatRow = null; vmState({ failed: true }); }
-      boatCalls.length = 0; boatPrompts.length = 0;
-      await api("POST", `/api/bots/${bot.id}/messages`, { text: "Open Chrome on the cloud VM" });
-      const before: any = await dump();
-      if (computer(before)) expect((await gate(computer(before))).status).toBe(200);
-      const token = before.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
-      const options = await (await fetch(base + "/api/internal/computer/select", { headers: { authorization: `Bearer ${token}` } })).json() as any;
-      expect(options.options.find((option: any) => option.surface === "cloud")).toMatchObject({ available: true, ready: false,
-        canStart: state !== "missing-auto", canCreate: state === "missing-auto" });
-      expect(boatCalls.every(call => call.method === "GET")).toBe(true);
-      const result = await fetch(base + "/api/internal/computer/select", { method: "POST",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ surface: state === "missing-auto" ? "auto" : "cloud" }) });
-      expect(await result.json()).toMatchObject({ status: "pending", surface: "cloud" });
-      if (computer(before)) expect((await gate(computer(before))).status).toBe(401);
-      expect((await fetch(base + "/api/internal/computer/select", { headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
-      expect(boatCalls.every(call => call.method === "GET")).toBe(true);
-      if (state === "removed") boatRow = null;
-      const harnessComputer = (sent: any) => computer(sent)?.args?.at(-1) === "computer" && /harness-mcp-proxy/.test(computer(sent).args[0]);
-      rmSync(dumpFile, { force: true });
-      writeFileSync(finishFile, "finish");
-      const continued: any = await dump();
-      expect(harnessComputer(continued)).toBe(true);
-      expect(continued.argv[continued.argv.indexOf("--model") + 1]).toBe(before.argv[before.argv.indexOf("--model") + 1]);
-      await idle(bot.id);
-      expect(boatPrompts).toHaveLength(0);
-      expect(boatCalls.filter(call => call.method === "POST" && call.path === "/sandboxes")).toHaveLength(state === "wake" ? 0 : 1);
-      expect(boatCalls.some(call => call.path.endsWith("/resume"))).toBe(state === "wake");
-      rmSync(dumpFile, { force: true });
-      await api("POST", `/api/bots/${bot.id}/messages`, { text: "Inspect the current page on the same cloud VM" });
-      expect(harnessComputer(await dump())).toBe(true);
-      await idle(bot.id);
-      expect(boatPrompts).toHaveLength(0);
-      expect(boatCalls.filter(call => call.method === "POST" && call.path === "/sandboxes")).toHaveLength(state === "wake" ? 0 : 1);
-    } finally {
-      writeFileSync(finishFile, "finish");
-      await api("POST", `/api/bots/${bot.id}/interrupt`, {}); await idle(bot.id);
-      boatRow = null;
-      allowBoatCreation = false;
-      await api("DELETE", `/api/bots/${bot.id}`);
-      await api("PUT", "/api/config", { box: { token: "" } });
-    }
-  }, 45_000);
-
   it("lets a chat tool select Auto, replaces tools after completion, and continues the same user message once", async () => {
     vmState(); rmSync(dumpFile, { force: true }); rmSync(finishFile, { force: true });
     const { bot } = await api("POST", "/api/bots", { name: "Chat selects computer" });
     try {
-      await api("PUT", "/api/config", { box: { token: "box_fixture" } });
       await api("PATCH", `/api/bots/${bot.id}`, { computer: "browser", browser: false });
       await api("POST", `/api/bots/${bot.id}/messages`, { text: "Open Chrome on an available VM and inspect its page title" });
       const before: any = await dump();
       expect(computer(before)).toBeUndefined();
-      const token = before.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+      const token = agentsEnvironment(before).QUATI_COMMS_TOKEN;
       const call = (method: string, body?: unknown) => fetch(base + "/api/internal/computer/select", { method,
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
       const available = await (await call("GET")).json() as any;
       expect(available.canSelect).toBe(true);
-      expect(available.options.map((option: any) => option.surface)).toEqual(["cloud", "vm", "local", "browser"]);
+      expect(available.options.map((option: any) => option.surface)).toEqual(["vm", "browser"]);
       expect(available.options).toContainEqual(expect.objectContaining({ surface: "vm", available: true }));
-      expect(available.options).toContainEqual(expect.objectContaining({ surface: "cloud", ready: false, canCreate: true }));
       expect(await (await call("POST", { surface: "auto" })).json()).toMatchObject({ status: "pending", surface: "vm" });
       expect((await call("POST", { surface: "cloud" })).status).toBe(409);
       rmSync(dumpFile, { force: true });
       writeFileSync(finishFile, "finish");
       const after: any = await dump();
       expect(computer(after)).toBeTruthy();
-      expect(after.systemPrompt).toContain("Local VM");
-      expect(after.systemPrompt).not.toContain("call select_computer");
+      expect(after.prompt.map((block: { text?: string }) => block.text ?? "").join("\n")).toContain("Local VM");
+      expect(after.prompt.map((block: { text?: string }) => block.text ?? "").join("\n")).not.toContain("call select_computer");
       await idle(bot.id);
       const state = await api("GET", "/api/bots?messages=30");
       const saved = state.bots.find((b: any) => b.id === bot.id);
       expect(saved.tasks.find((task: any) => task.threadId === bot.threadId).surface).toBe("vm");
-      await api("PATCH", `/api/bots/${bot.id}`, { computer: "local" });
+      await api("PATCH", `/api/bots/${bot.id}`, { computer: "off" });
       const swept = (await api("GET", "/api/bots?messages=0")).bots.find((b: any) => b.id === bot.id);
       expect(swept.tasks.find((task: any) => task.threadId === bot.threadId).surface).toBeUndefined();
       expect(saved.messages.filter((message: any) => message.role === "user" && message.kind === "text")).toHaveLength(1);
@@ -581,7 +458,6 @@ describe("Group Local VM ownership on the real isolated server", () => {
       writeFileSync(finishFile, "finish");
       await api("POST", `/api/bots/${bot.id}/interrupt`, {}); await idle(bot.id);
       await api("DELETE", `/api/bots/${bot.id}`);
-      await api("PUT", "/api/config", { box: { token: "" } });
     }
   });
 
@@ -592,7 +468,7 @@ describe("Group Local VM ownership on the real isolated server", () => {
       await api("PATCH", `/api/bots/${bot.id}`, { computer: failure === "off" ? "off" : "browser", browser: false });
       await api("POST", `/api/bots/${bot.id}/messages`, { text: "Open Chrome on the VM" });
       const sent: any = await dump();
-      const token = sent.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN;
+      const token = agentsEnvironment(sent).QUATI_COMMS_TOKEN;
       const selected = await fetch(base + "/api/internal/computer/select", { method: "POST",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ surface: "vm" }) });
       expect(selected.status).toBe(failure === "off" ? 403 : 200);
@@ -611,9 +487,9 @@ describe("Group Local VM ownership on the real isolated server", () => {
         writeFileSync(finishFile, "finish");
         const next: any = await dump();
         expect(computer(next)).toBeUndefined();
-        expect(next.mcpConfig.mcpServers.agents.env.QUATI_THREAD_ID).toBe(bot.threadId);
-        expect(next.prompt.message.content).toContain(text);
-        expect(next.prompt.message.content).not.toContain("The computer selection is now");
+        expect(agentsEnvironment(next).QUATI_THREAD_ID).toBe(bot.threadId);
+        expect(next.prompt.map((block: { text?: string }) => block.text ?? "").join("\n")).toContain(text);
+        expect(next.prompt.map((block: { text?: string }) => block.text ?? "").join("\n")).not.toContain("The computer selection is now");
       } else await api("POST", `/api/bots/${bot.id}/interrupt`, {});
       await idle(bot.id);
       if (failure !== "new-request") expect(existsSync(dumpFile)).toBe(false);
@@ -632,21 +508,21 @@ describe("Group Local VM ownership on the real isolated server", () => {
     }
   });
 
-  it("runs successive direct tasks on their pinned Local VM despite a Cloud profile default", async () => {
+  it("runs successive direct tasks on their pinned Local VM despite a browser profile default", async () => {
     vmState();
     const { bot } = await api("POST", "/api/bots", { name: "Pinned Local VM" });
     try {
-      await api("PATCH", `/api/bots/${bot.id}`, { computer: "cloud", browser: false });
+      await api("PATCH", `/api/bots/${bot.id}`, { computer: "browser", browser: false });
       for (const text of ["Open Chrome on the Local VM", "Inspect the page title on the same Local VM"]) {
         const { task } = await api("POST", `/api/bots/${bot.id}/tasks`, {});
         await api("PATCH", `/api/bots/${bot.id}/tasks/${task.threadId}`, { surface: "vm" });
         rmSync(dumpFile, { force: true }); rmSync(finishFile, { force: true });
         await api("POST", `/api/bots/${bot.id}/messages`, { text, threadId: task.threadId });
-        const sent = await dump() as { systemPrompt: string };
-        expect(sent.systemPrompt).toContain("Local VM");
-        expect(sent.systemPrompt).not.toContain("You can act on the user's computer");
+        const sent = await dump();
+        expect(sent.prompt.map((block) => block.text ?? "").join("\n")).toContain("Local VM");
+        expect(sent.prompt.map((block) => block.text ?? "").join("\n")).not.toContain("You can act on the user's computer");
         const c = computer(sent);
-        expect(c).toBeTruthy();
+        assert(c);
         expect(c.args.some((arg: string) => arg.includes("container-mcp"))).toBe(true);
         expect((await gate(c)).status).toBe(200);
         expect((await api("GET", `/api/bots/${bot.id}/computer?threadId=${task.threadId}`)).surface).toBe("vm");
@@ -729,96 +605,11 @@ describe("Group Local VM ownership on the real isolated server", () => {
     }
   }, 30_000);
 
-  // Linux accepts only its own validated runtime descriptor, which a fixture cannot forge.
-  it.skipIf(process.platform === "linux")("mounts a channel speaker's own This computer destination behind the control gate", async () => {
-    const { bots, group } = await room();
-    mkdirSync(dirname(cuaDescriptor), { recursive: true });
-    writeFileSync(cuaDescriptor, JSON.stringify({ mode: "embedded", socketPath: "/fixture/cua.sock", mcpCommand: "/fixture/cua-driver", mcpArgs: ["mcp"], mcpEnv: {} }));
-    try {
-      await api("PATCH", `/api/bots/${bots[0].id}`, { computer: "local" });
-      await send(group.id);
-      const sent = await dump() as { systemPrompt: string };
-      const c = computer(sent);
-      expect(c).toBeTruthy();
-      expect(c.env.QUATI_CUA_COMMAND).toBe("/fixture/cua-driver");
-      expect(c.args.some((arg: string) => arg.includes("container-mcp"))).toBe(false);
-      expect(sent.systemPrompt).toContain("You can act on the user's computer");
-      expect(sent.systemPrompt).toContain("tell them it is on this computer");
-      expect((await gate(c)).status).toBe(200);
-      writeFileSync(finishFile, "finish");
-      await idle(bots[0].id);
-      expect((await gate(c)).status).toBe(401);
-      expect(JSON.stringify(await api("GET", "/api/bots?messages=30"))).not.toContain("not available in channels yet");
-    } finally {
-      rmSync(cuaDescriptor, { force: true });
-    }
-  });
-
-  it("says why This computer cannot mount in a channel instead of dispatching without the promised tools", async () => {
-    const { bots, group } = await room();
-    await api("PATCH", `/api/bots/${bots[0].id}`, { computer: "local" });
-    await send(group.id);
-    await until(() => api("GET", "/api/bots?messages=30"), state => JSON.stringify(state).includes("CUA Driver is not ready for this computer"));
-    await idle(bots[0].id);
-    expect(existsSync(dumpFile)).toBe(false);
-  });
-
-  it.skipIf(process.platform === "linux")("carries the recorded macOS permission failure into the failed turn", async () => {
-    const { bots, group } = await room();
-    const reason = "embedded host failed: Screen Recording required; grant access in System Settings and restart QuatiBot";
-    mkdirSync(dirname(cuaDescriptor), { recursive: true });
-    writeFileSync(cuaDescriptor, JSON.stringify({ mode: "unavailable", reason }), { mode: 0o600 });
-    try {
-      await api("PATCH", `/api/bots/${bots[0].id}`, { computer: "local" });
-      await send(group.id);
-      const state = await until(() => api("GET", "/api/bots?messages=30"),
-        value => JSON.stringify(value).includes(reason));
-      if (process.platform === "darwin") expect(JSON.stringify(state)).toContain("Relaunch QuatiBot after granting the missing macOS permission");
-      await idle(bots[0].id);
-      expect(existsSync(dumpFile)).toBe(false);
-    } finally {
-      rmSync(cuaDescriptor, { force: true });
-    }
-  });
-
-  it("runs a channel speaker's own Cloud destination on its own engine with its Boat, waking it first", async () => {
-    const { bots, group } = await room();
-    try {
-      await api("PUT", "/api/config", { box: { token: "box_fixture" } });
-      await api("PATCH", `/api/bots/${bots[0].id}`, { computer: "cloud" });
-      const environmentId = readFileSync(join(fixtureHome, "data", "environment-id"), "utf8").trim();
-      const scope = createHash("sha256").update(environmentId).digest("hex").slice(0, 12);
-      const prefix = bots[0].id.slice(0, 8).replace(/[^a-z0-9]/g, "");
-      const suffix = createHash("sha256").update(bots[0].id).digest("hex").slice(0, 6);
-      boatRow = { id: "bx_23456789", name: `quati-${scope}-${prefix}-${suffix}`, state: "archived" };
-      boatCalls.length = 0; boatPrompts.length = 0;
-      const onBoat = (sent: any) => computer(sent)?.args?.at(-1) === "computer" && /harness-mcp-proxy/.test(computer(sent).args[0]);
-      writeFileSync(finishFile, "finish");
-      await send(group.id);
-      expect(onBoat(await dump())).toBe(true);
-      await idle(bots[0].id);
-      expect(boatCalls.some(call => call.path.endsWith("/resume"))).toBe(true);
-      expect(boatCalls.filter(call => call.method === "POST" && call.path === "/sandboxes")).toHaveLength(0);
-      expect(JSON.stringify(await api("GET", "/api/bots?messages=30"))).not.toContain("not available in channels yet");
-      rmSync(dumpFile, { force: true });
-      await send(group.id);
-      expect(onBoat(await dump())).toBe(true);
-      await idle(bots[0].id);
-      expect(boatPrompts).toHaveLength(0);
-    } finally {
-      boatRow = null;
-      await stop(group.id);
-      await idle(bots[0].id);
-      await api("PATCH", `/api/bots/${bots[0].id}`, { computer: "vm" });
-      await api("PUT", "/api/config", { box: { token: "" } });
-    }
-  }, 45_000);
-
   it("releases a failed readiness claim so the bot and room can run again", async () => {
     const { bots, group } = await room();
     vmState({ failed: true });
     await send(group.id);
-    await until(() => api("GET", "/api/bots?messages=30"), r => JSON.stringify(r).includes("Fixture desktop unavailable."));
+    await until(() => api("GET", "/api/bots?messages=30"), r => JSON.stringify(r).includes("error: fixture desktop unavailable"));
     await idle(bots[0].id);
     vmState();
     await send(group.id);
@@ -864,13 +655,16 @@ describe("Group Local VM ownership on the real isolated server", () => {
     const { bots, group } = await room();
     await send(group.id);
     const first = computer(await dump());
+    assert(first);
     expect((await gate(first)).status).toBe(200);
     writeFileSync(finishFile, "finish"); await idle(bots[0].id);
     expect((await gate(first)).status).toBe(401);
+    await until(() => api("GET", "/api/bots?messages=0"), state => !state.groups.find((room: { id: string; working: boolean }) => room.id === group.id)?.working);
     rmSync(finishFile, { force: true }); rmSync(dumpFile, { force: true });
     await api("PATCH", `/api/groups/${group.id}`, { defaultResponder: { kind: "member", botId: bots[1].id } });
     await send(group.id);
     const second = computer(await dump());
+    assert(second);
     expect(second.args).toEqual(first.args);
     expect((await gate(second)).status).toBe(200);
     expect((await gate(first)).status).toBe(401);
@@ -929,7 +723,7 @@ describe("Group Local VM ownership on the real isolated server", () => {
       await idle(holder.id);
       const resumed = await dump();
       expect(computer(resumed)).toBeTruthy();
-      expect(resumed).toMatchObject({ prompt: { message: { content: expect.stringContaining("Continue the task that parked waiting for it") } } });
+      expect(resumed.prompt.map((block) => block.text ?? "").join("\n")).toContain("Continue the task that parked waiting for it");
       expect(JSON.parse(readFileSync(stateFile, "utf8")).actions).toEqual([{ action: "start", target: "shared" }]);
       expect((await gate(computer(resumed))).status).toBe(200);
     } finally {

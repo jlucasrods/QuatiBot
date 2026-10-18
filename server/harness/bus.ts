@@ -47,6 +47,7 @@ export class EventBus {
   private pendingLogWarnings = new Map<string, RuntimeEvent>();
   private pendingText = new Map<string, { event: TextDelta; timer: ReturnType<typeof setTimeout> }>();
   private readonly appendLog: EventLogAppend;
+  private readonly normalize?: (event: RuntimeEvent) => RuntimeEvent;
   private queued: QueuedLog[] = [];
   private queuedBytes = 0;
   private pumping = false;
@@ -54,8 +55,9 @@ export class EventBus {
   private readonly drainWaiters: Array<() => void> = [];
   private readonly queuedLogWarnings = new Map<string, RuntimeEvent>();
 
-  constructor(appendLog: EventLogAppend = defaultAppend) {
+  constructor(appendLog: EventLogAppend = defaultAppend, normalize?: (event: RuntimeEvent) => RuntimeEvent) {
     this.appendLog = appendLog;
+    this.normalize = normalize;
   }
 
   attach(instances: ProviderInstance[]) {
@@ -74,6 +76,7 @@ export class EventBus {
   }
 
   publish(event: RuntimeEvent) {
+    if (this.normalize) event = this.normalize(event);
     const pending = this.pendingText.get(event.threadId);
     if (event.type === "content.delta") {
       if (pending && sameStream(pending.event, event)) {

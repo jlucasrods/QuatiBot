@@ -1,8 +1,5 @@
-// Exercise the harness caller that constructs browser integrations: a direct
-// driver test would miss a browser MCP environment replacing its augmented PATH.
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
-import { stripTypeScriptTypes } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,13 +7,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 import { openSse, type SseRecorder } from "./testing/sse.ts";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
-const FINDER_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
+const MINIMAL_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
 
-// This regression concerns Unix shebang lookup and macOS Finder's PATH;
-// Windows resolves CLI shims through a separate launch contract.
-describe.skipIf(process.platform === "win32")("Codex browser turns with a minimal GUI PATH", () => {
+describe.skipIf(process.platform !== "linux")("OpenCode browser turns with a minimal PATH", () => {
   let home: string;
   let bin: string;
   let browser: string;
@@ -35,39 +31,44 @@ describe.skipIf(process.platform === "win32")("Codex browser turns with a minima
   };
 
   beforeAll(async () => {
-    home = mkdtempSync(join(tmpdir(), "quati-browser-codex-path-"));
+    home = mkdtempSync(join(tmpdir(), "quati-browser-opencode-path-"));
     bin = join(home, ".local", "bin");
     const data = join(home, ".quatibot");
     mkdirSync(bin, { recursive: true });
     mkdirSync(data);
-    // The extensionless executable must exercise /usr/bin/env node, rather
-    // than the driver's explicit .ts-file launch through process.execPath.
-    const codex = join(bin, "codex");
-    writeFileSync(codex, '#!/usr/bin/env node\nimport("./fake-codex-app-server.mjs");\n', { mode: 0o755 });
-    // A Linux system Node may precede our symlink; it need not support .ts.
-    writeFileSync(join(bin, "fake-codex-app-server.mjs"), stripTypeScriptTypes(
-      readFileSync(join(SERVER_DIR, "testing", "fake-codex-app-server.ts"), "utf8"),
-    ));
+    const opencode = join(bin, "opencode");
+    const wrapper = [
+      "#!/usr/bin/env node",
+      'import { join } from "node:path";',
+      'process.env.FAKE_ACP_VERSION = "2.0.31";',
+      'process.env.FAKE_ACP_AGENT_VERSION = "2.0.31";',
+      'process.env.FAKE_ACP_MODELS = "fixture/test";',
+      'process.env.FAKE_ACP_DUMP = join(process.env.HOME, "opencode-dump.json");',
+      `await import(${JSON.stringify(join(SERVER_DIR, "testing", "fake-acp-cli.ts"))});`,
+    ].join("\n");
+    writeFileSync(opencode, wrapper, { mode: 0o755 });
     symlinkSync(process.execPath, join(bin, "node"));
     browser = join(bin, "agent-browser");
-    // The fake provider records MCP configuration without starting a browser.
-    // Preparation checks that the acknowledged close really removed it.
     writeFileSync(browser, "#!/bin/sh\nif [ \"$1\" = session ]; then printf '%s\\n' '{\"success\":true,\"data\":{\"sessions\":[]}}'; fi\nexit 0\n", { mode: 0o755 });
     writeFileSync(join(data, "config.json"), JSON.stringify({
       features: { browser: true },
       instances: Object.fromEntries(["default", "absolute"].map((id) => [id, {
-        driver: "codex",
-        environment: { FAKE_CODEX_DUMP: join(home, `${id}.json`) },
-        config: { cli: id === "default" ? "codex" : codex },
+        driver: "opencodeGo",
+        config: { cli: id === "default" ? "opencode" : opencode },
       }])),
     }));
+    for (const id of ["default", "absolute"]) {
+      const discovery = join(data, "providers", id, "discovery");
+      mkdirSync(discovery, { recursive: true });
+      writeFileSync(join(discovery, ".quati-project"), "");
+    }
     const port = await freePortBlock([0, 1]);
     base = `http://127.0.0.1:${port}`;
     child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
       env: {
-        PATH: FINDER_PATH, HOME: home, QUATI_DATA_DIR: data, QUATI_PORT: String(port),
-        QUATI_AGENT_BROWSER_PATH: browser, VITEST: "1",
+        ...verificationServerEnvironment({}, data, port),
+        HOME: home, PATH: MINIMAL_PATH, QUATI_AGENT_BROWSER_PATH: browser,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -91,10 +92,15 @@ describe.skipIf(process.platform === "win32")("Codex browser turns with a minima
     if (home) await removeTempDir(home);
   });
 
-  it.each(["default", "absolute"])("keeps the browser mounted and completes a turn with the %s Codex CLI", async (instanceId) => {
+  it.each(["default", "absolute"])("keeps the browser mounted and completes a turn with the %s OpenCode CLI", async (instanceId) => {
+    await expect.poll(async () => {
+      const instances = (await api("GET", "/api/instances")).body.instances;
+      return instances.find((instance: { instanceId: string }) => instance.instanceId === instanceId)?.models.options.some((model: { id: string }) => model.id === "fixture/test");
+    }, { timeout: 10_000 }).toBe(true);
+
     const created = await api("POST", "/api/bots", {
       name: `Browser PATH ${instanceId}`, browser: true,
-      modelSelection: { instanceId, model: "gpt-fake-default" },
+      modelSelection: { instanceId, model: "fixture/test" },
     });
     expect(created.status).toBe(201);
     const botId = created.body.bot.id;
@@ -106,27 +112,19 @@ describe.skipIf(process.platform === "win32")("Codex browser turns with a minima
     await events.until((frame) => events.frames.indexOf(frame) > events.frames.indexOf(started) && frame.kind === "bot" && frame.bot?.id === botId && frame.bot?.busy === false);
     const bot = (await api("GET", "/api/bots")).body.bots.find((item: any) => item.id === botId);
     const replies = bot.messages.filter((message: any) => message.role === "bot").map((message: any) => message.text);
-    expect(replies, JSON.stringify(replies)).toContain("done from fake codex");
-    const dump = JSON.parse(readFileSync(join(home, `${instanceId}.json`), "utf8"));
+    expect(replies, JSON.stringify(replies)).toContain("hello from fake acp");
+    const dump = JSON.parse(readFileSync(join(home, "opencode-dump.json"), "utf8"));
     // Linux may provide /usr/bin/node, so completion alone cannot prove the
     // absolute CLI retained access to the user's discovered runtime directory.
     expect(dump.env.PATH.split(":")).toContain(bin);
-    expect(dump.env.PATH).toContain(FINDER_PATH);
-    expect(dump.argv).toContain(`mcp_servers.browser.command=${JSON.stringify(process.execPath)}`);
-    expect(dump.argv.some((arg: string) => arg.startsWith("mcp_servers.browser.args=") && arg.includes("harness-mcp-proxy.ts") && arg.includes('"browser"'))).toBe(true);
-    // Codex starts every MCP server from one shared environment and passes
-    // each only the names in its env_vars. A token name two servers share
-    // holds the last mount's value, and the browser was refused.
-    const envVars = (server: string) => JSON.parse(dump.argv.find((arg: string) => arg.startsWith(`mcp_servers.${server}.env_vars=`))?.split("=").slice(1).join("=") ?? "[]") as string[];
-    const browserToken = envVars("browser").filter((name) => name.startsWith("QUATI_MCP_TOKEN"));
-    const dataToken = envVars("data").filter((name) => name.startsWith("QUATI_MCP_TOKEN"));
-    expect(browserToken).toHaveLength(1);
-    expect(dataToken).toHaveLength(1);
-    expect(browserToken[0]).not.toBe(dataToken[0]);
-    expect(dump.env[browserToken[0]]).toBeTruthy();
-    expect(dump.env[browserToken[0]]).not.toBe(dump.env[dataToken[0]]);
+    expect(dump.env.PATH).toContain(MINIMAL_PATH);
+    const browserMount = dump.mcpServers.find((server: { name: string }) => server.name === "browser");
+    expect(browserMount.command).toBe(process.execPath);
+    expect(browserMount.args).toContain("browser");
+    expect(browserMount.args.some((arg: string) => arg.endsWith("harness-mcp-proxy.ts"))).toBe(true);
+    expect(browserMount.env.some((entry: { name: string; value: string }) => entry.name.startsWith("QUATI_MCP_TOKEN") && entry.value)).toBe(true);
     expect(dump.env.AGENT_BROWSER_SESSION).toBeUndefined();
     expect(dump.env.AGENT_BROWSER_ENCRYPTION_KEY).toBeUndefined();
-    expect(dump.calls.some((call: any) => call.method === "turn/start")).toBe(true);
+    expect(dump.argv).toContain("acp");
   });
 });

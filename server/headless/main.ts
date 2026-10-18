@@ -4,7 +4,6 @@ import { explain, loadMcp, openClient, type ClientDeps, type HeadlessClient } fr
 import { doctor, edit, interrupt, list, messages, newBot, newChannel, send, setModel } from "./commands.ts";
 import { connectVerb } from "./connect.ts";
 import type { VerbContext, VerbOutcome } from "./context.ts";
-import { engineVerb } from "./engine.ts";
 import { eventsVerb } from "./events.ts";
 import { exportVerb } from "./export.ts";
 import { Output, processIo, type HeadlessIo } from "./output.ts";
@@ -58,20 +57,13 @@ export const VERB_HELP: Record<string, string> = {
   (--kind message,runtime adds token-level events to messages).
   --job follows the threads of one conversation's job; --until-settled ends with it.`,
   team: "quatibot team apply FILE | team export --out FILE   (see help team apply, help team export)",
-  "team apply": `quatibot team apply FILE [--dry-run | --check] [--prune] [--rotate-secrets] [--wait-idle 2m]
+  "team apply": `quatibot team apply FILE [--dry-run | --check] [--prune] [--wait-idle 2m]
   Make the workspace match a team file (YAML or JSON): teams and briefs, bots, skills, Chiefs,
-  rooms and engines. Prints the plan, then applies it; a second apply prints "No changes.".
+  and rooms. Prints the plan, then applies it; a second apply prints "No changes.".
   --dry-run only prints the plan; --check exits 6 if anything would change. --prune deletes bots
-  and rooms the file leaves out, in teams marked prune: true. Keys come from { env } or { file },
-  and a key already set is kept unless --rotate-secrets. docs/headless-cli.md has the format.`,
-  "team export": "quatibot team export [--team NAME]… --out FILE\n  Write the workspace (or some teams) as a team file; skills go beside it, keys as placeholders,\n  and a key written into a soul, brief or skill is taken out.",
-  engine: "quatibot engine set KIND … | engine list   (see help engine set)",
-  "engine set": `quatibot engine set KIND (--key-env VAR | --key-file FILE) [--base-url URL] [--only-claude-api] [--install] [--rotate] [--dry-run]
-  Give the workspace an engine key: claude, openai, openrouter, openai-compatible, xai, groq, mistral or cerebras.
-  The key is never printed. One already set is kept unless --rotate. --install installs the engine's
-  command if it is not running already, so a script can run this on every start.
-  claude: the key runs every Claude bot; --only-claude-api keeps it to "Claude (API key)" bots.`,
-  "engine list": "quatibot engine list\n  The engines, whether each is ready, and which keys are set (never their values).",
+  and rooms the file leaves out, in teams marked prune: true. Configure model providers in OpenCode V2.
+  docs/headless-cli.md has the format.`,
+  "team export": "quatibot team export [--team NAME]… --out FILE\n  Write the workspace (or some teams) as a team file; skills go beside it,\n  and a key written into a soul, brief or skill is taken out.",
   connect: `quatibot connect [URL] [--code CODE] --out FILE [--label NAME] [--client] [--force]
   Get a token for a workspace you reach over the network, saved to FILE (only you can read it).
   On this computer's own server the code is made for you; elsewhere, ask its operator to run quatibot pair.
@@ -93,7 +85,7 @@ export interface HeadlessOptions {
 const VERBS: Record<string, (ctx: VerbContext) => Promise<VerbOutcome>> = {
   doctor, bots: list, channels: list, models: list, messages, send, "send-channel": send, run: runVerb, wait: waitVerb,
   interrupt, "new-bot": newBot, "new-channel": newChannel, "set-model": setModel, edit, export: exportVerb, events: eventsVerb,
-  "team apply": teamApplyVerb, "team export": teamExportVerb, "engine set": engineVerb, "engine list": engineVerb, connect: connectVerb,
+  "team apply": teamApplyVerb, "team export": teamExportVerb, connect: connectVerb,
 };
 
 async function execute(argv: readonly string[], options: HeadlessOptions, io: HeadlessIo): Promise<{ outcome: VerbOutcome; output: Output; client?: HeadlessClient }> {

@@ -462,7 +462,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "request_credential",
     description:
-      "Ask the user for a supported API key through QuatiBot's secure credential flow. The desktop app and a freshly QR-paired mobile app show a secure entry card; older mobile pairings show how to pair again or finish on the computer. Never claim a secure field opened unless this request succeeds, and never ask the user to paste a secret into chat. The secret is saved by the desktop app and is never returned to you. After calling this tool, end the turn; QuatiBot resumes the task after the user saves or declines.",
+      "Ask the user for a supported auxiliary API key using QuatiBot's secure web entry card. Never claim a secure field opened unless this request succeeds, and never ask the user to paste a secret into chat. The backend encrypts the key and never returns it to you. End the turn after this call; QuatiBot resumes after the user saves or declines. Model-provider credentials belong to OpenCode.",
     inputSchema: {
       type: "object",
       properties: {

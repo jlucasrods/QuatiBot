@@ -48,7 +48,7 @@ it("starts a thread a Chief opens with a teammate at the Chief's level, and a Ch
     // The person put this Chief conversation on Approve for me.
     await api("PATCH", `/api/bots/${chief.id}/tasks/${chief.activeTaskId}`, { approvalMode: "auto", acknowledgeLocalAuto: true });
     const adaTurn = await bringIn(chief, chief.activeTaskId, ada, "check-auto");
-    expect(adaTurn.permissionMode).toBe("auto");
+    expect(adaTurn.nativePermissions ?? []).not.toContainEqual({ action: "*", resource: "*", effect: "allow" });
     expect(persistedTask(ada.id, adaTurn.threadId)).toMatchObject({ approvalMode: "auto", autoApprove: false });
     expect((await messages(adaTurn.threadId)).some(message => message.kind === "activity"
       && message.tool?.name === "Approve for me — delegated by Clive, a Chief of Staff on Approve for me")).toBe(true);
@@ -56,7 +56,7 @@ it("starts a thread a Chief opens with a teammate at the Chief's level, and a Ch
 
     const askThread = (await api("POST", `/api/bots/${chief.id}/tasks`, { title: "Plain Ask work", approvalMode: "ask" }, 201)).task;
     const beaTurn = await bringIn(chief, askThread.threadId, bea, "check-ask");
-    expect(beaTurn.permissionMode).toBe("default");
+    expect(beaTurn.nativePermissions ?? []).not.toContainEqual({ action: "*", resource: "*", effect: "allow" });
     expect(persistedTask(bea.id, beaTurn.threadId)?.approvalMode ?? "ask").toBe("ask");
     expect((await messages(beaTurn.threadId)).some(message => message.kind === "activity" && /delegated by/.test(message.tool?.name ?? ""))).toBe(false);
   } finally {

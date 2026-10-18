@@ -1,20 +1,15 @@
-// Real isolated server + native Claude permission broker. No real model calls,
-// user profiles, shell commands or live application data are used.
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { closeSync, existsSync, openSync, readFileSync, rmSync } from "node:fs";
-import { connect, type Socket } from "node:net";
-import { join } from "node:path";
+import { closeSync, openSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { launchVerificationServer, verificationServerEnvironment } from "../scripts/control-quati.ts";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { waitForExit } from "./testing/cleanup.ts";
+import { launchPermissionFixture } from "./testing/permission-fixture.ts";
 
 it("remembers real permission requests, scopes and revokes grants, and preserves them across restart", async () => {
-  const fixture = await launchVerificationServer({ FAKE_CLAUDE_MODE: "hang" });
+  const { fixture, start, ask } = await launchPermissionFixture();
   const { url, dataDir, logPath } = fixture.info;
-  const sockets: Socket[] = [];
   let restarted: ChildProcess | undefined;
   const api = async (method: string, path: string, body?: unknown, status = 200, token?: string) => {
     const response = await fetch(url + path, { method, headers: {
@@ -26,50 +21,16 @@ it("remembers real permission requests, scopes and revokes grants, and preserves
   };
   const messages = async (thread: string): Promise<any[]> => (await api("GET", `/api/threads/${thread}/messages?limit=100`)).messages;
   const card = async (thread: string, id: string) => (await messages(thread)).find(message => message.card?.requestId === id)?.card;
-  const start = async (bot: any, thread = bot.threadId) => {
-    const dump = join(dataDir, "fake-claude-dump.json");
-    rmSync(dump, { force: true });
-    await api("POST", `/api/bots/${bot.id}/messages`, { threadId: thread, text: "Hold this verification task while its native command approvals are exercised." }, 202);
-    await expect.poll(() => existsSync(dump), { timeout: 15_000 }).toBe(true);
-    return JSON.parse(readFileSync(dump, "utf8")).mcpConfig.mcpServers.quati.args.at(-1) as string;
-  };
-  const ask = async (socketPath: string, command: string, input = {}, tool = "Bash") => {
-    const socket = connect(socketPath);
-    sockets.push(socket);
-    await new Promise<void>((resolve, reject) => { socket.once("connect", resolve); socket.once("error", reject); });
-    const id = randomUUID();
-    let answer: any;
-    let buffer = "";
-    // Native IPC completion is an I/O event, not a one-second UI poll.
-    // Keep the same bounded deadline as the fixture's HTTP requests.
-    const reply = new Promise<any>((resolve, reject) => {
-      socket.once("error", reject);
-      socket.once("close", () => reject(new Error(`Permission socket closed before its reply: ${id}`)));
-      socket.setTimeout(10_000, () => socket.destroy(new Error(`Permission reply timed out: ${id}`)));
-      socket.on("data", chunk => {
-        buffer += chunk;
-        if (!buffer.includes("\n")) return;
-        answer = JSON.parse(buffer.split("\n")[0]!);
-        socket.setTimeout(0);
-        resolve(answer);
-      });
-    });
-    // Assertions may inspect the card before awaiting this reply; keep an
-    // early transport rejection handled while preserving it for the await.
-    void reply.catch(() => {});
-    socket.write(JSON.stringify({ t: "ask", id, tool, input: { command, ...input } }) + "\n");
-    return { id, answer: () => answer, reply, socket };
-  };
   const stop = (bot: any, thread = bot.threadId) => api("POST", `/api/bots/${bot.id}/interrupt`, { threadId: thread });
   try {
-    const bot = (await api("POST", "/api/bots", { name: "Command rules fixture", modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } }, 201)).bot;
+    const bot = (await api("POST", "/api/bots", { name: "Command rules fixture", modelSelection: { instanceId: "opencodeGo", model: "fixture/default" } }, 201)).bot;
     // The bot on Ask, so every thread it opens asks and only a saved rule answers.
     await api("PATCH", `/api/bots/${bot.id}`, { approvalMode: "ask" });
     const rulesPath = `/api/bots/${bot.id}/command-allowlist`;
     expect((await api("GET", rulesPath)).rules).toEqual([]);
-    const socket = await start(bot);
+    const turn = await start(bot);
     const command = "printf 'allowlist fixture'";
-    const first = await ask(socket, command);
+    const first = await ask(turn, command);
     await expect.poll(async () => Boolean((await card(bot.threadId, first.id))?.commandAllowlist)).toBe(true);
     const candidate = (await card(bot.threadId, first.id)).commandAllowlist;
     expect(candidate.command).toBe(command);
@@ -82,13 +43,13 @@ it("remembers real permission requests, scopes and revokes grants, and preserves
     await api("POST", `/api/threads/${bot.threadId}/respond`, { requestId: first.id, behavior: "allow", rememberCommand: true }, 403, paired.token);
     expect((await api("GET", rulesPath)).rules).toEqual([]);
     expect((await api("POST", `/api/threads/${bot.threadId}/respond`, { requestId: first.id, behavior: "allow", rememberCommand: true })).outcome).toBe("allowed-once");
-    expect(await first.reply).toMatchObject({ id: first.id, behavior: "allow" });
+    expect(await first.reply()).toBe("allow-once");
     const saved = (await api("GET", rulesPath)).rules[0];
     expect(saved).toMatchObject(candidate);
     for (const profile of (await api("GET", "/api/bots")).bots) expect(profile).not.toHaveProperty("commandAllowlist");
 
-    const repeated = await ask(socket, command);
-    expect(await repeated.reply).toMatchObject({ id: repeated.id, behavior: "allow" });
+    const repeated = await ask(turn, command);
+    expect(await repeated.reply()).toBe("allow-once");
     expect(await card(bot.threadId, repeated.id)).toBeUndefined();
     await expect.poll(async () => (await api("GET", "/api/decisions")).decisions.some((row: any) => row.requestId === repeated.id && row.source === "command-allowlist")).toBe(true);
 
@@ -97,40 +58,35 @@ it("remembers real permission requests, scopes and revokes grants, and preserves
       [command, { dangerouslyDisableSandbox: true }, "Bash"],
       [command, {}, "mcp__other__shell"],
     ] as const) {
-      const different = await ask(socket, text, input, tool);
+      const different = await ask(turn, text, input, tool);
       await expect.poll(async () => Boolean(await card(bot.threadId, different.id))).toBe(true);
       expect(different.answer()).toBeUndefined();
       await api("POST", `/api/threads/${bot.threadId}/respond`, { requestId: different.id, behavior: "deny" });
-      expect(await different.reply).toMatchObject({ id: different.id, behavior: "deny" });
+      expect(await different.reply()).toBe("reject");
     }
     await api("DELETE", rulesPath + "/" + saved.id);
-    const revoked = await ask(socket, command);
+    const revoked = await ask(turn, command);
     await expect.poll(async () => Boolean(await card(bot.threadId, revoked.id))).toBe(true);
     await api("POST", `/api/bots/${bot.id}/respond`, { threadId: bot.threadId, requestId: revoked.id, behavior: "allow", rememberCommand: true });
-    expect(await revoked.reply).toMatchObject({ id: revoked.id, behavior: "allow" });
+    expect(await revoked.reply()).toBe("allow-once");
     expect((await api("GET", rulesPath)).rules).toHaveLength(1);
     await stop(bot);
     await api("POST", `/api/threads/${bot.threadId}/respond`, { requestId: revoked.id, behavior: "allow", rememberCommand: true }, 403);
 
     const sibling = (await api("POST", `/api/bots/${bot.id}/tasks`, { title: "Different folder" }, 201)).task;
-    const otherSocket = await start(bot, sibling.threadId);
-    const other = await ask(otherSocket, command);
+    const otherTurn = await start(bot, sibling.threadId);
+    const other = await ask(otherTurn, command);
     await expect.poll(async () => Boolean(await card(sibling.threadId, other.id))).toBe(true);
     expect((await card(sibling.threadId, other.id)).commandAllowlist.cwd).not.toBe(candidate.cwd);
     await stop(bot, sibling.threadId);
-    expect(await other.reply).toMatchObject({ id: other.id, behavior: "deny" });
+    expect(await other.reply()).toBe("cancelled");
 
     await api("PATCH", `/api/bots/${bot.id}`, { cwd: candidate.cwd });
     const shared = (await api("POST", `/api/bots/${bot.id}/tasks`, { title: "Same project folder" }, 201)).task;
-    const sharedSocket = await start(bot, shared.threadId);
-    const sharedRequest = await ask(sharedSocket, command);
-    // Receiving can lag a correct broker reply on a busy runner. Preserve
-    // that gap beyond expect.poll's default 1s without changing the grant.
-    sharedRequest.socket.pause();
+    const sharedTurn = await start(bot, shared.threadId);
+    const sharedRequest = await ask(sharedTurn, command);
     await delay(1_100);
-    expect(sharedRequest.answer()).toBeUndefined();
-    sharedRequest.socket.resume();
-    expect(await sharedRequest.reply).toMatchObject({ id: sharedRequest.id, behavior: "allow" });
+    expect(await sharedRequest.reply()).toBe("allow-once");
     expect(await card(shared.threadId, sharedRequest.id)).toBeUndefined();
     await stop(bot, shared.threadId);
 
@@ -138,7 +94,7 @@ it("remembers real permission requests, scopes and revokes grants, and preserves
     const log = openSync(logPath, "a", 0o600);
     restarted = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
       cwd: fileURLToPath(new URL("..", import.meta.url)),
-      env: verificationServerEnvironment({ FAKE_CLAUDE_MODE: "hang" }, dataDir, Number(new URL(url).port)),
+      env: verificationServerEnvironment({}, dataDir, Number(new URL(url).port)),
       stdio: ["ignore", log, log],
     });
     closeSync(log);
@@ -146,14 +102,13 @@ it("remembers real permission requests, scopes and revokes grants, and preserves
       try { return (await fetch(url + "/api/health", { signal: AbortSignal.timeout(1000) })).ok; } catch { return false; }
     }, { timeout: 20_000 }).toBe(true);
     expect((await api("GET", rulesPath)).rules).toHaveLength(1);
-    const restartedSocket = await start(bot);
-    const restored = await ask(restartedSocket, command);
-    expect(await restored.reply).toMatchObject({ id: restored.id, behavior: "allow" });
+    const restartedTurn = await start(bot);
+    const restored = await ask(restartedTurn, command);
+    expect(await restored.reply()).toBe("allow-once");
     expect(await card(bot.threadId, restored.id)).toBeUndefined();
     await stop(bot);
     console.info(`Command allowlist real-server verification passed; isolated log: ${logPath}`);
   } finally {
-    for (const socket of sockets) socket.destroy();
     await waitForExit(restarted, { signal: "SIGTERM" });
     await fixture.close();
   }

@@ -17,7 +17,7 @@ const fixture = vi.hoisted(() => {
                 heading?: string;
                 active?: boolean;
             }[];
-        }[], dispatch: vi.fn(), canWrite: null as boolean | null, showToolCalls: false, platform: "other", localReasonCode: "cua-driver-unavailable", localMessage: "", model: null as ComponentProps<typeof ModelPicker> | null,
+        }[], dispatch: vi.fn(), canWrite: null as boolean | null, showToolCalls: false, model: null as ComponentProps<typeof ModelPicker> | null,
         approval: null as ComponentProps<typeof ApprovalModeSelector> | null };
 });
 vi.mock("@/state/store", async (importOriginal) => {
@@ -31,7 +31,7 @@ vi.mock("@/state/store", async (importOriginal) => {
 // The real useCaptionChrome rides along: it only asks this module for the window chrome.
 vi.mock("./DesktopCapabilities", async (importOriginal) => ({
     ...await importOriginal<typeof import("./DesktopCapabilities")>(),
-    useDesktopCapabilities: () => ({ capabilities: { dictation: { available: false }, host: { packaged: true, platform: fixture.platform }, localComputer: { available: false, reasonCode: fixture.localReasonCode, message: fixture.localMessage } }, ready: true }),
+    useDesktopCapabilities: () => ({ capabilities: { dictation: { available: false }, host: { packaged: false, platform: "linux" }, localComputer: { available: false, reasonCode: "cua-driver-unavailable", message: "" } }, ready: true }),
 }));
 vi.mock("@/lib/thread-preferences", async (importOriginal) => ({
     ...await importOriginal<typeof import("@/lib/thread-preferences")>(),
@@ -66,7 +66,6 @@ vi.mock("./ApprovalModeSelector", () => ({ ApprovalModeSelector: (props: Compone
         return createElement("span", { "data-test-approval-control": true });
     } }));
 const { ChatView, ErrorRow, FailedTurnRow, claudeUpdateTarget } = await import("./ChatView");
-const { activityPreview } = await import("@/lib/failed-turn");
 afterAll(() => vi.unstubAllGlobals());
 const bot: Bot = {
     id: "bot", threadId: "selected", name: "Pepper", title: "", description: "", color: "green",
@@ -203,29 +202,22 @@ describe("thread control placement", () => {
         expect(markup).toMatch(/<textarea[^>]*disabled=""[^>]*aria-busy="true"/);
         expect(markup).not.toContain("Finish group setup");
     });
-    it("offers trusted modes in the composer without requiring a Full bot default", () => {
+    it("does not offer unsupported custom approvals, even with a Full bot default", () => {
         const fullBot = { ...bot, busy: false, approvalMode: "full" as const };
         expect(renderToStaticMarkup(createElement(ChatView, { bot: fullBot }))).not.toContain("Use bot’s Full access for this thread");
-        expect(renderToStaticMarkup(createElement(ChatView, { bot: fullBot }))).not.toContain("Use bot’s Full access for this thread");
         renderToStaticMarkup(createElement(ChatView, { bot }));
-        expect(fixture.approval?.trustedModesAvailable).toBe(true);
-        fixture.approval!.onSelect("custom");
-        expect(fixture.dispatch).toHaveBeenLastCalledWith({ type: "updateTask", botId: "bot", threadId: "selected", patch: { approvalMode: "custom" } });
-    });
-    it("applies Full access from the composer at once, with or without the desktop bridge", () => {
-        for (const bridge of [false, true]) {
-            if (bridge)
-            fixture.dispatch.mockClear();
-            const markup = renderToStaticMarkup(createElement(ChatView, { bot }));
-            expect(fixture.approval?.trustedModesAvailable).toBe(bridge);
-            fixture.approval!.onSelect("full");
-            expect(fixture.dispatch).toHaveBeenCalledExactlyOnceWith({ type: "updateTask", botId: "bot", threadId: "selected", patch: { approvalMode: "full" } });
-            expect(markup).not.toContain('role="alertdialog"');
-        }
-        fixture.dispatch.mockClear();
-        renderToStaticMarkup(createElement(ChatView, { bot }));
+        expect(fixture.approval?.trustedModesAvailable).toBe(false);
         fixture.approval!.onSelect("custom");
         expect(fixture.dispatch).not.toHaveBeenCalled();
+    });
+    it.each(["ask", "auto", "full"] as const)("applies %s access from the composer through the web flow", (approvalMode) => {
+        fixture.dispatch.mockClear();
+        const initialMode = approvalMode === "ask" ? "auto" as const : "ask" as const;
+        const initialBot = { ...bot, tasks: bot.tasks?.map((task) => ({ ...task, approvalMode: initialMode })) };
+        const markup = renderToStaticMarkup(createElement(ChatView, { bot: initialBot }));
+        fixture.approval!.onSelect(approvalMode);
+        expect(fixture.dispatch).toHaveBeenCalledExactlyOnceWith({ type: "updateTask", botId: "bot", threadId: "selected", patch: { approvalMode } });
+        expect(markup).not.toContain('role="alertdialog"');
     });
     it("explains provider safety errors without offering an ineffective Retry", () => {
         const markup = renderToStaticMarkup(createElement(ErrorRow, { message: "Blocked by our safety systems", onRetry: () => { } }));
@@ -256,26 +248,18 @@ describe("thread control placement", () => {
         expect(markup).toContain("Manage usage");
         expect(markup).not.toContain("<button");
     });
-    it("opens a signed-out engine's failed turn with one sentence and the sign-in, the CLI's words under Details", () => {
-        const claude = {
-            instanceId: "claude", driverKind: "claudeAgent", displayName: "Claude",
+    it("directs a signed-out engine to OpenCode provider authentication instead of retrying", () => {
+        const engine = {
+            instanceId: "opencodeGo", driverKind: "opencodeGo", displayName: "OpenCode",
             snapshot: { state: "available", authenticated: false },
-            install: { command: { darwin: "x", linux: "x", win32: "x" }, signInCommand: "claude /login", server: { package: "@anthropic-ai/claude-code" } },
-            authentication: { method: "paste-code" },
-            models: { default: "sonnet", options: [] },
+            models: { default: "fixture/default", options: [] },
         } as InstanceInfo;
-        const markup = renderToStaticMarkup(createElement(FailedTurnRow, { tool: { name: "error: Not logged in · Please run /login", ok: false, setup: true }, engine: claude, onRetry: () => { } }));
-        expect(markup).toContain(">Claude isn&#x27;t signed in yet. Sign in below, then send your message again.</span>");
-        expect(markup).toContain("Sign in to Claude</button>");
-        expect(markup).toMatch(/<summary[^>]*>Details<\/summary><p[^>]*>Not logged in · Please run \/login<\/p>/);
+        const markup = renderToStaticMarkup(createElement(FailedTurnRow, { tool: { name: "error: Not logged in · Please run /login", ok: false, setup: true }, engine, onRetry: () => { } }));
+        expect(markup).toContain("Not logged in · Please run /login</p>");
+        expect(markup).toContain("opencode auth login");
+        expect(markup).toContain("Models and credentials are managed by OpenCode, not here.");
+        expect(markup).toContain("Check again</button>");
         expect(markup).not.toContain(">Retry<");
-        const update = { name: "error: Claude Code 2.1.268 does not support this model", ok: false, setup: true, claudeUpdate: true };
-        for (const engine of [claude, { ...claude, readOnly: true }]) {
-            const row = renderToStaticMarkup(createElement(FailedTurnRow, { tool: update, engine }));
-            expect(row).toContain(">Claude Code 2.1.268 does not support this model</span>");
-            expect(row).not.toContain("isn&#x27;t signed in");
-            expect(activityPreview(update, engine)).toBe("Claude Code 2.1.268 does not support this model");
-        }
     });
     it("opens a failed turn with a technical cause on one plain line, the engine's words under Details", () => {
         const raw = 'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}';
@@ -376,31 +360,6 @@ describe("thread control placement", () => {
             fixture.showToolCalls = false;
         }
     });
-    it("offers the matching macOS Settings and relaunch actions only for a named CUA permission failure", () => {
-        fixture.platform = "darwin";
-        fixture.localMessage = "Screen Recording required";
-        const screen = renderToStaticMarkup(createElement(ErrorRow, {
-            message: "CUA Driver is not ready for this computer — embedded host failed: Screen Recording required. Relaunch QuatiBot after granting any missing macOS permission.",
-        }));
-        expect(screen).toContain("Open Screen Recording Settings");
-        expect(screen).toContain("Relaunch QuatiBot");
-        expect(screen).not.toContain("Open Accessibility Settings");
-        fixture.localMessage = "Accessibility required";
-        const accessibility = renderToStaticMarkup(createElement(ErrorRow, {
-            message: "CUA Driver is not ready for this computer — Accessibility required",
-        }));
-        expect(accessibility).toContain("Open Accessibility Settings");
-        expect(accessibility).not.toContain("Open Screen Recording Settings");
-        expect(renderToStaticMarkup(createElement(ErrorRow, {
-            message: "CUA Driver is not ready for this computer — Screen Recording required",
-        }))).not.toContain("Open Screen Recording Settings");
-        expect(renderToStaticMarkup(createElement(ErrorRow, { message: "Network timeout" }))).not.toContain("Open Screen Recording Settings");
-        fixture.localReasonCode = "remote-server";
-        expect(renderToStaticMarkup(createElement(ErrorRow, { message: "CUA Driver is not ready for this computer — Screen Recording required" }))).not.toContain("Open Screen Recording Settings");
-        fixture.localReasonCode = "cua-driver-unavailable";
-        fixture.platform = "other";
-        fixture.localMessage = "";
-    });
     it.each([
         "شغّل الاختبارات\nThen run typecheck\nوبعدها ارفع الفرع",
         "שלום עולם\nThen run typecheck\nתודה רבה",
@@ -442,11 +401,6 @@ describe("thread control placement", () => {
         expect(fixture.approval).toMatchObject({ approvalMode: "ask", disabled: false, trustedModesAvailable: false });
         fixture.approval!.onSelect("auto");
         expect(fixture.dispatch).toHaveBeenLastCalledWith({ type: "updateTask", botId: "bot", threadId: "selected", patch: { approvalMode: "auto" } });
-    });
-    it("keeps both controls hidden for remote clients", () => {
-        const markup = renderToStaticMarkup(createElement(ChatView, { bot }));
-        expect(markup).not.toContain("data-test-model-control");
-        expect(markup).not.toContain("data-test-approval-control");
     });
     it.each([true, false])("pins a place per conversation from the composer only in Advanced (advanced: %s)", (advanced) => {
         fixture.advanced = advanced;

@@ -1,16 +1,17 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
+import { freePortBlock } from "./testing/ports.ts";
 
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
-const PORT = 18800 + Math.floor(Math.random() * 10_000);
-const BASE = `http://127.0.0.1:${PORT}`;
+let BASE: string;
 const posixOnly = describe.skipIf(process.platform === "win32");
 
 interface Msg {
@@ -59,35 +60,34 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
   };
 
   beforeAll(async () => {
-    chmodSync(FAKE_CLI, 0o755);
     home = mkdtempSync(join(tmpdir(), "quati-branch-test-"));
-    mkdirSync(join(home, ".quatibot"), { recursive: true });
+    const port = await freePortBlock([0, 1]);
+    BASE = `http://127.0.0.1:${port}`;
+    const dataDir = join(home, ".quatibot");
+    mkdirSync(join(dataDir, "providers", "opencode", "discovery", ".quati-project"), { recursive: true });
+    const instances: Record<string, { driver: string; config: { cli: string } }> = {};
+    for (const id of ["happy", "second", "hang"]) {
+      const cli = join(home, `${id}.mjs`);
+      const knobs = {
+        FAKE_ACP_MODE: id === "hang" ? "hang" : "happy",
+        FAKE_ACP_AGENT_NAME: "OpenCode",
+        FAKE_ACP_VERSION: "2.0.31",
+        FAKE_ACP_AGENT_VERSION: "2.0.31",
+        FAKE_ACP_MODELS: "fixture/test",
+      };
+      writeFileSync(cli, `#!${process.execPath}\n${Object.entries(knobs).map(([key, value]) => `process.env[${JSON.stringify(key)}] = ${JSON.stringify(value)};`).join("\n")}\nawait import(${JSON.stringify(FAKE_CLI)});\n`, { mode: 0o755 });
+      instances[id] = { driver: "opencodeGo", config: { cli } };
+    }
     writeFileSync(
       join(home, ".quatibot", "config.json"),
       JSON.stringify({
-        instances: {
-          happy: { driver: "grokAgent", config: { cli: FAKE_CLI, fullAuto: true } },
-          // a second engine for the mid-thread model switch: same fake, its
-          // own instance, so it starts with no session cursor for the thread
-          second: { driver: "grokAgent", config: { cli: FAKE_CLI, fullAuto: true } },
-          hang: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "hang" },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-        },
+        instances,
       }),
     );
 
-    const env: NodeJS.ProcessEnv = {
-      HOME: home,
-      USERPROFILE: home,
-      QUATI_PORT: String(PORT),
-    };
-    if (process.env.PATH) env.PATH = process.env.PATH;
     child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
-      env,
+      env: { ...verificationServerEnvironment({}, dataDir, port), HOME: home },
       stdio: ["ignore", "pipe", "pipe"],
     });
     child.stderr!.on("data", (c) => (stderr += c));
@@ -103,6 +103,10 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
       if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}. stderr:\n${stderr}`);
       await new Promise((r) => setTimeout(r, 150));
     }
+    await waitFor(async () => {
+      const { instances } = (await api("GET", "/api/instances")).body;
+      return instances.length === 3 && instances.every((instance: { models: { options: { id: string }[] } }) => instance.models.options.some((model) => model.id === "fixture/test"));
+    }, "fixture models");
   }, 30_000);
 
   afterAll(async () => {
@@ -115,7 +119,7 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
     async () => {
       const created = (await api("POST", "/api/bots")).body.bot;
       await api("PATCH", `/api/bots/${created.id}`, {
-        modelSelection: { instanceId: "happy", model: "fake-model" },
+        modelSelection: { instanceId: "happy", model: "fixture/test" },
       });
 
       expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "original question" })).status).toBe(202);
@@ -171,18 +175,12 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
     async () => {
       const created = (await api("POST", "/api/bots")).body.bot;
       await api("PATCH", `/api/bots/${created.id}`, {
-        modelSelection: { instanceId: "hang", model: "fake-model" },
+        modelSelection: { instanceId: "hang", model: "fixture/test" },
       });
 
       // start a turn that will never finish on its own
       expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first try" })).status).toBe(202);
       await waitFor(async () => (await getBot(created.id)).busy === true, "the hung turn to start");
-
-      const backendBefore = (await getBot(created.id)).cloudBackend;
-      const backendChange = await api("PATCH", `/api/bots/${created.id}`, { cloudBackend: "vps" });
-      expect(backendChange.status).toBe(409);
-      expect(backendChange.body.error).toContain("stop the active turn");
-      expect((await getBot(created.id)).cloudBackend).toBe(backendBefore);
 
       const parallel = await api("POST", `/api/bots/${created.id}/messages`, { text: "sneaky second" });
       expect(parallel.status).toBe(202);
@@ -230,7 +228,7 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
     async () => {
       const created = (await api("POST", "/api/bots")).body.bot;
       await api("PATCH", `/api/bots/${created.id}`, {
-        modelSelection: { instanceId: "happy", model: "fake-model" },
+        modelSelection: { instanceId: "happy", model: "fixture/test" },
       });
 
       expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "my dog is named Biscuit" })).status).toBe(202);
@@ -240,7 +238,7 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
       }, "the first reply");
 
       await api("PATCH", `/api/bots/${created.id}`, {
-        modelSelection: { instanceId: "second", model: "fake-model" },
+        modelSelection: { instanceId: "second", model: "fixture/test" },
       });
       expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "what is my dog called?" })).status).toBe(202);
       await waitFor(async () => {
@@ -249,7 +247,7 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
       }, "the reply from the second engine");
 
       await api("PATCH", `/api/bots/${created.id}`, {
-        modelSelection: { instanceId: "happy", model: "fake-model" },
+        modelSelection: { instanceId: "happy", model: "fixture/test" },
       });
       expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "and again?" })).status).toBe(202);
       await waitFor(async () => {

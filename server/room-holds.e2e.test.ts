@@ -2,16 +2,17 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SERVER_DIR, "..");
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
+const FAKE_ACP = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 const HELD = (name: string) => `${name} is held (stopped by you) — @mention it or say resume`;
 
 let child: ChildProcess;
@@ -40,12 +41,18 @@ const api = async (method: string, path: string, body?: unknown): Promise<{ stat
   return { status: response.status, body: await response.json() };
 };
 
-const fixture = (displayName: string, environment: Record<string, string>) => ({
-  driver: "claudeAgent",
-  displayName,
-  environment,
-  config: { cli: FAKE_CLAUDE },
-});
+const fixture = (displayName: string, environment: Record<string, string>) => {
+  const cli = join(home, `${displayName.replace(/\W+/g, "-")}.mjs`);
+  const env = {
+    FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31",
+    FAKE_ACP_AGENT_NAME: "OpenCode", FAKE_ACP_MODELS: "fixture/test", ...environment,
+  };
+  writeFileSync(cli, ["#!/usr/bin/env node",
+    ...Object.entries(env).map(([key, value]) => `process.env[${JSON.stringify(key)}] = ${JSON.stringify(value)};`),
+    `await import(${JSON.stringify(pathToFileURL(FAKE_ACP).href)});`,
+  ].join("\n"), { mode: 0o700 });
+  return { driver: "opencodeGo", displayName, config: { cli } };
+};
 
 beforeAll(async () => {
   home = mkdtempSync(join(tmpdir(), "quati-room-holds-"));
@@ -56,22 +63,25 @@ beforeAll(async () => {
   writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>Room holds test</title>");
   writeFileSync(join(staticDir, "assets", "smoke.css"), "body{}");
   slowGate = join(home, "slow-finish");
+  const thoughtFile = join(home, "narrator-updates.json");
+  writeFileSync(thoughtFile, JSON.stringify([{ update: {
+    sessionUpdate: "agent_thought_chunk", content: { text: "Let me check with @Ann later." },
+  } }]));
+  const discovery = join(data, "providers", "opencode", "discovery");
+  mkdirSync(discovery, { recursive: true });
+  writeFileSync(join(discovery, ".quati-project"), "fixture");
   writeFileSync(join(data, "config.json"), JSON.stringify({
     instances: {
-      // Holds its turn open until the gate file exists; its closing reply echoes the prompt it was given.
-      patient: fixture("Patient fixture", { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: slowGate }),
-      quick: fixture("Quick fixture", { FAKE_CLAUDE_MODE: "happy" }),
-      // a working note that names a teammate, then the actual answer
+      patient: fixture("Patient fixture", { FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: slowGate }),
+      quick: fixture("Quick fixture", { FAKE_ACP_MODE: "happy" }),
       narrator: fixture("Narrating fixture", {
-        FAKE_CLAUDE_MODE: "happy",
-        FAKE_CLAUDE_REPLIES: JSON.stringify([["Let me check with @Ann later.", "All done here."]]),
-        FAKE_CLAUDE_REPLY_STATE: join(home, "narrator-replies.txt"),
+        FAKE_ACP_MODE: "reply-sequence", FAKE_ACP_REPLIES: JSON.stringify(["All done here."]),
+        FAKE_ACP_REPLY_STATE: join(home, "narrator-replies.txt"), FAKE_ACP_UPDATES_FILE: thoughtFile,
       }),
-      // a turn that ends on "(pass)", then the re-ask's answer
       passer: fixture("Passing fixture", {
-        FAKE_CLAUDE_MODE: "happy",
-        FAKE_CLAUDE_REPLIES: JSON.stringify(["(pass)", "Result: the title is fixed."]),
-        FAKE_CLAUDE_REPLY_STATE: join(home, "passer-replies.txt"),
+        FAKE_ACP_MODE: "reply-sequence",
+        FAKE_ACP_REPLIES: JSON.stringify(["(pass)", "Result: the title is fixed."]),
+        FAKE_ACP_REPLY_STATE: join(home, "passer-replies.txt"),
       }),
     },
   }));
@@ -80,12 +90,7 @@ beforeAll(async () => {
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: ROOT,
     env: {
-      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-      HOME: home,
-      USERPROFILE: home,
-      QUATI_PORT: String(port),
-      QUATI_WEBHOOK_PORT: String(port + 1),
+      ...verificationServerEnvironment({}, data, port), HOME: home,
       QUATI_STATIC_DIR: staticDir,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -101,6 +106,13 @@ beforeAll(async () => {
     if (Date.now() >= deadline) throw new Error(`server never became healthy: ${stderr}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  for (;;) {
+    const instances = (await api("GET", "/api/instances")).body.instances;
+    if (["patient", "quick", "narrator", "passer"].every((id) =>
+      instances.find((instance: { instanceId: string }) => instance.instanceId === id)?.models.options.some((option: { id: string }) => option.id === "fixture/test"))) break;
+    if (Date.now() >= deadline) throw new Error(`Fixture models unavailable: ${JSON.stringify(instances)}`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
 }, 30_000);
 
 afterAll(async () => {
@@ -111,7 +123,7 @@ afterAll(async () => {
 const createBot = async (name: string, instanceId: string) =>
   (await api("POST", "/api/bots", {
     name,
-    modelSelection: { instanceId, model: "claude-sonnet-5" },
+    modelSelection: { instanceId, model: "fixture/test" },
     requireAvailableModel: true,
   })).body.bot;
 
@@ -232,10 +244,8 @@ describe("a member's room reply is its final message", { timeout: 60_000 }, () =
       }, { timeout: 15_000 }).toEqual({ working: false, final: "All done here." });
       const { messages } = await snapshot(room.id);
       const nora_ = botTexts(messages, nora.id);
-      expect(nora_.map((message) => [message.text, Boolean(message.turnTerminal)])).toEqual([
-        ["Let me check with @Ann later.", false],
-        ["All done here.", true],
-      ]);
+      expect(nora_.map((message) => [message.text, Boolean(message.turnTerminal)])).toEqual([["All done here.", true]]);
+      expect(readFileSync(join(data, "native", `${room.threadId}.ndjson`), "utf8")).toContain("Let me check with @Ann later.");
       expect(botTexts(messages, ann.id)).toHaveLength(0);
     } finally {
       await cleanup(room?.id, [nora.id, ann.id]);

@@ -428,6 +428,8 @@ export function ComputerPanel({ bot: profileBot }: {
         threadPath,
     ]);
     const pageVisible = usePageVisible();
+    const captureBusy = useRef(bot.busy);
+    captureBusy.current = bot.busy;
     useEffect(() => {
         if (panelView !== "computer" || phase !== "vm" || !computerStatusCurrent || viewerOpen || !pageVisible)
             return;
@@ -439,7 +441,7 @@ export function ComputerPanel({ bot: profileBot }: {
         const shoot = async () => {
             if (inFlight || controller.signal.aborted)
                 return;
-            if (Date.now() - lastAttemptAt < (retryDelay ?? (bot.busy ? 3000 : 30000)))
+            if (Date.now() - lastAttemptAt < (retryDelay ?? (captureBusy.current ? 3000 : 30000)))
                 return;
             inFlight = true;
             retryDelay = null;
@@ -466,12 +468,12 @@ export function ComputerPanel({ bot: profileBot }: {
             }
         };
         void shoot();
-        const timer = window.setInterval(() => void shoot(), bot.busy ? 3000 : 30000);
+        const timer = window.setInterval(() => void shoot(), 1000);
         return () => {
             controller.abort();
             window.clearInterval(timer);
         };
-    }, [panelView, phase, computerStatusCurrent, threadPath, viewerOpen, pageVisible, bot.busy, setError, setPreviewError, setVmFrame]);
+    }, [panelView, phase, computerStatusCurrent, threadPath, viewerOpen, pageVisible, setError, setPreviewError, setVmFrame]);
     // The first capture attempt is what makes macOS show the Screen Recording prompt (no reliable pre-grant on macOS
     // 15+), so repeated empty frames mean denied.
     useEffect(() => {
@@ -792,7 +794,7 @@ export function ComputerPanel({ bot: profileBot }: {
       </div>
 
       {panelView === "routines" ? (<div {...tabPanelProps("routines")} className={cn("min-h-0 flex-1 overflow-y-auto px-4 pb-4", TAB_PANEL_FOCUS)}>
-          <RoutinesSection key={bot.id} bot={bot} routines={botRoutines} runs={state.routineRuns} defaultRunOn="quati"/>
+          <RoutinesSection key={bot.id} bot={bot} routines={botRoutines} runs={state.routineRuns}/>
         </div>) : panelView === "browser" && browserEnabled ? (<div {...tabPanelProps("browser")} className={cn("flex min-h-0 flex-1 flex-col px-4 pb-4", TAB_PANEL_FOCUS)}>
           {browserSwitchRow}
           {signInHelp?.place === "browser" && <div className="-mt-1 mb-3">{signInBanner()}</div>}
@@ -836,7 +838,7 @@ export function ComputerPanel({ bot: profileBot }: {
               </span>
             </button>) : frameSrc ? (<img src={frameSrc} alt={t("computer.screenOf", { name: bot.name })} className="h-full w-full object-contain" title={phase === "vm" ? t("computer.watchOnly") : undefined}/>) : (<div className="flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
               {phase === "checking" || phase === "vm" || false ? (<Loader2 size={18} className="animate-spin"/>) : phase === "off" ? (<Power size={22}/>) : (<Monitor size={22}/>)}
-              <span className="text-[12px]">{phase === "vm" ? t("computer.phase.checking") : emptyState[phase]}</span>
+              <span className="text-[12px]">{vmResumable ? t(pending === "vm-start" ? "vm.setup.starting" : "computer.phase.vmStopped") : phase === "vm" ? t("computer.phase.checking") : emptyState[phase]}</span>
 
               {phase === "browser" && browserEnabled && (<button onClick={() => selectPanelView("browser")} className="mt-1 rounded-lg bg-control px-3 py-1.5 text-[12px] text-ink hover:bg-raised-hover">
                   {t("computer.openBrowserTab")}

@@ -1,14 +1,13 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 
+import { verificationServerEnvironment } from "../scripts/control-quati.ts";
+import { freePortBlock } from "./testing/ports.ts";
 import { ENVELOPE_MARK } from "./runtime/envelope.ts";
 import { mentionedBots, normalizeGroupDefaultResponder, roomResponders } from "./store.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
@@ -17,8 +16,8 @@ import { readHandoffs } from "./testing/handoff-rows.ts";
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 const TEST_CAPABILITY_KEY = "comms-test-capability-key-0123456789abcdef";
-const PORT = 18800 + Math.floor(Math.random() * 10_000);
-const BASE = `http://127.0.0.1:${PORT}`;
+let PORT: number;
+let BASE: string;
 const SETTLED = "Your downstream room requests have settled.";
 const WOKE_WITH_RESULT = "woke after delegation: saw the result";
 const WOKE_WITHOUT_RESULT = "woke after delegation: no result";
@@ -98,11 +97,6 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
   let home: string;
   let gateFile = "";
   let stderr = "";
-  // A loopback OpenAI-compatible engine under the workspace key: a request hangs until the engine is replaced ("hang"),
-  // answers "ping from fake", loops on tool calls ("steps"), or is rate-limited ("limit").
-  let compat: Server;
-  let compatUrl = "";
-  let compatAnswer: "hang" | "ping" | "steps" | "limit" = "hang";
 
   const waitUntil = async (predicate: () => Promise<boolean>, timeout: number, what: string): Promise<void> => {
     const deadline = Date.now() + timeout;
@@ -154,9 +148,9 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
     expect(patched.status, JSON.stringify(patched.body)).toBe(200);
     return created;
   };
-  const HELPER = { instanceId: "helper", model: "fake-model" };
-  const ASKER = { instanceId: "grok", model: "fake-model" };
-  const DELEGATOR = { instanceId: "askerDelegate", model: "fake-model" };
+  const HELPER = { instanceId: "helper", model: "fixture/test" };
+  const ASKER = { instanceId: "grok", model: "fixture/test" };
+  const DELEGATOR = { instanceId: "askerDelegate", model: "fixture/test" };
   const lastText = (messages: any[]): any => messages.findLast((m: any) => m.kind === "text" && m.role === "bot");
   const chip = (messages: any[], name: string): any => messages.find((m: any) => m.kind === "activity" && m.tool?.name === name);
 
@@ -183,182 +177,48 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
   const runState = async (id: string) => (await api("GET", "/api/routines")).body.runs.find((run: any) => run.id === id);
 
   beforeAll(async () => {
-    chmodSync(FAKE_CLI, 0o755);
     home = mkdtempSync(join(tmpdir(), "quati-comms-test-"));
     gateFile = join(home, "helper-gate");
-    const antigravityDirectory = join(home, "fake-antigravity");
-    const antigravityCli = join(antigravityDirectory, "agy_acp_server.ts");
-    const antigravityHarness = join(
-      antigravityDirectory,
-      process.platform === "win32" ? "localharness_external.exe" : "localharness_external",
-    );
-    mkdirSync(antigravityDirectory, { recursive: true });
-    copyFileSync(FAKE_CLI, antigravityCli);
-    copyFileSync(FAKE_CLI, antigravityHarness);
-    if (process.platform !== "win32") {
-      chmodSync(antigravityCli, 0o755);
-      chmodSync(antigravityHarness, 0o755);
-    }
-    const antigravityProfile = join(
-      home,
-      ".quatibot",
-      "providers",
-      "antigravity",
-      createHash("sha256").update("geminiAsker").digest("hex"),
-      "antigravity-acp",
-    );
-    mkdirSync(antigravityProfile, { recursive: true });
-    writeFileSync(join(antigravityProfile, "acp_token.json"), "{}\n");
-    compat = createServer(async (req, res) => {
-      for await (const _ of req) {}
-      if (req.url?.endsWith("/models")) {
-        res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ data: [{ id: "fake-model" }] }));
-        return;
-      }
-      if (compatAnswer === "hang") return;
-      if (compatAnswer === "limit") {
-        res.writeHead(429, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: { message: "Rate limit reached for fake-model: 30 requests per minute" } }));
-        return;
-      }
-      const steps = compatAnswer === "steps";
-      const delta = steps
-        ? { content: "Still exporting.", tool_calls: [{ index: 0, id: `call_${randomUUID()}`, type: "function", function: { name: "missing_tool", arguments: "{}" } }] }
-        : { content: "ping from fake" };
-      res.writeHead(200, { "content-type": "text/event-stream" });
-      res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: steps ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`);
-    });
-    await new Promise<void>((resolve) => compat.listen(0, "127.0.0.1", resolve));
-    compatUrl = `http://127.0.0.1:${(compat.address() as AddressInfo).port}/v1`;
-    mkdirSync(join(home, ".quatibot"), { recursive: true });
-    writeFileSync(
-      join(home, ".quatibot", "config.json"),
-      JSON.stringify({
-        openaiCompat: { key: "comms-compat-key", url: compatUrl },
-        instances: {
-          // the asker: consults the first visible teammate and answers a resume carrying the result with a fixed line
-          grok: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "ask-peer" },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // Plain helpers: a helper that consulted in turn would recurse until the depth limit.
-          helper: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "happy", FAKE_ACP_DUMP: join(home, "helper.json"), FAKE_ACP_DUMP_PROMPT: "1" },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // a helper that lists the tools of every MCP server its turn was
-          // given: proof of what a delegated turn can reach
-          helperTools: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "mcp-tools" },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // Antigravity uses Google's official ACP server. This instance
-          // proves its session-scoped MCP mount reaches the same agents proxy.
-          geminiAsker: {
-            driver: "antigravityAgent",
-            environment: {
-              FAKE_ACP_MODE: "ask-peer",
-              FAKE_ACP_AUTH_METHOD: "oauth-personal",
-              FAKE_ACP_MODELS: "gemini-3.8-flash-high",
-              FAKE_ACP_MODES: "default,yolo",
-            },
-            config: { cli: antigravityCli, fullAuto: true },
-          },
-          // Hermes shape: keeps the first agents proxy it is offered for the life of the process
-          poolLister: {
-            driver: "hermesAgent",
-            environment: { FAKE_ACP_MODE: "list-peers" },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // the asker that hands work on with coordinate_bots (mode work)
-          askerDelegate: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "delegate-peer" },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // The resume is a fresh fake process that learns its agents server only from session/new, so it replays into a new session.
-          askerRedelegate: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "delegate-peer", FAKE_ACP_REDELEGATE_FILE: join(home, "redelegated"), FAKE_ACP_LOAD_NULL: "1" },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // the same asker on an agent that cannot load its earlier session
-          askerNoLoad: {
-            driver: "grokAgent",
-            environment: {
-              FAKE_ACP_MODE: "delegate-peer",
-              FAKE_ACP_LOAD_NULL: "1",
-              FAKE_ACP_DUMP: join(home, "asker-no-load.json"),
-              FAKE_ACP_DUMP_PROMPT: "1",
-            },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // A Chief that hands work on only on the first assignment prompt,
-          // then answers ordinary follow-ups while the worker remains gated.
-          chiefAsync: {
-            driver: "grokAgent",
-            environment: {
-              FAKE_ACP_MODE: "chief-delegate",
-              FAKE_ACP_TASKID_FILE: join(home, "chief-task-id"),
-              FAKE_ACP_LOG_FILE: join(home, "chief-fake.log"),
-            },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          chiefCreator: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "create-peer" },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // crashes at initialize: the requester must see a failed chip and be resumed with the failure
-          helperCrash: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "exit-early" },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // succeeds with only an image, no text: the requester still needs a positive terminal record
-          helperImage: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "image" },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // the loopback engine above: a turn there stays busy until a save
-          // that changes the workspace OpenAI-compatible key replaces it
-          helperCompat: { driver: "openai-compat", config: { model: "fake-model" } },
-          // turns hold open until the gate file exists, then echo their prompt
-          helperGate: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: gateFile },
-            config: { cli: FAKE_CLI, fullAuto: true },
-          },
-          // a teammate whose delegated turn stops on a tool approval card
-          // and waits there until a person answers it
-          helperPermission: {
-            driver: "grokAgent",
-            environment: { FAKE_ACP_MODE: "permission" },
-            config: { cli: FAKE_CLI, fullAuto: false },
-          },
-        },
-      }),
-    );
-
-    const env: NodeJS.ProcessEnv = {
-      HOME: home,
-      USERPROFILE: home,
-      QUATI_PORT: String(PORT),
-      QUATI_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,
+    PORT = await freePortBlock([0, 1]);
+    BASE = "http://127.0.0.1:" + PORT;
+    const dataDir = join(home, ".quatibot");
+    mkdirSync(join(dataDir, "providers", "opencode", "discovery"), { recursive: true });
+    writeFileSync(join(dataDir, "providers", "opencode", "discovery", ".quati-project"), "fixture");
+    const quotaError = join(home, "quota-error.json");
+    writeFileSync(quotaError, JSON.stringify({ code: -32603, message: "Rate limit reached for fixture/test: 30 requests per minute" }));
+    const modes: Record<string, Record<string, string>> = {
+      grok: { FAKE_ACP_MODE: "ask-peer" },
+      helper: { FAKE_ACP_MODE: "happy", FAKE_ACP_DUMP: join(home, "helper.json"), FAKE_ACP_DUMP_PROMPT: "1" },
+      helperTools: { FAKE_ACP_MODE: "mcp-tools" },
+      poolLister: { FAKE_ACP_MODE: "list-peers" },
+      askerDelegate: { FAKE_ACP_MODE: "delegate-peer" },
+      askerRedelegate: { FAKE_ACP_MODE: "delegate-peer", FAKE_ACP_REDELEGATE_FILE: join(home, "redelegated"), FAKE_ACP_LOAD_NULL: "1" },
+      askerNoLoad: { FAKE_ACP_MODE: "delegate-peer", FAKE_ACP_LOAD_NULL: "1", FAKE_ACP_DUMP: join(home, "asker-no-load.json"), FAKE_ACP_DUMP_PROMPT: "1" },
+      chiefAsync: { FAKE_ACP_MODE: "chief-delegate", FAKE_ACP_TASKID_FILE: join(home, "chief-task-id"), FAKE_ACP_LOG_FILE: join(home, "chief-fake.log") },
+      chiefCreator: { FAKE_ACP_MODE: "create-peer" },
+      helperCrash: { FAKE_ACP_MODE: "fail-after-text" },
+      helperImage: { FAKE_ACP_MODE: "image" },
+      helperLimit: { FAKE_ACP_MODE: "happy", FAKE_ACP_RPC_FAILURE_FILE: quotaError },
+      helperGate: { FAKE_ACP_MODE: "echo-gated", FAKE_ACP_GATE_FILE: gateFile },
+      helperPermission: { FAKE_ACP_MODE: "permission" },
     };
-    if (process.env.PATH) env.PATH = process.env.PATH;
-    // Without SystemRoot, winsock fails to initialize in the child.
-    if (process.env.SystemRoot) env.SystemRoot = process.env.SystemRoot;
+    const instances = Object.fromEntries(Object.entries(modes).map(([id, environment]) => {
+      const cli = join(home, "comms-" + id + ".mjs");
+      writeFileSync(cli, [
+        "#!/usr/bin/env node",
+        ...Object.entries({ FAKE_ACP_VERSION: "2.0.31", FAKE_ACP_AGENT_VERSION: "2.0.31", FAKE_ACP_AGENT_NAME: "OpenCode", FAKE_ACP_MODELS: "fixture/test", ...environment })
+          .map(([key, value]) => "process.env." + key + " = " + JSON.stringify(value) + ";"),
+        "await import(" + JSON.stringify(pathToFileURL(FAKE_CLI).href) + ");",
+      ].join("\n"), { mode: 0o700 });
+      return [id, { driver: "opencodeGo", config: { cli } }];
+    }));
+    writeFileSync(join(dataDir, "config.json"), JSON.stringify({ instances, defaultModelSelection: { instanceId: "helper", model: "fixture/test" } }));
     child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
-      env,
+      env: { ...verificationServerEnvironment({}, dataDir, PORT), HOME: home, QUATI_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    child.stdout!.on("data", () => {});
     child.stderr!.on("data", (c) => (stderr += c));
 
     const deadline = Date.now() + 20_000;
@@ -372,6 +232,10 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
       if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}. stderr:\n${stderr}`);
       await new Promise((r) => setTimeout(r, 150));
     }
+    await waitUntil(async () => {
+      const available = (await api("GET", "/api/instances")).body.instances;
+      return Object.keys(instances).every((id) => available.find((instance: { instanceId: string }) => instance.instanceId === id)?.models.options.some((option: { id: string }) => option.id === "fixture/test"));
+    }, 15_000, "OpenCode fixture models were not discovered");
     // The random starter can be Pixel, the name create-peer proposes, so pin this fixture's identity first.
     const starter = (await api("GET", "/api/bots")).body.bots[0];
     expect(starter).toBeDefined();
@@ -380,8 +244,6 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
 
   afterAll(async () => {
     await waitForExit(child, { signal: "SIGTERM" });
-    compat.closeAllConnections();
-    await new Promise((resolve) => compat.close(resolve));
     await removeTempDir(home);
   });
 
@@ -455,52 +317,13 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
   );
 
   it(
-    "lets a Gemini Antigravity bot call a peer through the temporary agents MCP mount",
-    async () => {
-      // A unique section makes list_bots deterministic even though this
-      // suite deliberately keeps earlier bots around to exercise the real
-      // persisted fleet. Only these two teammates can see one another.
-      const section = "Gemini agents MCP e2e";
-      // One-word names: the fake's resume branch reads `What @<name> said:`
-      // up to the next space (fake-acp-cli.ts).
-      const helper = await named("GeminiHelper", { section, modelSelection: HELPER });
-      const asker = await named("Gemini Asker", { section, modelSelection: { instanceId: "geminiAsker", model: "gemini-3.8-flash-high" } });
-
-      const send = await startRoutine(asker.id, "Ask the other bot for a status check.");
-      expect(send.status).toBe(201);
-
-      let askerBot: any;
-      let helperBot: any;
-      await waitUntil(async () => {
-        askerBot = await bot(asker.id);
-        helperBot = await bot(helper.id);
-        const asked = askerBot.messages.some((m: any) => m.kind === "text" && m.role === "bot" && m.text?.startsWith("peer says:") && m.text.includes('"requestId"'));
-        const woke = lastText(askerBot.messages)?.text === WOKE_WITH_RESULT;
-        return asked && woke && !askerBot.busy && !helperBot.busy;
-      }, 45_000, "Gemini never got its peer reply");
-
-      expect(chip(askerBot.messages, "GeminiHelper replied")?.tool.output).toBe("hello from fake acp");
-      const [consult] = assignments(helper.id, asker.id);
-      expect(consult).toMatchObject({ mode: "consult", status: "completed", result: "hello from fake acp" });
-      const work = await threadMessages(consult.threadId);
-      const inbound = work.find((m: any) => m.roomRequest?.id === consult.id && m.roomRequest.phase === "request");
-      expect(inbound.from?.botId).toBe(asker.id);
-      expect(inbound.text).toContain("ping from fake");
-      expect(work.some((m: any) => m.role === "bot" && m.kind === "text" && m.text?.includes("hello from fake acp"))).toBe(true);
-
-      expect(existsSync(join(home, ".gemini", "config", "mcp_config.json"))).toBe(false);
-    },
-    60_000,
-  );
-
-  it(
     "lets a section Chief create a safe operator and delegate work to it",
     async () => {
       const chief = await named("Atlas", {
         section: "Launch",
         chiefOfStaff: true,
         approvalMode: "ask",
-        modelSelection: { instanceId: "chiefCreator", model: "fake-model" },
+        modelSelection: { instanceId: "chiefCreator", model: "fixture/test" },
       });
       const defaultSelection = chief.modelSelection;
 
@@ -608,7 +431,7 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
     async () => {
       await hideAll();
       const helper = await named("Helper", { modelSelection: HELPER });
-      const asker = await named("Asker", { modelSelection: { instanceId: "askerRedelegate", model: "fake-model" } });
+      const asker = await named("Asker", { modelSelection: { instanceId: "askerRedelegate", model: "fixture/test" } });
 
       const { body: { run } } = await startRoutine(asker.id, "ROUTINE_LINEAGE: have @Helper ship the CSV export");
       let askerBot: any;
@@ -640,7 +463,7 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
     async () => {
       await hideAll();
       const helper = await named("Helper", { modelSelection: HELPER });
-      const asker = await named("Asker", { modelSelection: { instanceId: "askerNoLoad", model: "fake-model" } });
+      const asker = await named("Asker", { modelSelection: { instanceId: "askerNoLoad", model: "fixture/test" } });
 
       await startRoutine(asker.id, "hey @Helper please pick this up; keep the codename ORCHID_EARLIER_CONTEXT");
       await waitUntil(async () => {
@@ -666,8 +489,8 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
       await hideAll();
       rmSync(gateFile, { force: true });
 
-      const helper = await named("LongWorker", { section: "Operations", modelSelection: { instanceId: "helperGate", model: "fake-model" } });
-      const chief = await named("Atlas", { section: "Operations", chiefOfStaff: true, modelSelection: { instanceId: "chiefAsync", model: "fake-model" } });
+      const helper = await named("LongWorker", { section: "Operations", modelSelection: { instanceId: "helperGate", model: "fixture/test" } });
+      const chief = await named("Atlas", { section: "Operations", chiefOfStaff: true, modelSelection: { instanceId: "chiefAsync", model: "fixture/test" } });
 
       try {
         expect((await startRoutine(chief.id, "ASSIGN_TO_PEER: have @LongWorker handle the long task.")).status).toBe(201);
@@ -729,9 +552,9 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
     "tells a Chief, and shows it, when its delegated teammate is waiting on an approval",
     async () => {
       await hideAll();
-      const helper = await named("Gatekeeper", { section: "Approvals", approvalMode: "ask", modelSelection: { instanceId: "helperPermission", model: "fake-model" } });
+      const helper = await named("Gatekeeper", { section: "Approvals", approvalMode: "ask", modelSelection: { instanceId: "helperPermission", model: "fixture/test" } });
       // A Chief on Ask passes no level down, so the teammate's own Ask holds.
-      const chief = await named("Warden", { section: "Approvals", chiefOfStaff: true, approvalMode: "ask", modelSelection: { instanceId: "chiefAsync", model: "fake-model" } });
+      const chief = await named("Warden", { section: "Approvals", chiefOfStaff: true, approvalMode: "ask", modelSelection: { instanceId: "chiefAsync", model: "fixture/test" } });
       const chiefThreads = async () => {
         const tasks = (await bot(chief.id)).tasks as any[];
         const out: Array<{ threadId: string; messages: any[] }> = [];
@@ -806,16 +629,15 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
   );
 
   it(
-    "keeps QuatiBot tools authorized for Hermes after Stop issues a new bearer",
+    "keeps QuatiBot tools authorized after Stop revokes the previous bearer",
     async () => {
-      // Stop issues a new bearer; a pooled Hermes keeps its first agents server, so the next turn must run on a fresh process.
       for (const existing of (await api("GET", "/api/bots")).body.bots) {
         await api("PATCH", `/api/bots/${existing.id}`, { hidden: true });
       }
       const helper = (await api("POST", "/api/bots")).body.bot;
-      await api("PATCH", `/api/bots/${helper.id}`, { name: "PoolHelper", modelSelection: { instanceId: "grok", model: "fake-model" } });
+      await api("PATCH", `/api/bots/${helper.id}`, { name: "PoolHelper", modelSelection: { instanceId: "grok", model: "fixture/test" } });
       const asker = (await api("POST", "/api/bots")).body.bot;
-      await api("PATCH", `/api/bots/${asker.id}`, { name: "PoolAsker", modelSelection: { instanceId: "poolLister", model: "fake-model" } });
+      await api("PATCH", `/api/bots/${asker.id}`, { name: "PoolAsker", modelSelection: { instanceId: "poolLister", model: "fixture/test" } });
 
       const replies = async (count: number) => {
         const deadline = Date.now() + 25_000;
@@ -853,7 +675,7 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
       // everything previous tests left behind before creating the pair.
       await hideAll();
       rmSync(gateFile, { force: true });
-      const helper = await named("GateHelper", { modelSelection: { instanceId: "helperGate", model: "fake-model" } });
+      const helper = await named("GateHelper", { modelSelection: { instanceId: "helperGate", model: "fixture/test" } });
       const asker = await named("GateAsker", { modelSelection: ASKER });
 
       expect((await api("POST", `/api/bots/${helper.id}/messages`, { text: "hold the line" })).status).toBe(202);
@@ -893,12 +715,11 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
   );
 
   it(
-    "runs an approved hand-off after a provider reload without asking for approval twice",
+    "runs an approved hand-off after capacity is released without asking for approval twice",
     async () => {
       rmSync(gateFile, { force: true });
       await hideAll();
-      compatAnswer = "hang";
-      const helper = await named("ReloadHelper", { modelSelection: { instanceId: "helperCompat", model: "fake-model" } });
+      const helper = await named("ReloadHelper", { modelSelection: { instanceId: "helperGate", model: "fixture/test" } });
       const asker = await named("ReloadAsker", { modelSelection: ASKER, approvePeerComms: true, approvalMode: "ask" });
 
       // Start the ask while B is idle so the normal approval card is the
@@ -933,14 +754,13 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
       expect(assignments(helper.id, asker.id)[0]).toMatchObject({ approvalGranted: true, mode: "consult" });
       expect((await runState(run.id)).status).toBe("waiting");
 
-      compatAnswer = "ping";
-      expect((await api("PUT", "/api/config", { openaiCompat: { key: `compat_retry_${Date.now()}`, url: compatUrl } })).status).toBe(200);
+      writeFileSync(gateFile, "finish");
 
       let finalAsker: any;
       await waitUntil(async () => {
         finalAsker = await bot(asker.id);
-        return Boolean(chip(finalAsker.messages, "ReloadHelper replied")?.tool.output?.includes("ping from fake"));
-      }, 30_000, "provider reload left the queued consultation stranded");
+        return Boolean(chip(finalAsker.messages, "ReloadHelper replied")?.tool.output?.includes("echo:"));
+      }, 30_000, "releasing capacity left the queued consultation stranded");
       await waitUntil(async () => {
         finalAsker = await bot(asker.id);
         return lastText(finalAsker.messages)?.text === WOKE_WITH_RESULT && !finalAsker.busy;
@@ -950,7 +770,7 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
       expect(approvalCards.filter((m: any) => m.card?.tool === "ask_bot")).toHaveLength(1);
       expect(approvalCards.some((m: any) => m.card?.tool === "delegate_bot")).toBe(false);
       expect(assignments(helper.id, asker.id)).toHaveLength(1);
-      expect(assignments(helper.id, asker.id)[0]).toMatchObject({ status: "completed", result: "ping from fake" });
+      expect(assignments(helper.id, asker.id)[0]).toMatchObject({ status: "completed", result: expect.stringContaining("echo:") });
     },
     90_000,
   );
@@ -959,7 +779,7 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
     "reports a successful teammate turn with no text reply as a completed chip and resumes the requester",
     async () => {
       await hideAll();
-      const helper = await named("Helper", { modelSelection: { instanceId: "helperImage", model: "fake-model" } });
+      const helper = await named("Helper", { modelSelection: { instanceId: "helperImage", model: "fixture/test" } });
       const asker = await named("Asker", { modelSelection: DELEGATOR });
 
       expect((await startRoutine(asker.id, "hey @Helper please pick this up")).status).toBe(201);
@@ -980,75 +800,10 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
   );
 
   it(
-    "fails a teammate turn interrupted by a provider reload and resumes the requester with the failure",
-    async () => {
-      compatAnswer = "hang";
-      await hideAll();
-      const helper = await named("Helper", { modelSelection: { instanceId: "helperCompat", model: "fake-model" } });
-      const asker = await named("Asker", { modelSelection: DELEGATOR });
-
-      expect((await startRoutine(asker.id, "hey @Helper please pick this up")).status).toBe(201);
-      await waitUntil(async () => {
-        const helperBot = await bot(helper.id);
-        return Boolean(helperBot.busy) && assignments(helper.id, asker.id)[0]?.status === "running";
-      }, 30_000, "delegated hanging turn never started");
-
-      const reload = await api("PUT", "/api/config", { openaiCompat: { key: "compat_reload_test", url: compatUrl } });
-      expect(reload.status).toBe(200);
-
-      let askerBot: any;
-      await waitUntil(async () => {
-        askerBot = await bot(asker.id);
-        return askerBot.messages.some((m: any) => m.kind === "activity" && m.tool?.ok === false && m.tool?.name?.startsWith("Helper — failed:"))
-          && lastText(askerBot.messages)?.text === WOKE_WITH_FAILURE && !askerBot.busy;
-      }, 30_000, "provider reload did not fail the hand-off");
-      const failed = askerBot.messages.filter((m: any) => m.kind === "activity" && m.tool?.ok === false && m.tool?.name?.startsWith("Helper — failed:"));
-      expect(failed).toHaveLength(1);
-      expect(failed[0].tool.name).toBe("Helper — failed: Turn interrupted — provider settings changed. No tool calls were seen before it stopped.");
-      expect(failed[0].from?.botId).toBe(helper.id);
-      expect(assignments(helper.id, asker.id)[0]).toMatchObject({ status: "failed" });
-    },
-    60_000,
-  );
-
-  it(
-    "continues a delegated teammate's step cap in place and returns the stall to its delegator",
-    async () => {
-      compatAnswer = "steps";
-      try {
-        await hideAll();
-        const helper = await named("CapHelper", { modelSelection: { instanceId: "helperCompat", model: "fake-model" } });
-        const asker = await named("Asker", { modelSelection: DELEGATOR });
-        expect((await startRoutine(asker.id, "hey @CapHelper please pick this up")).status).toBe(201);
-
-        let failed: any;
-        await waitUntil(async () => {
-          const askerBot = await bot(asker.id);
-          failed = askerBot.messages.find((m: any) => m.kind === "activity" && m.tool?.ok === false && m.from?.botId === helper.id);
-          return Boolean(failed) && lastText(askerBot.messages)?.text === WOKE_WITH_FAILURE && !askerBot.busy;
-        }, 90_000, "the stall never reached the delegator");
-        expect(failed.tool.name).toMatch(/^CapHelper — failed: Stopped after 64 steps without a final answer\./);
-        expect(failed.tool.name).not.toContain("\n");
-        const tasks = (await bot(helper.id)).tasks;
-        expect(tasks.map((task: any) => task.title).filter((title: string) => title?.startsWith("Continue:"))).toEqual([]);
-        const handed = assignments(helper.id, asker.id);
-        expect(handed).toHaveLength(1);
-        expect(handed[0]).toMatchObject({ status: "failed", outcome: "stalled", executions: 2 });
-        expect(handed[0]!.outcomeDetail).toMatch(/^Stopped after 2 continuations without progress: Stopped after 64 steps/);
-      } finally {
-        compatAnswer = "hang";
-      }
-    },
-    120_000,
-  );
-
-  it(
     "tells an asker why its teammate's turn failed, in the provider's words",
     async () => {
-      compatAnswer = "limit";
-      try {
         await hideAll();
-        const helper = await named("LimitHelper", { modelSelection: { instanceId: "helperCompat", model: "fake-model" } });
+        const helper = await named("LimitHelper", { modelSelection: { instanceId: "helperLimit", model: "fixture/test" } });
         const asker = await named("LimitAsker", { modelSelection: ASKER });
         expect((await startRoutine(asker.id, "ask @LimitHelper something")).status).toBe(201);
         let failed: any;
@@ -1057,11 +812,8 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
           failed = current.messages.find((m: any) => m.kind === "activity" && m.tool?.ok === false && m.from?.botId === helper.id);
           return Boolean(failed) && lastText(current.messages)?.text === WOKE_WITH_FAILURE && !current.busy;
         }, 30_000, "the asker never heard back");
-        expect(failed.tool.name).toContain("Rate limit reached for fake-model: 30 requests per minute");
-        expect(assignments(helper.id, asker.id)[0].result).toContain("Rate limit reached for fake-model: 30 requests per minute");
-      } finally {
-        compatAnswer = "hang";
-      }
+        expect(failed.tool.name).toContain("Rate limit reached for fixture/test: 30 requests per minute");
+        expect(assignments(helper.id, asker.id)[0].result).toContain("Rate limit reached for fixture/test: 30 requests per minute");
     },
     45_000,
   );
@@ -1070,7 +822,7 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
     "reports a crashed teammate turn as a failed chip and resumes the requester",
     async () => {
       await hideAll();
-      const helper = await named("Helper", { modelSelection: { instanceId: "helperCrash", model: "fake-model" } });
+      const helper = await named("Helper", { modelSelection: { instanceId: "helperCrash", model: "fixture/test" } });
       const asker = await named("Asker", { modelSelection: DELEGATOR });
 
       expect((await startRoutine(asker.id, "hey @Helper please pick this up")).status).toBe(201);
@@ -1092,7 +844,7 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
     async () => {
       await hideAll();
       // no such instance — startTurn rejects, so B's turn never starts
-      const helper = await named("Helper", { modelSelection: { instanceId: "missing-instance", model: "fake-model" } });
+      const helper = await named("Helper", { modelSelection: { instanceId: "missing-instance", model: "fixture/test" } });
       const asker = await named("Asker", { modelSelection: DELEGATOR });
 
       expect((await startRoutine(asker.id, "hey @Helper please pick this up")).status).toBe(201);
@@ -1190,7 +942,7 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
 
   it("gives a delegated teammate's turn the agents integration with the one tool surface", async () => {
     await hideAll();
-    const helper = await named("Helper", { modelSelection: { instanceId: "helperTools", model: "fake-model" } });
+    const helper = await named("Helper", { modelSelection: { instanceId: "helperTools", model: "fixture/test" } });
     const asker = await named("Asker", { modelSelection: DELEGATOR });
 
     const send = await startRoutine(asker.id, "delegate this to @Helper please");

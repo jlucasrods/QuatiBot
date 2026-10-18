@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
@@ -7,7 +7,7 @@ import { launchVerificationServer, runControlQuati, verificationServerEnvironmen
 import { waitForExit } from "./testing/cleanup.ts";
 
 const SPARE = "spare";
-const FAKE_CLI = fileURLToPath(new URL("./testing/fake-claude-cli.ts", import.meta.url));
+const FAKE_CLI = fileURLToPath(new URL("./testing/fake-acp-cli.ts", import.meta.url));
 const lines = (path: string): unknown[] => existsSync(path)
   ? readFileSync(path, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
 const notice = (message: any) => typeof message.tool?.name === "string" && message.tool.name.includes("isn't available, so it now uses");
@@ -24,13 +24,13 @@ async function withEngines(check: (fixture: Fixture) => Promise<void>) {
   const fixture = await launchVerificationServer();
   const { dataDir, url, logPath } = fixture.info;
   let server: ChildProcess | undefined;
-  const promptFile = (instance: string) => join(dataDir, `${instance}-prompts.jsonl`);
+  const promptFile = (instance: string) => join(dataDir, `${instance}-dump.json.prompts.jsonl`);
   const api = async (method: string, path: string, body?: unknown) => {
     const response = await fetch(url + path, {
       method, headers: { "content-type": "application/json", origin: url },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(30_000),
     });
-    const result = await response.json();
+    const result = JSON.parse(await response.text());
     expect(response.ok, `${method} ${path}: ${JSON.stringify(result)}`).toBe(true);
     return result;
   };
@@ -39,20 +39,31 @@ async function withEngines(check: (fixture: Fixture) => Promise<void>) {
     await waitForExit(server ?? fixture.child, { signal: "SIGTERM" });
     const configPath = join(dataDir, "config.json");
     const config = JSON.parse(readFileSync(configPath, "utf8"));
-    const signedOut = { FAKE_CLAUDE_AUTH: "out", FAKE_CLAUDE_MODE: "not-logged-in" };
-    config.instances.claude = { ...config.instances.claude, environment: {
-      FAKE_CLAUDE_PROMPTS: promptFile("claude"), ...(engines.claude === "signed-out" ? signedOut : {}),
-    } };
+    const cli = (instance: string, signedOut: boolean) => {
+      const path = join(dataDir, `${instance}-opencode.mjs`);
+      writeFileSync(path, `#!${process.execPath}
+process.env.FAKE_ACP_AGENT_NAME = 'OpenCode';
+process.env.FAKE_ACP_VERSION = '2.0.31';
+process.env.FAKE_ACP_AGENT_VERSION = '2.0.31';
+process.env.FAKE_ACP_MODELS = 'fixture/default,fixture/alternate';
+process.env.FAKE_ACP_AUTH = ${JSON.stringify(signedOut ? "0" : "1")};
+process.env.FAKE_ACP_MODE = ${JSON.stringify(signedOut ? "auth-required" : "happy")};
+process.env.FAKE_ACP_DUMP = ${JSON.stringify(join(dataDir, `${instance}-dump.json`))};
+await import(${JSON.stringify(FAKE_CLI)});
+`, { mode: 0o755 });
+      return path;
+    };
+    config.instances = {
+      claude: { driver: "opencodeGo", displayName: "Verification fixture", config: { cli: cli("claude", engines.claude === "signed-out") } },
+    };
     delete config.instances[SPARE];
     if (engines.spare !== "missing") {
-      const configDir = join(dataDir, "spare-claude");
-      mkdirSync(configDir, { recursive: true });
       config.instances[SPARE] = {
-        driver: "claudeAgent", displayName: "Spare Claude", config: { cli: FAKE_CLI, configDir },
+        driver: "opencodeGo", displayName: "Spare OpenCode", config: { cli: cli(SPARE, engines.spare === "signed-out") },
         ...(engines.spare === "disabled" ? { enabled: false } : {}),
-        environment: { FAKE_CLAUDE_PROMPTS: promptFile(SPARE), ...(engines.spare === "signed-out" ? signedOut : {}) },
       };
     }
+    config.defaultModelSelection = { instanceId: "claude", model: "fixture/default" };
     writeFileSync(configPath, JSON.stringify(config));
     const log = openSync(logPath, "a", 0o600);
     server = spawn(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./index.ts", import.meta.url))], {
@@ -63,8 +74,14 @@ async function withEngines(check: (fixture: Fixture) => Promise<void>) {
     await expect.poll(async () => {
       try { return (await fetch(url + "/api/health", { signal: AbortSignal.timeout(1_000) })).ok; } catch { return false; }
     }, { timeout: 20_000 }).toBe(true);
-    // Reading the engines is where the server learns who is signed in.
-    await api("GET", "/api/instances");
+    await expect.poll(async () => {
+      const { instances } = await api("GET", "/api/instances");
+      return instances.filter((entry: { enabled?: boolean }) => entry.enabled !== false).every((entry: { instanceId: string; snapshot: { state: string; authenticated: boolean }; models: { options: { id: string }[] } }) => {
+        const signedOut = (entry.instanceId === SPARE ? engines.spare : engines.claude) === "signed-out";
+        return entry.snapshot.state === "available" && entry.snapshot.authenticated === !signedOut &&
+          (signedOut || entry.models.options.some((model) => model.id === "fixture/default"));
+      });
+    }, { timeout: 15_000 }).toBe(true);
   };
   try {
     await restart({});
@@ -93,21 +110,21 @@ async function sendAndSettle(fixture: Fixture, botId: string, threadId: string, 
 }
 
 it.each([
-  ["missing", "claude-opus-5"],
-  ["disabled", "Spare Claude · Claude Opus 5"],
+  ["missing", "fixture/alternate"],
+  ["disabled", "Spare OpenCode · fixture/alternate"],
 ] as const)("runs a thread whose engine is %s on its bot's model, once, and the thread follows the bot", async (state, ownName) => {
   await withEngines(async (fixture) => {
-    const { bot, threadId, thread } = await botWithOwnModel(fixture, { instanceId: SPARE, model: "claude-opus-5" });
+    const { bot, threadId, thread } = await botWithOwnModel(fixture, { instanceId: SPARE, model: "fixture/alternate" });
     await fixture.restart({ spare: state });
     const messages = await sendAndSettle(fixture, bot.id, threadId, "FOLLOW_THE_BOT_4K");
     expect(fixture.prompts("claude")).toHaveLength(1);
     expect(fixture.prompts(SPARE)).toHaveLength(0);
     expect(messages.filter(notice)).toHaveLength(1);
     expect(messages.find(notice).tool.name).toBe(
-      `notice: This thread's model (${ownName}) isn't available, so it now uses Ada's model (Verification fixture · Claude Sonnet 5).`,
+      `notice: This thread's model (${ownName}) isn't available, so it now uses Ada's model (Verification fixture · fixture/default).`,
     );
     expect(messages.findLast((message) => message.role === "bot" && message.kind === "text")).toMatchObject({ turnSucceeded: true });
-    expect(bot.modelSelection).toEqual({ instanceId: "claude", model: "claude-sonnet-5" });
+    expect(bot.modelSelection).toEqual({ instanceId: "claude", model: "fixture/default" });
     expect(await thread()).toMatchObject({ modelSelection: bot.modelSelection, followsBotModel: true });
     const again = await sendAndSettle(fixture, bot.id, threadId, "STILL_FOLLOWING_5L");
     expect(again.filter(notice)).toHaveLength(1);
@@ -117,26 +134,26 @@ it.each([
 
 it("gives way to a signed-out engine when the bot's model is on another engine that can run", async () => {
   await withEngines(async (fixture) => {
-    const { bot, threadId, thread } = await botWithOwnModel(fixture, { instanceId: SPARE, model: "claude-opus-5" });
+    const { bot, threadId, thread } = await botWithOwnModel(fixture, { instanceId: SPARE, model: "fixture/alternate" });
     await fixture.restart({ spare: "signed-out" });
     const messages = await sendAndSettle(fixture, bot.id, threadId, "SIGNED_OUT_ELSEWHERE_6M");
     expect(fixture.prompts(SPARE)).toHaveLength(0);
     expect(fixture.prompts("claude")).toHaveLength(1);
     expect(messages.filter(notice)).toHaveLength(1);
-    expect(messages.find(notice).tool.name).toContain("This thread's model (Spare Claude · Claude Opus 5) isn't available");
+    expect(messages.find(notice).tool.name).toContain("This thread's model (Spare OpenCode · fixture/alternate) isn't available");
     expect((await thread()).followsBotModel).toBe(true);
   });
 }, 120_000);
 
 it("keeps the sign-in failure when the bot's model is on the same signed-out engine", async () => {
   await withEngines(async (fixture) => {
-    const { bot, threadId, thread } = await botWithOwnModel(fixture, { instanceId: "claude", model: "claude-opus-5" });
+    const { bot, threadId, thread } = await botWithOwnModel(fixture, { instanceId: "claude", model: "fixture/alternate" });
     await fixture.restart({ claude: "signed-out" });
     const messages = await sendAndSettle(fixture, bot.id, threadId, "SAME_ENGINE_SIGN_IN_7N", "failed");
     expect(messages.filter(notice)).toHaveLength(0);
     expect(messages.findLast((message) => message.kind === "activity" && message.tool?.name?.startsWith("error:"))?.tool)
       .toMatchObject({ ok: false, setup: true });
-    expect(fixture.prompts("claude")).toHaveLength(1);
-    expect(await thread()).toMatchObject({ modelSelection: { instanceId: "claude", model: "claude-opus-5" }, followsBotModel: false });
+    expect(fixture.prompts("claude")).toHaveLength(0);
+    expect(await thread()).toMatchObject({ modelSelection: { instanceId: "claude", model: "fixture/alternate" }, followsBotModel: false });
   });
 }, 120_000);

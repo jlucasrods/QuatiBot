@@ -1,4 +1,3 @@
-// The model steps are scripted with FAKE_CLAUDE_TEXT_ROUTES, so this proves the plumbing, not a model's judgement.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,7 +10,6 @@ import { TIDY_MARKER } from "./memory-tidy.ts";
 it("recalls, captures, suggests, forgets and tidies a bot's memory", async () => {
   const scratch = mkdtempSync(join(tmpdir(), "quati-memory-layer-"));
   const routes = join(scratch, "routes.json");
-  const prompts = join(scratch, "prompts.jsonl");
   const future = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
   writeFileSync(routes, JSON.stringify({
     [CAPTURE_MARKER]: JSON.stringify([
@@ -22,7 +20,8 @@ it("recalls, captures, suggests, forgets and tidies a bot's memory", async () =>
     ]),
     [TIDY_MARKER]: '{"pairs": []}',
   }));
-  const fixture = await launchVerificationServer({ ...process.env, FAKE_CLAUDE_TEXT_ROUTES: routes, FAKE_CLAUDE_PROMPTS: prompts });
+  const fixture = await launchVerificationServer({ FAKE_ACP_TEXT_ROUTES: routes });
+  const prompts = `${fixture.fixtureDumpPath}.prompts.jsonl`;
   const control = (...args: string[]) => runControlQuati([...args, "--url", fixture.info.url]);
   const api = async <T = any>(path: string, method = "GET", body?: unknown, status = 200): Promise<T> => {
     const response = await fetch(fixture.info.url + path, {
@@ -37,7 +36,12 @@ it("recalls, captures, suggests, forgets and tidies a bot's memory", async () =>
     await control("send", "--bot", botId, "--task", threadId, "--text", text);
     expect(await control("wait", "--bot", botId, "--task", threadId, "--timeout", "30")).toMatchObject({ status: "settled" });
   };
-  const sentSince = (count: number) => readFileSync(prompts, "utf8").trim().split("\n").slice(count).join("\n");
+  const sentSince = (count: number) => {
+    return readFileSync(prompts, "utf8").trim().split("\n").slice(count).map((line) => {
+      const turn = JSON.parse(line) as { prompt: Array<{ text?: string }> };
+      return turn.prompt.map((part) => part.text ?? "").join("\n");
+    }).join("\n");
+  };
   const sentCount = () => { try { return readFileSync(prompts, "utf8").trim().split("\n").filter(Boolean).length; } catch { return 0; } };
   const memoryFile = async (botId: string, path = "MEMORY.md") => (await api<{ text: string; hash: string }>(`/api/bots/${botId}/memory/file?path=${encodeURIComponent(path)}`));
   try {
@@ -73,7 +77,7 @@ it("recalls, captures, suggests, forgets and tidies a bot's memory", async () =>
     before = sentCount();
     await turn(bot.id, second, "What was the project codename again?");
     expect(sentSince(before)).toContain("Bluebird");
-    expect(sentSince(before)).toMatch(/your main chat|chat \\"[^"\\]+\\"/);
+    expect(sentSince(before)).toMatch(/your main chat|chat "[^"]+"/);
 
     await api(`/api/bots/${bot.id}`, "PATCH", { memoryEnabled: false });
     before = sentCount();

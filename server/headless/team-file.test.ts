@@ -30,11 +30,8 @@ mkdirSync(join(dir, "skills", "huge"), { recursive: true });
 writeFileSync(join(dir, "skills", "huge", "SKILL.md"), `---\nname: huge\ndescription: Too big.\n---\n${"x".repeat(SKILL_MAX_BYTES)}\n`);
 
 describe("loadTeamFile", () => {
-  it("puts defaults under every bot, reads souls and skills from beside the file, and keeps keys as references", () => {
+  it("puts defaults under every bot and reads souls and skills from beside the file", () => {
     const team = loadTeamFile(file(`version: 1
-engines:
-  claude: { key: { env: ANTHROPIC_API_KEY }, baseUrl: https://gateway.example, everyClaudeBot: true }
-  openaiCompatible: { key: { file: keys/compat }, baseUrl: { env: COMPAT_URL } }
 defaults:
   team: Launch Room
   model: claude/claude-haiku-5-5
@@ -51,7 +48,7 @@ bots:
     manages: [Support]
     model: claude/claude-sonnet-5-5
     effort: medium
-    computer: local
+    computer: vm
     browser: false
     tools: { deny: [] }
     soul: { file: souls/lead.md }
@@ -63,7 +60,7 @@ rooms:
 `));
     expect(team.bots[0]).toEqual({
       name: "Room Lead", team: "Launch Room", chief: true, manages: ["Support"], soul: "Lead the rehearsal.\n",
-      model: { instanceId: "claude", model: "claude-sonnet-5-5" }, effort: "medium", approval: "full", computer: "local",
+      model: { instanceId: "claude", model: "claude-sonnet-5-5" }, effort: "medium", approval: "full", computer: "vm",
       cwd: "/work/visitors", browser: { enabled: false }, tools: null,
       skills: [{ name: "launch-report", description: "Write the report.", text: expect.stringContaining("Body."), enabled: true, file: "skills/launch-report/SKILL.md" }],
     });
@@ -72,10 +69,6 @@ rooms:
     expect(team.bots[1]).not.toHaveProperty("chief");
     expect(team.teams).toEqual([{ name: "Launch Room", brief: "We rehearse.", prune: true }]);
     expect(team.rooms).toEqual([{ name: "Rehearsal", members: ["Room Lead", "Priya"], responder: "Room Lead" }]);
-    expect(team.engines).toEqual([
-      { kind: "claude", key: { env: "ANTHROPIC_API_KEY" }, baseUrl: "https://gateway.example", everyClaudeBot: true },
-      { kind: "openai-compatible", key: { file: join(dir, "keys", "compat") }, baseUrl: { env: "COMPAT_URL" } },
-    ]);
     expect(team.warnings).toEqual([]);
   });
 
@@ -111,7 +104,7 @@ rooms:
   });
 
   it.each([
-    ["a literal key", "engines: { claude: { key: sk-ant-abcdefghijklmnopqrstuvwx } }\nbots: [{ name: A }]", "put the key in an environment variable or a file"],
+    ["provider configuration", "engines: { claude: { key: sk-ant-abcdefghijklmnopqrstuvwx } }\nbots: [{ name: A }]", 'unknown field "engines"'],
     ["an unknown field", "bots: [{ name: A, colour: blue }]", 'bots[0]: unknown field "colour"'],
     ["no bots", "bots: []", "list at least one bot"],
     ["a duplicate name", "bots: [{ name: Priya }, { name: priya }]", '"priya" is listed twice'],
@@ -120,7 +113,7 @@ rooms:
     ["a model without its engine", "bots: [{ name: A, model: sonnet }]", "must be INSTANCE/MODEL"],
     ["a relative folder", "bots: [{ name: A, cwd: work/a }]", "cwd must be an absolute path on the server"],
     ["a home folder", "bots: [{ name: A, cwd: ~/work }]", "~ is not expanded the same way on the server"],
-    ["Custom approval", "bots: [{ name: A, approval: custom }]", "custom is set in the desktop app"],
+    ["Custom approval", "bots: [{ name: A, approval: custom }]", "Custom is not supported"],
     ["a soul file that is not there", "bots: [{ name: A, soul: { file: souls/nobody.md } }]", "souls/nobody.md could not be read (ENOENT)"],
     ["a bad tool selector", 'bots: [{ name: A, tools: { deny: ["Bash"] } }]', "selectors look like native:Bash"],
     ["a room member listed twice", "bots: [{ name: A }]\nrooms: [{ name: R, members: [A, a] }]", "a member is listed twice"],

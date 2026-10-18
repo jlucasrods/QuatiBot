@@ -54,11 +54,9 @@ vi.mock("./DesktopCapabilities", async (importOriginal) => ({
     ...await importOriginal<typeof import("./DesktopCapabilities")>(),
     useDesktopCapabilities: () => ({ capabilities: { dictation: { available: false }, host: { packaged: true, platform: "other" }, localComputer: { available: false } }, ready: true }),
 }));
-vi.mock("@/lib/cloud-guest", () => ({ useCanWriteIn: () => true }));
 vi.mock("./ModelPicker", () => ({ ModelPicker: () => null }));
 const { ChatView } = await import("./ChatView");
 const { BotEditorStore, initialState, reducer } = await import("@/state/store");
-const { setRemoteVoiceProvider } = await import("@/lib/local-voice");
 const { t } = await import("@/lib/i18n");
 const message = (id: string, parentId: string | undefined, fields: Partial<Message>): Message => ({ id, parentId, role: "bot", kind: "text", at: new Date(2026, 9, 3, 9, Number(id.slice(1))).getTime(), ...fields });
 const messages: Message[] = [];
@@ -80,7 +78,7 @@ let state: AppState = {
     connected: true,
     selectedId: "pepper",
     bots: [profile("pepper", { messages, activeLeafId: running.id }), profile("scout")],
-    instances: [{ instanceId: "test", driverKind: "codex", displayName: "Test", snapshot: { state: "available" } } as InstanceInfo],
+    instances: [{ instanceId: "test", driverKind: "opencodeGo", displayName: "OpenCode", snapshot: { state: "available" } } as InstanceInfo],
     config: { features: { showToolCalls: true } } as AppState["config"],
 };
 const dispatch = vi.fn();
@@ -183,25 +181,16 @@ describe("chat transcript rows", () => {
         await rowRendersAfter(busy(false));
         expect(await regenerate()).toEqual(["m5"]);
     });
-    it("follows this device's voice choice at the next store event", async () => {
-        const kept = new Map<string, string>();
-        vi.stubGlobal("localStorage", { getItem: (key: string) => kept.get(key) ?? null, setItem: (key: string, value: string) => kept.set(key, value) });
-        vi.stubGlobal("speechSynthesis", { getVoices: () => [] });
-        vi.stubGlobal("SpeechSynthesisUtterance", class {
-        });
+    it("updates read-aloud availability when backend voice configuration changes", async () => {
         const speak = async () => (await menusWith(t("chat.speak.read"))).map((item) => `${item.title}${item.disabled ? " (off)" : ""}`);
-        const switchTo = async (provider: "host" | "system") => {
-            await rowRendersAfter((current) => reducer(current, { type: "toggleSettings", open: true }));
-            setRemoteVoiceProvider(provider);
-            await rowRendersAfter((current) => reducer(current, { type: "toggleSettings", open: false }));
-        };
-        try {
-            await switchTo("system");
-            expect(await speak()).toEqual([t("chat.speak.read"), t("chat.speak.read")]);
-            await switchTo("host");
-            expect(await speak()).toEqual([`${t("chat.speak.needsKey")} (off)`, `${t("chat.speak.needsKey")} (off)`]);
-        }
-        finally {
-        }
+        await rowRendersAfter((current) => reducer(current, {
+            type: "configStatus", config: { ...current.config!, tts: { configured: true, ready: true, voice: "fixture", provider: "elevenlabs" } },
+        }));
+        expect(await speak()).toEqual([t("chat.speak.read"), t("chat.speak.read")]);
+
+        await rowRendersAfter((current) => reducer(current, {
+            type: "configStatus", config: { ...current.config!, tts: { configured: false, ready: false, voice: "", provider: "elevenlabs" } },
+        }));
+        expect(await speak()).toEqual([`${t("chat.speak.needsKey")} (off)`, `${t("chat.speak.needsKey")} (off)`]);
     });
 });

@@ -62,10 +62,10 @@ describe("refresh permissions from the sidebar", () => {
     expect(dialogs()).toBe(0);
   });
 
-  it("still shows the warning before copying Auto on this computer", () => {
-    render(bot({ approvalMode: "auto", computer: "local" }));
+  it("copies Auto onto a browser thread without a host desktop warning", () => {
+    render(bot({ approvalMode: "auto", computer: "browser" }));
     refresh("older");
-    expect(dispatch).not.toHaveBeenCalled();
-    expect(dialogs()).toBe(1);
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith({ type: "refreshTaskPermissions", botId: "pepper", threadId: "older" });
+    expect(dialogs()).toBe(0);
   });
 });

@@ -27,7 +27,7 @@ const row = (root: WidgetRoot, more: Partial<WidgetPayload> = {}): Message => ({
 
 const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const fetchMock = vi.fn<(path: string, init?: RequestInit) => Promise<Response>>();
-const openExternal = vi.fn(async (_url: string) => {});
+const openExternal = vi.fn(() => null);
 const flushBotPatches = vi.fn<(botId: string) => Promise<null>>();
 const store = { state: {}, dispatch: vi.fn(), flushBotPatches } as unknown as ReturnType<typeof useStore>;
 const inStore = (message: Message) => createElement(BotEditorStore, { value: store, children: createElement(WidgetMessage, { botId: "scout", threadId: "t1", message }) });
@@ -84,7 +84,7 @@ beforeEach(() => {
   flushBotPatches.mockImplementation(async () => null);
   openExternal.mockClear();
   vi.stubGlobal("fetch", fetchMock);
-  vi.stubGlobal("quati", { openExternal });
+  vi.spyOn(window, "open").mockImplementation(openExternal);
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -464,7 +464,7 @@ describe("pressing", () => {
     expect(openExternal).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
     await press(button("Search the web")!);
-    expect(openExternal).toHaveBeenCalledWith("https://example.com/search");
+    expect(openExternal).toHaveBeenCalledWith("https://example.com/search", "_blank", "noopener,noreferrer");
 
     openExternal.mockClear();
     const both = parseWidgetInput({ type: "Card", children: [{ type: "Form", onSubmitAction: { type: "q.ask" }, children: [{ type: "Input", name: "q", defaultValue: "widgets" }, link, { type: "Button", label: "Ask", submit: true }] }] });
@@ -518,14 +518,14 @@ describe("pressing", () => {
     const link = find<HTMLButtonElement>('[role="listitem"] > button')!;
     expect(link.title).toBe("https://developers.openai.com/api/docs/guides/chatkit-widgets");
     await press(link);
-    expect(openExternal).toHaveBeenCalledWith("https://developers.openai.com/api/docs/guides/chatkit-widgets");
+    expect(openExternal).toHaveBeenCalledWith("https://developers.openai.com/api/docs/guides/chatkit-widgets", "_blank", "noopener,noreferrer");
     expect(all('[role="listitem"]')[1]!.querySelector("button")).not.toBeNull();
     act(() => button("Show all (3)")!.click());
     expect(all('[role="listitem"]')[2]!.querySelector("button, [role=button]")).toBeNull();
 
     mount(row(sample("kitchenSink")));
     await press(button("Open the docs")!);
-    expect(openExternal).toHaveBeenLastCalledWith("https://quati.invalid/docs");
+    expect(openExternal).toHaveBeenLastCalledWith("https://quati.invalid/docs", "_blank", "noopener,noreferrer");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

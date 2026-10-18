@@ -9,12 +9,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { launchVerificationServer, type VerificationServer } from "../scripts/control-quati.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 import { openSse, type SseRecorder } from "./testing/sse.ts";
-import { withoutTurnClock } from "./testing/turn-clock-text.ts";
 
 /** The picture the inert browser takes: a 1x1 JPEG. */
 const JPEG = "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==";
 
-describe.skipIf(process.platform === "win32")("direct final-screen settlement", () => {
+describe.skipIf(process.platform !== "linux")("direct final-screen settlement", () => {
   let session: VerificationServer;
   let fixture: string;
   let botId: string;
@@ -35,9 +34,12 @@ describe.skipIf(process.platform === "win32")("direct final-screen settlement", 
   const gate = (name: string) => writeFileSync(join(fixture, name), "ready");
   const beginCapture = async () => {
     expect((await api("POST", `/api/bots/${botId}/messages`, { text: "FIRST_SCREEN", threadId })).status).toBe(202);
-    await expect.poll(() => existsSync(join(fixture, "provider.json")), { timeout: 10_000 }).toBe(true);
-    const dump = JSON.parse(readFileSync(join(fixture, "provider.json"), "utf8"));
-    const token = dump.mcpConfig.mcpServers.browser.env.QUATI_MCP_TOKEN_BROWSER;
+    const promptFile = join(fixture, "provider.json.prompts.jsonl");
+    await expect.poll(() => existsSync(promptFile), { timeout: 10_000 }).toBe(true);
+    const dump = JSON.parse(readFileSync(promptFile, "utf8").trim().split("\n")[0]!);
+    const token = dump.mcpServers.find((server: { name: string }) => server.name === "browser")?.env
+      .find((entry: { name: string }) => entry.name === "QUATI_MCP_TOKEN_BROWSER")?.value;
+    expect(token).toBeTruthy();
     expect((await api("POST", "/api/internal/browser/mcp", {
       method: "tools/call", params: { name: "agent_browser_screenshot", arguments: {} },
     }, token)).status).toBe(200);
@@ -45,7 +47,7 @@ describe.skipIf(process.platform === "win32")("direct final-screen settlement", 
     await expect.poll(() => existsSync(join(fixture, "capture.entered")), { timeout: 10_000 }).toBe(true);
     gate("finish.gate");
     await expect.poll(async () => (await api("GET", `/api/threads/${threadId}/messages`)).body.messages
-      .some((message: any) => typeof message.text === "string" && withoutTurnClock(message.text) === "reply to: FIRST_SCREEN"), { timeout: 5_000 }).toBe(true);
+      .some((message: any) => message.text === "hello from fake acp"), { timeout: 5_000 }).toBe(true);
   };
 
   beforeEach(async () => {
@@ -92,31 +94,32 @@ describe.skipIf(process.platform === "win32")("direct final-screen settlement", 
       '} else if (args[0] === "session") process.stdout.write(JSON.stringify({ success: true, data: { sessions: [] } }));',
       'else process.stdout.write("1.0.0\\n");',
     ].join("\n"), { mode: 0o700 });
-    session = await launchVerificationServer(process.env, undefined, undefined, { binaryPath: browser, executablePath: browser });
+    session = await launchVerificationServer({}, undefined, undefined, { binaryPath: browser, executablePath: browser });
     evidence.push({ fixture: session.info });
-    const wrapper = join(fixture, "screen-claude.mjs");
+    const wrapper = join(fixture, "screen-opencode.mjs");
     writeFileSync(wrapper, [
       "#!/usr/bin/env node",
       'import { existsSync } from "node:fs";',
       `const dir = ${JSON.stringify(fixture)};`,
-      'process.env.FAKE_CLAUDE_MODE = "slow";',
-      'process.env.FAKE_CLAUDE_DUMP = dir + "/provider.json";',
-      'process.env.FAKE_CLAUDE_SLOW_FINISH_GATE = dir + "/finish.gate";',
-      'if (process.argv.includes("--input-format")) {',
-      '  const write = process.stdout.write.bind(process.stdout); let held = false; const buffered = [];',
+      'process.env.FAKE_ACP_MODE = "happy";',
+      'process.env.FAKE_ACP_DUMP = dir + "/provider.json";',
+      'process.env.FAKE_ACP_TOOL_CALLS = JSON.stringify([{ name: "browser__agent_browser_screenshot" }]);',
+      'if (process.argv.includes("acp")) {',
+      '  const write = process.stdout.write.bind(process.stdout); const buffered = [];',
       '  process.stdout.write = (chunk, ...args) => {',
-      '    chunk = String(chunk).replaceAll("\\\"name\\\":\\\"Bash\\\"", "\\\"name\\\":\\\"browser__agent_browser_screenshot\\\"");',
-      '    if (held || chunk.includes("\\\"type\\\":\\\"assistant\\\"")) { held = true; buffered.push(chunk); return true; }',
+      '    const message = JSON.parse(String(chunk));',
+      '    const gate = message.result?.stopReason ? "finish.gate" : message.method === "session/update" ? "tools.gate" : null;',
+      '    if (gate && !existsSync(dir + "/" + gate)) { buffered.push({ chunk, gate }); return true; }',
       '    return write(chunk, ...args);',
       '  };',
-      '  const timer = setInterval(() => { if (!existsSync(dir + "/tools.gate")) return; clearInterval(timer); process.stdout.write = write; for (const chunk of buffered) write(chunk); }, 10);',
+      '  setInterval(() => { for (let index = 0; index < buffered.length;) { const item = buffered[index]; if (!existsSync(dir + "/" + item.gate)) { index++; continue; } buffered.splice(index, 1); write(item.chunk); } }, 10).unref();',
       '}',
-      `await import(${JSON.stringify(pathToFileURL(join(process.cwd(), "server/testing/fake-claude-cli.ts")).href)});`,
+      `await import(${JSON.stringify(pathToFileURL(join(process.cwd(), "server/testing/fake-acp-cli.ts")).href)});`,
     ].join("\n"), { mode: 0o700 });
-    expect((await api("PATCH", "/api/instances/claude", { cli: wrapper })).status).toBe(200);
+    expect((await api("PATCH", "/api/instances/opencodeGo", { cli: wrapper })).status).toBe(200);
     expect((await api("PATCH", "/api/config", { features: { browser: true } })).status).toBe(200);
     const created = await api("POST", "/api/bots", { name: "Screen settlement", browser: true, computer: "browser",
-      modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } });
+      modelSelection: { instanceId: "opencodeGo", model: "fixture/test" } });
     expect(created.status).toBe(201);
     botId = created.body.bot.id;
     threadId = created.body.bot.threadId;
@@ -143,7 +146,8 @@ describe.skipIf(process.platform === "win32")("direct final-screen settlement", 
     gate("capture.gate");
     await expect.poll(async () => (await bot()).busy, { timeout: 15_000 }).toBe(false);
     const messages = (await bot()).messages;
-    expect(messages.some((message: any) => typeof message.text === "string" && withoutTurnClock(message.text).includes("reply to: FOLLOWUP_AFTER_SCREEN"))).toBe(true);
+    expect(messages.filter((message: any) => message.text === "hello from fake acp")).toHaveLength(2);
+    expect(readFileSync(join(fixture, "provider.json.prompts.jsonl"), "utf8")).toContain("FOLLOWUP_AFTER_SCREEN");
     expect(messages.some((message: any) => message.tool?.name?.includes("another thread is working"))).toBe(false);
     const screenIndex = messages.findIndex((message: any) => message.kind === "screen");
     expect(screenIndex).toBeGreaterThanOrEqual(0);

@@ -1,9 +1,7 @@
 // Real provider processes with independent per-thread gates, under the disposable-home launcher.
 import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { connect, type Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
-import { createInterface } from "node:readline";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -15,7 +13,6 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
   let fixture: VerificationServer;
   let model: string;
   let evidence: unknown[];
-  const sockets: Socket[] = [];
   const projectDirs: string[] = [];
 
   const api = async (method: string, path: string, body?: unknown) => {
@@ -46,6 +43,10 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
     return snapshot;
   };
   const finish = (threadId: string) => writeFileSync(threadFile(threadId, "gate"), "finish this isolated turn");
+  const mcpEnvironment = (launched: { mcpServers: Array<{ name: string; env: Array<{ name: string; value: string }> }> }) => {
+    const agents = launched.mcpServers.find((server) => server.name === "agents");
+    return Object.fromEntries(agents?.env.map(({ name, value }) => [name, value]) ?? []);
+  };
   const busyThreads = async (botId: string) => (await botState(botId)).tasks.filter((task: any) => task.busy).map((task: any) => task.threadId) as string[];
   const send = (botId: string, threadId: string, text: string, sendId?: string) => api("POST", `/api/bots/${botId}/messages`, { threadId, text, sendId });
   const limit = async (maxConcurrentPerBot: number) => {
@@ -55,7 +56,7 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
     return result;
   };
   const botWithThreads = async (count: number) => {
-    const created = await api("POST", "/api/bots", { name: "Capacity fixture", modelSelection: { instanceId: "claude", model } });
+    const created = await api("POST", "/api/bots", { name: "Capacity fixture", modelSelection: { instanceId: "opencodeGo", model } });
     expect(created.status).toBe(201);
     const bot = created.body.bot;
     const threads = [bot.threadId as string];
@@ -68,48 +69,44 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
   };
   const capabilityStatus = async (launched: any) => {
     const response = await fetch(`${fixture.info.url}/api/internal/agents`, {
-      headers: { authorization: `Bearer ${launched.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN}` },
+      headers: { authorization: `Bearer ${mcpEnvironment(launched).QUATI_COMMS_TOKEN}` },
     });
     await response.arrayBuffer();
     evidence.push({ authority: "existing provider capability", path: "/api/internal/agents", status: response.status, pid: launched.pid });
     return response.status;
   };
-  const permission = async (threadId: string, requestId: string) => {
-    const launched = await dump(threadId);
-    const socket = connect(launched.mcpConfig.mcpServers.quati.args.at(-1));
-    sockets.push(socket);
-    await new Promise<void>((resolve, reject) => {
-      socket.once("connect", resolve);
-      socket.once("error", reject);
-    });
-    const answers: any[] = [];
-    createInterface({ input: socket }).on("line", (line) => answers.push(JSON.parse(line)));
-    socket.write(`${JSON.stringify({ t: "ask", id: requestId, kind: "permission", tool: "Bash", input: { command: "ls -la ./dist" } })}\n`);
-    return answers;
+  const permission = async (threadId: string, key: string) => {
+    writeFileSync(threadFile(threadId, "permission.json"), JSON.stringify({ key, input: { command: "ls -la ./dist" } }));
+    let requestId: string | undefined;
+    await expect.poll(async () => {
+      requestId = (await messages(threadId)).find((message) => message.card?.requestId && !message.card.answered)?.card.requestId;
+      return requestId;
+    }).toBeTruthy();
+    const answerFile = join(fixture.info.dataDir, `${key}.answer`);
+    return {
+      requestId,
+      answer: () => existsSync(answerFile) ? readFileSync(answerFile, "utf8") : undefined,
+    };
   };
 
   beforeEach(async () => {
     evidence = [];
     fixture = await launchVerificationServer();
-    const wrapper = join(fixture.info.dataDir, "capacity-claude.mjs");
+    const wrapper = join(fixture.info.dataDir, "capacity-opencode.mjs");
     writeFileSync(wrapper, [
       "#!/usr/bin/env node",
-      'import { basename, join } from "node:path";',
-      'const thread = basename(process.cwd());',
-      'process.env.FAKE_CLAUDE_MODE = "slow";',
-      'process.env.QUATI_FIXTURE_CWD = process.cwd();',
-      'process.env.QUATI_FIXTURE_LAUNCHED_AT = String(Date.now());',
-      `process.env.FAKE_CLAUDE_SLOW_FINISH_GATE = join(${JSON.stringify(fixture.info.dataDir)}, thread + ".gate");`,
-      `process.env.FAKE_CLAUDE_DUMP = join(${JSON.stringify(fixture.info.dataDir)}, thread + ".json");`,
-      `await import(${JSON.stringify(pathToFileURL(join(process.cwd(), "server/testing/fake-claude-cli.ts")).href)});`,
+      'process.env.FAKE_ACP_MODE = "controlled";',
+      'process.env.FAKE_ACP_CONTROL_KEY = "thread";',
+      'process.env.FAKE_ACP_MODELS = "fixture/test";',
+      `process.env.FAKE_ACP_CONTROL_DIR = ${JSON.stringify(fixture.info.dataDir)};`,
+      `await import(${JSON.stringify(pathToFileURL(join(process.cwd(), "server/testing/fake-acp-cli.ts")).href)});`,
     ].join("\n"), { mode: 0o700 });
-    expect((await api("PATCH", "/api/instances/claude", { cli: wrapper })).status).toBe(200);
-    const instance = (await api("GET", "/api/instances")).body.instances.find((candidate: any) => candidate.instanceId === "claude");
+    expect((await api("PATCH", "/api/instances/opencodeGo", { cli: wrapper })).status).toBe(200);
+    const instance = (await api("GET", "/api/instances")).body.instances.find((candidate: any) => candidate.instanceId === "opencodeGo");
     model = instance.models.options[0].id;
   }, 30_000);
 
   afterEach(async () => {
-    for (const socket of sockets.splice(0)) socket.destroy();
     if (!fixture) return;
     const evidencePath = `${fixture.info.logPath}.capacity.json`;
     writeFileSync(evidencePath, JSON.stringify({ fixture: fixture.info, requests: evidence }, null, 2));
@@ -142,12 +139,12 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
     expect(rest.every((result) => result.status === 202 && !result.body.queued)).toBe(true);
     const launched = await Promise.all(threads.slice(0, 10).map(dump));
     expect(new Set(launched.map((entry) => entry.pid)).size).toBe(10);
-    expect(new Set(launched.map((entry) => entry.env.QUATI_FIXTURE_CWD)).size).toBe(10);
-    expect(launched.every((entry) => entry.argv[entry.argv.indexOf("--model") + 1] === model)).toBe(true);
+    expect(new Set(launched.map((entry) => entry.cwd)).size).toBe(10);
+    expect(launched.every((entry) => entry.model === model)).toBe(true);
     expect(await busyThreads(botId)).toHaveLength(10);
     for (const process of initialProcesses) expect(await capabilityStatus(process)).toBe(200);
     expect(JSON.parse(readFileSync(join(fixture.info.dataDir, "config.json"), "utf8")).threads).toEqual({ maxConcurrentPerBot: 10 });
-    evidence.push({ simultaneousProviderProcesses: launched.map((entry) => ({ pid: entry.pid, cwd: entry.env.QUATI_FIXTURE_CWD })), model });
+    evidence.push({ simultaneousProviderProcesses: launched.map((entry) => ({ pid: entry.pid, cwd: entry.cwd })), model });
 
     const overflow = await send(botId, threads[10], "ELEVENTH_WAITING", "capacity_eleventh_retry");
     expect(overflow.status).toBe(202);
@@ -229,8 +226,6 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
     await limit(2);
     const project = mkdtempSync(join(tmpdir(), "quati-collide-"));
     projectDirs.push(project);
-    // Both threads pin to one folder, so the fake CLI's cwd-keyed gate/dump collapses to one key: one gate write finishes both.
-    const key = basename(project);
     let botId: string | undefined;
     let routineId: string | undefined;
     try {
@@ -239,7 +234,7 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
       expect((await api("PATCH", `/api/bots/${botId}`, { cwd: project })).status).toBe(200);
       expect((await send(botId, threadId, "HOLD_THE_FOLDER")).body.queued).toBeUndefined();
       await expect.poll(() => busyThreads(botId!)).toEqual([threadId]);
-      await expect.poll(async () => JSON.stringify((await dump(key)).prompt), { timeout: 15_000 }).toContain("HOLD_THE_FOLDER");
+      await expect.poll(async () => JSON.stringify((await dump(threadId)).prompt), { timeout: 15_000 }).toContain("HOLD_THE_FOLDER");
 
       const created = await api("POST", "/api/routines", {
         name: "Workspace collision probe",
@@ -261,15 +256,16 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
       expect(dispatched.deferredAt).toBeUndefined();
       expect(dispatched.error).toBeUndefined();
       expect(dispatched.threadId).not.toBe(threadId);
-      await expect.poll(async () => JSON.stringify((await dump(key)).prompt), { timeout: 15_000 }).toContain("scheduled digest");
-      expect((await dump(key)).cwd).toBe(realpathSync(project));
+      await expect.poll(async () => JSON.stringify((await dump(dispatched.threadId)).prompt), { timeout: 15_000 }).toContain("scheduled digest");
+      expect((await dump(dispatched.threadId)).cwd).toBe(realpathSync(project));
       expect((await busyThreads(botId)).sort()).toEqual([threadId, dispatched.threadId].sort());
 
-      finish(key);
+      finish(threadId);
+      finish(dispatched.threadId);
       await expect.poll(async () => (await runState(run.id))?.status, { timeout: 15_000 }).toBe("completed");
     } finally {
       if (botId) {
-        finish(key);
+        for (const threadId of await busyThreads(botId)) finish(threadId);
         await expect.poll(async () => (await busyThreads(botId!)).length, { timeout: 15_000 }).toBe(0);
       }
       if (routineId) await api("DELETE", `/api/routines/${routineId}`).catch(() => undefined);
@@ -305,15 +301,14 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
       const sent = await api("POST", `/api/groups/${room.id}/messages`, { text: "Hold the room turn open." });
       expect(sent.status).toBe(202);
       expect(sent.body.queued).toBeUndefined();
-      // Room turns run in the member's shared workspace, so the gated fake holds under the bot id, not the room thread id.
-      await dump(botId);
+      await dump(room.threadId);
       await expect.poll(roomWorking, { timeout: 15_000 }).toBe(true);
       const run = (await api("POST", `/api/routines/${routineId}/run`)).body.run;
       await new Promise((resolve) => setTimeout(resolve, 12_000));
       const held = await runState(run.id);
       expect(held?.status).toBe("queued");
       expect(held?.deferredAt).toEqual(expect.any(Number));
-      finish(botId);
+      finish(room.threadId);
       await expect.poll(roomWorking, { timeout: 15_000 }).toBe(false);
       await expect.poll(async () => (await runState(run.id))?.status, { timeout: 20_000 }).toBe("running");
       const started = await runState(run.id);
@@ -351,7 +346,7 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
       await expect.poll(async () => (await runState(run.id))?.status, { timeout: 15_000 }).toBe("running");
       const started = await runState(run.id);
       const launched = await dump(started.threadId);
-      return { runId: run.id as string, threadId: started.threadId as string, token: launched.mcpConfig.mcpServers.agents.env.QUATI_COMMS_TOKEN as string };
+      return { runId: run.id as string, threadId: started.threadId as string, token: mcpEnvironment(launched).QUATI_COMMS_TOKEN };
     };
     const delegate = async (turn: { threadId: string; token: string }) => {
       const response = await fetch(`${fixture.info.url}/api/internal/coordinate-bots`, {
@@ -379,7 +374,6 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
       expect((await messages(turn.threadId)).some((message) => message.tool?.name === "Capacity fixture replied")).toBe(true);
     };
     try {
-      // Every turn here runs from its thread's task folder, so the cwd-keyed gates cover the work threads too.
       expect((await send(target.botId, target.threads[0], "HOLD_ONE_SLOT")).body.queued).toBeUndefined();
       await dump(target.threads[0]);
       expect(await busyThreads(target.botId)).toEqual([target.threads[0]]);
@@ -484,7 +478,7 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
       expect((await messages(threadId)).filter((message) => message.role === "user")).toEqual([]);
       expect(existsSync(threadFile(threadId, "json"))).toBe(false);
     }
-    expect(answers).toEqual([]);
+    expect(answers.answer()).toBeUndefined();
 
     await limit(2);
     const launchedSecond = await dump(second);
@@ -504,10 +498,10 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
     await expect.poll(() => busyThreads(botId)).toEqual([first]);
     expect(existsSync(threadFile(third, "json"))).toBe(false);
     expect((await messages(third)).filter((message) => message.role === "user")).toEqual([]);
-    expect(answers).toEqual([]);
-    const response = await api("POST", `/api/bots/${botId}/respond`, { threadId: first, requestId: "capacity-approval", behavior: "allow" });
+    expect(answers.answer()).toBeUndefined();
+    const response = await api("POST", `/api/bots/${botId}/respond`, { threadId: first, requestId: answers.requestId, behavior: "allow" });
     expect(response.status).toBe(200);
-    await expect.poll(() => answers.some((answer) => answer.id === "capacity-approval")).toBe(true);
+    await expect.poll(answers.answer).toBe("allow-once");
     expect(await busyThreads(botId)).toEqual([first]);
     expect(existsSync(threadFile(third, "json"))).toBe(false);
 
@@ -518,8 +512,8 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
     finish(third);
     const launchedFourth = await dump(fourth);
     await expect.poll(() => busyThreads(botId)).toEqual([fourth]);
-    expect(Number(launchedSecond.env.QUATI_FIXTURE_LAUNCHED_AT)).toBeLessThan(Number(launchedThird.env.QUATI_FIXTURE_LAUNCHED_AT));
-    expect(Number(launchedThird.env.QUATI_FIXTURE_LAUNCHED_AT)).toBeLessThan(Number(launchedFourth.env.QUATI_FIXTURE_LAUNCHED_AT));
+    expect(launchedSecond.promptStartedAt).toBeLessThan(launchedThird.promptStartedAt);
+    expect(launchedThird.promptStartedAt).toBeLessThan(launchedFourth.promptStartedAt);
     finish(fourth);
     await expect.poll(() => busyThreads(botId)).toEqual([]);
     for (const [index, threadId] of [second, third, fourth].entries()) {

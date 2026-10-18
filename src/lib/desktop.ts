@@ -25,21 +25,9 @@ const browserCapabilities: DesktopCapabilities = {
         reasonCode: "desktop-app-required",
     },
 };
-let cached: DesktopCapabilities | null = null;
-let cacheRevision = 0;
 export function initialDesktopCapabilities(): DesktopCapabilities {
     return browserCapabilities;
 }
-export async function loadDesktopCapabilities(): Promise<DesktopCapabilities> {
-    if (cached)
-        return cached;
-    return browserCapabilities;
-}
 export function desktopCapabilitiesNow(): DesktopCapabilities {
-    return cached ?? initialDesktopCapabilities();
-}
-export function cacheDesktopCapabilities(capabilities: DesktopCapabilities): DesktopCapabilities {
-    cacheRevision += 1;
-    cached = capabilities;
-    return capabilities;
+    return browserCapabilities;
 }

@@ -65,7 +65,7 @@ function pressPhone() {
     return tree;
   }
   renderToStaticMarkup(createElement(Capture));
-  const phone = findElement(tree, (props) => typeof props["aria-label"] === "string" && /Atlas/.test(props["aria-label"] as string));
+  const phone = findElement(tree, (props) => props["data-call-button"] === "header");
   if (!phone) throw new Error("no phone button");
   phone.props.onClick?.();
 }
@@ -118,14 +118,13 @@ describe("the call button", () => {
     expect(renderButton()).toContain('aria-label="Live call with Atlas"');
   });
 
-  it("keeps Take turns while another device holds the Live line", () => {
+  it.each([null, phoneCall])("does not start Take turns without its speech service (other call: %s)", (otherCall) => {
     setCallMode("turns");
-    fixture.liveCall = phoneCall;
-    expect(renderButton()).toContain('aria-label="Call Atlas"');
+    fixture.liveCall = otherCall;
+    expect(renderButton()).toContain('aria-label="The call service is unavailable"');
     pressPhone();
-    expect(currentCall()).toBe("atlas");
+    expect(currentCall()).toBeNull();
     expect(liveMedia().phase).toBe("idle");
-    expect(renderButton()).toContain('aria-label="Hang up on Atlas"');
   });
 
   it("keeps a running Take-turns call's Hang up when a phone takes the Live line, in either mode", () => {
@@ -155,12 +154,6 @@ describe("the call button", () => {
     }
   });
 
-  it("keeps Take turns as it was: the overlay's call, no Live media", () => {
-    setCallMode("turns");
-    pressPhone();
-    expect(currentCall()).toBe("atlas");
-    expect(liveMedia().phase).toBe("idle");
-  });
 });
 
 describe("the call mode menu", () => {

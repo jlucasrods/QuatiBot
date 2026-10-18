@@ -11,7 +11,6 @@ import { launchVerificationServer, verificationServerEnvironment, type Verificat
 import { ENVELOPE_MARK } from "./runtime/envelope.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
-import { ownTurnText } from "./testing/room-handoff-agent.ts";
 
 const TOKEN = "external-runtime-fixture-token-0123456789abcdef";
 
@@ -34,7 +33,7 @@ const asRuntime = (method: string, path: string, body?: unknown, token = TOKEN) 
 const createBot = async (name: string) =>
   (await api("POST", "/api/bots", {
     name,
-    modelSelection: { instanceId: "claude", model: "claude-sonnet-5" },
+    modelSelection: { instanceId: "opencodeGo", model: "fixture/default" },
     requireAvailableModel: true,
   })).body.bot;
 const botState = async (botId: string) =>
@@ -42,7 +41,12 @@ const botState = async (botId: string) =>
 const runtimesFile = () => join(data, "external-runtimes.json");
 const rows = () => readHandoffs(data);
 const latestTurnText = (): string => {
-  try { return ownTurnText(JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).prompt); } catch { return ""; }
+  try {
+    const turn = readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8").trim().split("\n")
+      .map(line => JSON.parse(line)).findLast(turn => turn.mcpServers.some((server: { name: string }) => server.name === "agents"));
+    return turn.prompt.map((block: { text?: string }) => block.text ?? "").join("\n")
+      .replace(/^[\s\S]*?Current time when this message was sent:[^\n]*\n\n?/, "");
+  } catch { return ""; }
 };
 
 beforeAll(async () => {

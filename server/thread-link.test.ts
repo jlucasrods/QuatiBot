@@ -21,7 +21,7 @@ describe("thread link through an isolated HTTP fixture", () => {
     .find((bot: any) => bot.id === botId).tasks.find((task: any) => task.threadId === threadId);
 
   beforeAll(async () => {
-    fixture = await launchVerificationServer({ ...process.env, FAKE_CLAUDE_REPLIES: JSON.stringify(["Opened https://github.com/o/r/pull/12 for review."]) });
+    fixture = await launchVerificationServer({ FAKE_ACP_TEXT_REPLY: "Opened https://github.com/o/r/pull/12 for review." });
   });
   afterAll(async () => {
     if (!fixture) return;
@@ -57,7 +57,7 @@ describe("thread link through an isolated HTTP fixture", () => {
 });
 
 describe("suggested thread links in the store", () => {
-  const selection = (): ModelSelection => ({ instanceId: "claude", model: "default" });
+  const selection = (): ModelSelection => ({ instanceId: "opencodeGo", model: "fixture/test" });
   beforeEach(() => rmSync(DATA_DIR, { recursive: true, force: true }));
 
   it("follows the newest change request until a person assigns a link", () => {

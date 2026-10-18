@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,7 @@ import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SERVER_DIR, "..");
-const FAKE_CLAUDE = join(SERVER_DIR, "testing", "fake-claude-cli.ts");
+const FAKE_ACP = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 
 let child: ChildProcess;
 let home = "";
@@ -64,138 +64,56 @@ beforeAll(async () => {
   mkdirSync(join(staticDir, "assets"), { recursive: true });
   writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>Goal run test</title>");
   writeFileSync(join(staticDir, "assets", "smoke.css"), "body{}");
-  writeFileSync(join(data, "config.json"), JSON.stringify({
-    instances: {
-      complete: {
-        driver: "claudeAgent",
-        displayName: "Completing fixture",
-        environment: {
-          FAKE_CLAUDE_MODE: "happy",
-          FAKE_CLAUDE_REPLIES: JSON.stringify(completeReplies),
-          FAKE_CLAUDE_REPLY_STATE: join(home, "complete-replies.txt"),
-        },
-        config: { cli: FAKE_CLAUDE },
-      },
-      loop: {
-        driver: "claudeAgent",
-        displayName: "Looping fixture",
-        environment: {
-          FAKE_CLAUDE_MODE: "happy",
-          FAKE_CLAUDE_REPLIES: JSON.stringify(loopReplies),
-          FAKE_CLAUDE_REPLY_STATE: join(home, "loop-replies.txt"),
-        },
-        config: { cli: FAKE_CLAUDE },
-      },
-      crash: {
-        driver: "claudeAgent",
-        displayName: "Failing fixture",
-        environment: { FAKE_CLAUDE_MODE: "exit-early" },
-        config: { cli: FAKE_CLAUDE },
-      },
-      slow: {
-        driver: "claudeAgent",
-        displayName: "Queue fixture",
-        environment: {
-          FAKE_CLAUDE_MODE: "slow",
-          FAKE_CLAUDE_SLOW_FINISH_GATE: queueFinishGate,
-          FAKE_CLAUDE_REPLIES: JSON.stringify(["first response", "second response"]),
-          FAKE_CLAUDE_REPLY_STATE: join(home, "slow-replies.txt"),
-        },
-        config: { cli: FAKE_CLAUDE },
-      },
-      busyGoal: {
-        driver: "claudeAgent",
-        displayName: "Busy goal fixture",
-        environment: {
-          FAKE_CLAUDE_MODE: "slow",
-          FAKE_CLAUDE_SLOW_FINISH_GATE: busyGoalFinishGate,
-          FAKE_CLAUDE_REPLIES: JSON.stringify([
-            "The unrelated direct task is complete.",
-            "The queued team goal is complete.\n<quati-goal>{\"status\":\"completed\",\"detail\":\"Waited for the lead, then completed normally.\"}</quati-goal>",
-          ]),
-          FAKE_CLAUDE_REPLY_STATE: join(home, "busy-goal-replies.txt"),
-        },
-        config: { cli: FAKE_CLAUDE },
-      },
-      busyWorkerLead: {
-        driver: "claudeAgent",
-        displayName: "Busy worker lead fixture",
-        environment: {
-          FAKE_CLAUDE_MODE: "happy",
-          FAKE_CLAUDE_REPLIES: JSON.stringify([
-            "I am delegating the research.\n<quati-goal>{\"status\":\"continue\",\"next\":\"Busy specialist\",\"instruction\":\"Research the answer and report evidence\",\"detail\":\"Waiting for specialist research.\"}</quati-goal>",
-            "The specialist's evidence resolves the goal.\n<quati-goal>{\"status\":\"completed\",\"detail\":\"Specialist research incorporated after their direct task finished.\"}</quati-goal>",
-          ]),
-          FAKE_CLAUDE_REPLY_STATE: join(home, "busy-worker-lead-replies.txt"),
-        },
-        config: { cli: FAKE_CLAUDE },
-      },
-      busyWorker: {
-        driver: "claudeAgent",
-        displayName: "Busy worker fixture",
-        environment: {
-          FAKE_CLAUDE_MODE: "slow",
-          FAKE_CLAUDE_SLOW_FINISH_GATE: busyWorkerFinishGate,
-          FAKE_CLAUDE_REPLIES: JSON.stringify([
-            "The unrelated direct research is complete.",
-            "Evidence gathered for the coordinator.",
-          ]),
-          FAKE_CLAUDE_REPLY_STATE: join(home, "busy-worker-replies.txt"),
-        },
-        config: { cli: FAKE_CLAUDE },
-      },
-      stopScopedLead: {
-        driver: "claudeAgent",
-        displayName: "Stop-scoped lead fixture",
-        environment: {
-          FAKE_CLAUDE_MODE: "slow",
-          FAKE_CLAUDE_SLOW_FINISH_GATE: stopScopedLeadFinishGate,
-          FAKE_CLAUDE_REPLIES: JSON.stringify([
-            "I am delegating this scheduled goal.\n<quati-goal>{\"status\":\"continue\",\"next\":\"Delayed worker\",\"instruction\":\"Finish the scheduled analysis\",\"detail\":\"Waiting for the delayed worker.\"}</quati-goal>",
-            "This is unrelated direct work and should be stopped.",
-            "The scheduled analysis is now complete.\n<quati-goal>{\"status\":\"completed\",\"detail\":\"Scheduled goal survived the coordinator's direct Stop.\"}</quati-goal>",
-          ]),
-          FAKE_CLAUDE_REPLY_STATE: join(home, "stop-scoped-lead-replies.txt"),
-        },
-        config: { cli: FAKE_CLAUDE },
-      },
-      stopScopedWorker: {
-        driver: "claudeAgent",
-        displayName: "Stop-scoped worker fixture",
-        environment: {
-          FAKE_CLAUDE_MODE: "background-result",
-          FAKE_CLAUDE_FINISH_GATE: stopScopedWorkerFinishGate,
-          FAKE_CLAUDE_REPLIES: JSON.stringify([
-            "The worker's unrelated direct task completed naturally.",
-            "Scheduled analysis returned to the coordinator.",
-          ]),
-          FAKE_CLAUDE_REPLY_STATE: join(home, "stop-scoped-worker-replies.txt"),
-          FAKE_CLAUDE_TRANSIENTS: "1",
-          FAKE_CLAUDE_STATE: join(home, "stop-scoped-worker-launches.txt"),
-        },
-        config: { cli: FAKE_CLAUDE },
-      },
-      directHang: {
-        driver: "claudeAgent",
-        displayName: "Direct hang fixture",
-        environment: { FAKE_CLAUDE_MODE: "hang" },
-        config: { cli: FAKE_CLAUDE },
-      },
-      routineGoal: {
-        driver: "claudeAgent",
-        displayName: "Routine goal fixture",
-        environment: {
-          FAKE_CLAUDE_MODE: "slow",
-          FAKE_CLAUDE_SLOW_FINISH_GATE: routineGoalFinishGate,
-          FAKE_CLAUDE_REPLIES: JSON.stringify([
-            "The scheduled review is complete.\n<quati-goal>{\"status\":\"completed\",\"detail\":\"Scheduled team review completed.\"}</quati-goal>",
-          ]),
-          FAKE_CLAUDE_REPLY_STATE: join(home, "routine-goal-replies.txt"),
-        },
-        config: { cli: FAKE_CLAUDE },
-      },
-    },
+  const fixtures: Record<string, { mode?: string; gate?: string; replies?: Array<string | string[]> }> = {
+    complete: { replies: completeReplies },
+    loop: { replies: loopReplies },
+    crash: { mode: "fail-after-text" },
+    slow: { gate: queueFinishGate, replies: ["first response", "second response"] },
+    busyGoal: { gate: busyGoalFinishGate, replies: [
+      "The unrelated direct task is complete.",
+      "The queued team goal is complete.\n<quati-goal>{\"status\":\"completed\",\"detail\":\"Waited for the lead, then completed normally.\"}</quati-goal>",
+    ] },
+    busyWorkerLead: { replies: [
+      "I am delegating the research.\n<quati-goal>{\"status\":\"continue\",\"next\":\"Busy specialist\",\"instruction\":\"Research the answer and report evidence\",\"detail\":\"Waiting for specialist research.\"}</quati-goal>",
+      "The specialist's evidence resolves the goal.\n<quati-goal>{\"status\":\"completed\",\"detail\":\"Specialist research incorporated after their direct task finished.\"}</quati-goal>",
+    ] },
+    busyWorker: { gate: busyWorkerFinishGate, replies: [
+      "The unrelated direct research is complete.", "Evidence gathered for the coordinator.",
+    ] },
+    stopScopedLead: { gate: stopScopedLeadFinishGate, replies: [
+      "I am delegating this scheduled goal.\n<quati-goal>{\"status\":\"continue\",\"next\":\"Delayed worker\",\"instruction\":\"Finish the scheduled analysis\",\"detail\":\"Waiting for the delayed worker.\"}</quati-goal>",
+      "This is unrelated direct work and should be stopped.",
+      "The scheduled analysis is now complete.\n<quati-goal>{\"status\":\"completed\",\"detail\":\"Scheduled goal survived the coordinator's direct Stop.\"}</quati-goal>",
+    ] },
+    stopScopedWorker: { gate: stopScopedWorkerFinishGate, replies: [
+      "The worker's unrelated direct task completed naturally.", "Scheduled analysis returned to the coordinator.",
+    ] },
+    directHang: { mode: "hang" },
+    routineGoal: { gate: routineGoalFinishGate, replies: [
+      "The scheduled review is complete.\n<quati-goal>{\"status\":\"completed\",\"detail\":\"Scheduled team review completed.\"}</quati-goal>",
+    ] },
+  };
+  const instances = Object.fromEntries(Object.entries(fixtures).map(([id, fixture]) => {
+    const cli = join(home, `${id}.mjs`);
+    const variables = {
+      FAKE_ACP_MODE: fixture.mode ?? "reply-sequence",
+      FAKE_ACP_AGENT_NAME: "OpenCode",
+      FAKE_ACP_AGENT_VERSION: "2.0.31",
+      FAKE_ACP_VERSION: "2.0.31",
+      FAKE_ACP_MODELS: "fixture/test",
+      FAKE_ACP_DUMP: join(home, `${id}.json`),
+      FAKE_ACP_REPLIES: JSON.stringify(fixture.replies ?? []),
+      FAKE_ACP_REPLY_STATE: join(home, `${id}-reply-index`),
+      FAKE_ACP_GATE_FILE: fixture.gate ?? "",
+    };
+    writeFileSync(cli, [
+      "#!/usr/bin/env node",
+      `Object.assign(process.env, ${JSON.stringify(variables)});`,
+      `await import(${JSON.stringify(FAKE_ACP)});`,
+    ].join("\n"), { mode: 0o700 });
+    return [id, { driver: "opencodeGo", displayName: id, config: { cli } }];
   }));
+  writeFileSync(join(data, "config.json"), JSON.stringify({ instances }));
   const port = await freePortBlock([0, 1]);
   base = `http://127.0.0.1:${port}`;
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
@@ -232,14 +150,16 @@ afterAll(async () => {
 
 describe("goal-driven channel runs", () => {
   it("returns to the lead until the goal is completed and appends a clean receipt", async () => {
-    const lead = (await api("POST", "/api/bots", {
+    const created = await api("POST", "/api/bots", {
       name: "Lead",
-      modelSelection: { instanceId: "complete", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "complete", model: "fixture/test" },
       requireAvailableModel: true,
-    })).body.bot;
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const lead = created.body.bot;
     const scout = (await api("POST", "/api/bots", {
       name: "Scout",
-      modelSelection: { instanceId: "complete", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "complete", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const room = (await api("POST", "/api/groups", {
@@ -280,7 +200,7 @@ describe("goal-driven channel runs", () => {
   it("waits for a busy coordinator without spending a goal turn, then completes on the same card", async () => {
     const lead = (await api("POST", "/api/bots", {
       name: "Patient lead",
-      modelSelection: { instanceId: "busyGoal", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "busyGoal", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const room = (await api("POST", "/api/groups", {
@@ -358,12 +278,12 @@ describe("goal-driven channel runs", () => {
   it("waits for a busy delegated worker, preserves its direct turn, then resumes the goal", async () => {
     const lead = (await api("POST", "/api/bots", {
       name: "Worker coordinator",
-      modelSelection: { instanceId: "busyWorkerLead", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "busyWorkerLead", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const worker = (await api("POST", "/api/bots", {
       name: "Busy specialist",
-      modelSelection: { instanceId: "busyWorker", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "busyWorker", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const room = (await api("POST", "/api/groups", {
@@ -427,7 +347,7 @@ describe("goal-driven channel runs", () => {
             ),
           workerDirectBusy: currentWorker?.busy,
           directFinishedNaturally: currentWorker?.messages.some((message: { text?: string }) =>
-            message.text?.includes("reply to:")
+            message.text?.includes("The unrelated direct research is complete.")
           ),
         };
       }, { timeout: hostTimeout(10_000) }).toEqual({
@@ -453,7 +373,7 @@ describe("goal-driven channel runs", () => {
   it("stops a waiting goal without interrupting unrelated direct work, and chat waits for busy bots the same way", async () => {
     const lead = (await api("POST", "/api/bots", {
       name: "Occupied lead",
-      modelSelection: { instanceId: "directHang", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "directHang", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const room = (await api("POST", "/api/groups", {
@@ -554,7 +474,7 @@ describe("goal-driven channel runs", () => {
   it("stops a detached scheduled goal from the active room and cancels its routine run", async () => {
     const lead = (await api("POST", "/api/bots", {
       name: "Detached scheduled lead",
-      modelSelection: { instanceId: "directHang", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "directHang", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const room = (await api("POST", "/api/groups", {
@@ -647,7 +567,7 @@ describe("goal-driven channel runs", () => {
   it("stops a detached scheduled goal from the coordinator's ordinary Stop", async () => {
     const lead = (await api("POST", "/api/bots", {
       name: "Detached bot-stop lead",
-      modelSelection: { instanceId: "directHang", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "directHang", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const room = (await api("POST", "/api/groups", {
@@ -736,12 +656,12 @@ describe("goal-driven channel runs", () => {
   it("stops the coordinator's direct turn without cancelling a routine goal waiting on its worker", async () => {
     const lead = (await api("POST", "/api/bots", {
       name: "Stop-scoped coordinator",
-      modelSelection: { instanceId: "stopScopedLead", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "stopScopedLead", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const worker = (await api("POST", "/api/bots", {
       name: "Delayed worker",
-      modelSelection: { instanceId: "stopScopedWorker", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "stopScopedWorker", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const room = (await api("POST", "/api/groups", {
@@ -815,13 +735,14 @@ describe("goal-driven channel runs", () => {
       await expect.poll(async () => {
         const state = (await api("GET", "/api/bots?messages=30")).body;
         const currentLead = state.bots.find((bot: { id: string }) => bot.id === lead.id);
+        const prompts = join(home, "stopScopedLead.json.prompts.jsonl");
         return {
           busy: currentLead?.busy,
-          directReplyStarted: currentLead?.messages.some((message: { text?: string }) =>
-            message.text?.includes("This is unrelated direct work and should be stopped.")
-          ),
+          prompt: existsSync(prompts) ? readFileSync(prompts, "utf8") : "",
         };
-      }).toEqual({ busy: true, directReplyStarted: true });
+      }, { timeout: hostTimeout(10_000) }).toEqual({
+        busy: true, prompt: expect.stringContaining("Start unrelated coordinator work"),
+      });
 
       expect((await api("POST", `/api/bots/${lead.id}/interrupt`)).status).toBe(200);
       await expect.poll(async () => {
@@ -879,7 +800,7 @@ describe("goal-driven channel runs", () => {
   it("runs a routine as a goal in a new background room task", async () => {
     const lead = (await api("POST", "/api/bots", {
       name: "Scheduled lead",
-      modelSelection: { instanceId: "routineGoal", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "routineGoal", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const room = (await api("POST", "/api/groups", {
@@ -990,7 +911,7 @@ describe("goal-driven channel runs", () => {
   it("pauses a non-converging team at the hard turn limit", async () => {
     const looper = (await api("POST", "/api/bots", {
       name: "Looper",
-      modelSelection: { instanceId: "loop", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "loop", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const room = (await api("POST", "/api/groups", {
@@ -1017,7 +938,7 @@ describe("goal-driven channel runs", () => {
   it("never treats a failed provider turn as a completed goal", async () => {
     const lead = (await api("POST", "/api/bots", {
       name: "Failing lead",
-      modelSelection: { instanceId: "crash", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "crash", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const room = (await api("POST", "/api/groups", {
@@ -1058,7 +979,7 @@ describe("goal-driven channel runs", () => {
   it("automatically dispatches channel messages queued during a running turn", async () => {
     const bot = (await api("POST", "/api/bots", {
       name: "Queue worker",
-      modelSelection: { instanceId: "slow", model: "claude-sonnet-5" },
+      modelSelection: { instanceId: "slow", model: "fixture/test" },
       requireAvailableModel: true,
     })).body.bot;
     const room = (await api("POST", "/api/groups", {

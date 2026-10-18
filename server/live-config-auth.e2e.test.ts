@@ -38,8 +38,10 @@ describe("Live credential config authorization", () => {
 
       expect((await api("PATCH", "/api/config", { live: { key: "fixture-live-owner" } })).status).toBe(200);
       expect((await api("PUT", "/api/config", { live: { key: "fixture-live-admin" } }, admin)).status).toBe(200);
-      expect(persistedLive()?.key).toBe("fixture-live-admin");
+      expect((await api("GET", "/api/config")).body.live?.configured).toBe(true);
       const before = readFileSync(join(fixture.info.dataDir, "config.json"), "utf8");
+      expect(before).not.toContain("fixture-live-owner");
+      expect(before).not.toContain("fixture-live-admin");
       for (const method of ["PUT", "PATCH"]) {
         for (const path of ["/api/config", "/api/config?secretStorage=external"]) {
           for (const key of ["fixture-live-client", ""]) {
@@ -56,15 +58,15 @@ describe("Live credential config authorization", () => {
 
       expect((await api("PATCH", "/api/config", { live: { voice: "alloy", idleMinutes: 7 } })).status).toBe(200);
       expect((await api("PATCH", "/api/live/settings", { voice: "ash", idleMinutes: 9 }, admin)).status).toBe(200);
-      expect(persistedLive()).toMatchObject({ key: "fixture-live-admin", voice: "ash", idleMinutes: 9 });
+      expect(persistedLive()).toMatchObject({ voice: "ash", idleMinutes: 9 });
       expect((await api("PATCH", "/api/live/settings", { key: "fixture-live-client" }, admin)).status).toBe(400);
-      expect(persistedLive()?.key).toBe("fixture-live-admin");
+      expect((await api("GET", "/api/config")).body.live?.configured).toBe(true);
 
       expect((await api("PATCH", "/api/config", { live: { key: "" } }, admin)).status).toBe(200);
-      expect(persistedLive()?.key).toBe("");
       expect((await api("GET", "/api/config")).body.live?.configured).toBe(false);
       expect((await api("PUT", "/api/config", { live: { key: "fixture-live-restored" } })).status).toBe(200);
-      expect(persistedLive()?.key).toBe("fixture-live-restored");
+      expect((await api("GET", "/api/config")).body.live?.configured).toBe(true);
+      expect(readFileSync(join(fixture.info.dataDir, "config.json"), "utf8")).not.toContain("fixture-live-restored");
       console.info(JSON.stringify(fixture.info));
     } finally {
       await fixture.close();

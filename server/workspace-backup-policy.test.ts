@@ -20,7 +20,7 @@ describe("workspace backup data boundary", () => {
     };
     const portable = portableWorkspaceConfig({ ...connections, language: "ja", features: { browser: true }, profile: { name: "Example" } });
     expect(portable).toEqual({ profile: { name: "Example" }, language: "ja", features: { browser: true } });
-    const restored = restoredWorkspaceConfig(portable, { ...connections, language: "en", budgets: { monthlyUsd: 12 } });
+    const restored = restoredWorkspaceConfig(portable, { ...connections, language: "en" });
     expect(restored).toEqual({ ...connections, ...portable });
     expect(restored.instances).toBe(connections.instances);
   });

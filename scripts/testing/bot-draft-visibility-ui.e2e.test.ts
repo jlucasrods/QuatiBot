@@ -30,14 +30,17 @@ if (!enabled) console.log("skipping draft visibility UI: set QUATI_UI_E2E=1 to i
     const snapshot = async () => (await ui("snapshot")).snapshot as string;
     const bots = async () => (await fetch(`${info.url}/api/bots?messages=0`).then(response => response.json())).bots as Array<{ id: string; visibility?: string }>;
     const before = await bots();
-    await ui("press", "--keys", "Control+n");
-    await expect.poll(snapshot).toContain("Who can see it");
-    // The dialog appears before its defaults request completes. Never click
-    // the disabled Create button while the fixture is still loading its draft.
+    await expect.poll(snapshot, { timeout: 10_000 }).toContain("Message Pepper");
+    await ui("click", "--name", "New or share");
+    let newBot: Array<[string, { name: string; role: string }]> = [];
+    await expect.poll(async () => {
+      const menu = await ui("snapshot");
+      newBot = Object.entries(menu.refs as Record<string, { name: string; role: string }>).filter(([, entry]) => entry.role === "button" && /^New bot\b/i.test(entry.name));
+      return newBot.length;
+    }).toBe(1);
+    await ui("click", "--ref", `@${newBot[0][0]}`);
+    await expect.poll(snapshot, { timeout: 15_000 }).toContain("Who can see it");
     await expect.poll(async () => (await ui("eval", "--js", "[...document.querySelectorAll('[role=dialog] button')].find(button => button.textContent.trim() === 'Create bot')?.disabled")).result).toBe(false);
-    // Native select popups do not accept routed keys consistently in headless
-    // macOS. Exercise the real select's change handler without the OS popup;
-    // creation and its resulting audience still run through the real UI/API.
     const state = await ui("snapshot");
     const audience = Object.entries(state.refs as Record<string, { name: string; role: string }>).find(([, item]) => item.role === "combobox" && item.name === "Who can see it");
     expect(audience).toBeDefined();
@@ -47,6 +50,6 @@ if (!enabled) console.log("skipping draft visibility UI: set QUATI_UI_E2E=1 to i
     await expect.poll(async () => (await bots()).length, { timeout: 15_000 }).toBe(before.length + 1);
     const created = (await bots()).find(bot => !before.some(old => old.id === bot.id));
     expect(created?.visibility).toBe("admins");
-    await expect.poll(snapshot).not.toContain('dialog "New bot"');
+    await expect.poll(snapshot).not.toMatch(/dialog "New bot"/i);
   } finally { await waitForExit(child, { signal: "SIGINT", graceMs: 30_000 }); }
 }, 720_000);

@@ -15,12 +15,13 @@ it("gives a room turn the memory_update guidance, not the file-tools one", async
     expect(response.ok, JSON.stringify(result)).toBe(true);
     return result;
   };
-  const dump = () => {
+  const prompt = () => {
     try {
-      // SAFETY: the fake CLI writes exactly this shape; a missing or partial file reads as no dump yet
-      return JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")) as { systemPrompt?: string; prompt?: unknown };
+      const turns: Array<{ prompt: Array<{ text?: string }>; mcpServers: Array<{ name: string }> }> = readFileSync(`${fixture.fixtureDumpPath}.prompts.jsonl`, "utf8")
+        .trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+      return turns.findLast((turn) => turn.mcpServers.some((server) => server.name === "agents"))?.prompt.map((block) => block.text ?? "").join("\n") ?? "";
     } catch {
-      return undefined;
+      return "";
     }
   };
   try {
@@ -31,7 +32,7 @@ it("gives a room turn the memory_update guidance, not the file-tools one", async
     // A 1:1 turn first: it is the reference the room turn must match.
     await runControlQuati(["send", "--bot", lead.id, "--text", "Remember that the fixture garden is watered on Mondays."], { env });
     await runControlQuati(["wait", "--bot", lead.id, "--timeout", "30"], { env });
-    const direct = dump()?.systemPrompt ?? "";
+    const direct = prompt();
     expect(direct).toContain("Change MEMORY.md only with memory_update");
     expect(direct).not.toContain("update it with your file tools");
 
@@ -42,11 +43,10 @@ it("gives a room turn the memory_update guidance, not the file-tools one", async
     }) as { group: { id: string } };
     await api("POST", `/api/groups/${group.id}/messages`, { text: "Lead, what day is the garden watered?" });
     await expect.poll(() => {
-      const text = dump()?.systemPrompt ?? "";
-      return text.includes("Reply to the conversation above as") || JSON.stringify(dump()?.prompt ?? "").includes("Reply to the conversation above as");
+      return prompt().includes("Reply to the conversation above as");
     }, { timeout: 30_000 }).toBe(true);
     await runControlQuati(["wait", "--bot", lead.id, "--timeout", "30"], { env });
-    const room = dump()?.systemPrompt ?? "";
+    const room = prompt();
     expect(room).toContain("Change MEMORY.md only with memory_update");
     expect(room).not.toContain("update it with your file tools");
   } finally {

@@ -63,7 +63,7 @@ it("keeps independent fixture chats and health requests usable during queued his
     for (const bot of bots) {
       const wait = await control(["wait", "--bot", bot.id, "--timeout", "30"]);
       expect(wait).toMatchObject({ status: "settled", messages: expect.arrayContaining([
-        expect.objectContaining({ role: "bot", text: "hello from fake claude" }),
+        expect.objectContaining({ role: "bot", text: "hello from fake acp" }),
       ]) });
       await control(["messages", "--bot", bot.id, "--limit", "10"]);
       const response = await fetch(`${fixture.info.url}/api/search?q=concurrent-search-probe&threadId=${bot.threadId}`);

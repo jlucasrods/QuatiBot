@@ -15,14 +15,13 @@ import { loadTeamFile, type DesiredBot, type TeamFile } from "./team-file.ts";
 
 type Rec = Record<string, any>;
 
-function workspace(seed: { bots?: Rec[]; groups?: Rec[]; sections?: string[]; config?: Rec } = {}) {
+function workspace(seed: { bots?: Rec[]; groups?: Rec[]; sections?: string[] } = {}) {
   const state = {
     bots: (seed.bots ?? []).map((bot) => ({ busy: false, title: "", description: "", modelSelection: { instanceId: "claude", model: "claude-sonnet-5" }, ...bot })) as Rec[],
     groups: seed.groups ?? [],
     sections: seed.sections ?? [],
     briefs: {} as Record<string, string>,
     skills: {} as Record<string, Record<string, { text: string; enabled: boolean }>>,
-    config: seed.config ?? { anthropic: { configured: false, everyClaudeBot: true } },
   };
   const writes: string[] = [];
   let ids = 0;
@@ -33,12 +32,8 @@ function workspace(seed: { bots?: Rec[]; groups?: Rec[]; sections?: string[]; co
     if (method !== "GET") writes.push(`${method} ${path}`);
     const url = new URL(path, "http://quati");
     const m = url.pathname.split("/").slice(1);
-    if (url.pathname === "/api/config") {
-      if (method === "PUT") for (const [name, value] of Object.entries(body as Rec)) state.config[name] = { ...state.config[name], configured: true, ...(value.everyClaudeBot !== undefined ? { everyClaudeBot: value.everyClaudeBot } : {}) };
-      return state.config;
-    }
     if (url.pathname === "/api/bot-defaults") return { modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } };
-    if (url.pathname === "/api/instances") return { instances: [{ instanceId: "claude", driverKind: "claudeAgent", snapshot: { state: "available" }, models: { default: "claude-sonnet-5", options: [{ id: "claude-sonnet-5" }, { id: "claude-haiku-5" }] } }] };
+    if (url.pathname === "/api/instances") return { instances: [{ instanceId: "claude", driverKind: "opencodeGo", snapshot: { state: "available" }, models: { default: "claude-sonnet-5", options: [{ id: "claude-sonnet-5" }, { id: "claude-haiku-5" }] } }] };
     if (url.pathname === "/api/sidebar-sections") {
       if (method === "POST") state.sections.push(body.name);
       return { sections: state.sections };
@@ -98,12 +93,12 @@ const lead: DesiredBot = {
 const priya: DesiredBot = { name: "Priya", team: "Launch Room", manages: [], title: "Skeptical buyer", approval: "full", computer: "browser",
   browser: { enabled: true, profile: "guest" }, tools: { deny: ["mcp:mail:*"] }, skills: [] };
 const file = (patch: Partial<TeamFile> = {}): TeamFile => ({
-  path: "/files/launch-room.yaml", engines: [], warnings: [],
+  path: "/files/launch-room.yaml", warnings: [],
   teams: [{ name: "Launch Room", brief: "We rehearse a launch.", prune: true }],
   bots: [lead, priya], rooms: [{ name: "Rehearsal", team: "Launch Room", members: ["Room Lead", "Priya"], brief: "The room.", responder: "Room Lead" }],
   ...patch,
 });
-const options = (patch: Partial<ApplyOptions> = {}): ApplyOptions => ({ apply: true, prune: false, rotateSecrets: false, waitIdleMs: 0, env: {}, ...patch });
+const options = (patch: Partial<ApplyOptions> = {}): ApplyOptions => ({ apply: true, prune: false, waitIdleMs: 0, ...patch });
 
 describe("team apply", () => {
   it("plans without writing, applies what it planned, and then has nothing left to do", async () => {
@@ -180,33 +175,6 @@ describe("team apply", () => {
     expect(state.skills["bot-1"]!["own-skill"]).toEqual({ text: "mine", enabled: true });
   });
 
-  it("writes an engine key only when none is set (or to rotate it), and never says it", async () => {
-    const engine = { kind: "claude", key: { env: "ANTHROPIC_API_KEY" } };
-    const env = { ANTHROPIC_API_KEY: "sk-ant-test-0123456789abcdefghij" };
-    const { client, writes } = workspace();
-    const first = await reconcile(client, file({ engines: [engine] }), options({ env }));
-    expect(first.lines[0]).toBe("engine claude: key «redacted 32 chars»");
-    expect(JSON.stringify(first)).not.toContain("sk-ant-test");
-    expect(writes[0]).toBe("PUT /api/config");
-    writes.length = 0;
-    expect((await reconcile(client, file({ engines: [engine] }), options({ env: {} }))).lines).toEqual([]);
-    expect(writes).toEqual([]);
-    expect((await reconcile(client, file({ engines: [engine] }), options({ env, rotateSecrets: true }))).lines[0]).toMatch(/^engine claude: key «redacted 32 chars»/);
-    await expect(reconcile(client, file({ engines: [engine] }), options({ env: {}, rotateSecrets: true }))).rejects.toThrow("ANTHROPIC_API_KEY is not set");
-  });
-
-  it("keeps a base URL given as a secret out of the plan, and reads it only when the key is written", async () => {
-    const engine = { kind: "claude", key: { env: "ANTHROPIC_API_KEY" }, baseUrl: { env: "ANTHROPIC_BASE_URL" } };
-    const env = { ANTHROPIC_API_KEY: "sk-ant-test-0123456789abcdefghij", ANTHROPIC_BASE_URL: "https://gw.example.com/v1/team-7f3a9c" };
-    const { client } = workspace();
-    const first = await reconcile(client, file({ engines: [engine] }), options({ env }));
-    expect(first.lines[0]).toBe("engine claude: key «redacted 32 chars» · base URL set");
-    expect(JSON.stringify(first)).not.toContain("team-7f3a9c");
-    const again = await reconcile(client, file({ engines: [engine] }), options({ env: {} }));
-    expect(again.lines).toEqual(["engine claude: its key is already set and the server does not show its base URL, so the file's was not compared (--rotate-secrets writes both)"]);
-    expect(again).toMatchObject({ created: 0, changed: 0, writes: 0 });
-  });
-
   it("of two bots with the file's name, changes the one in the file's team, never the other team's", async () => {
     // someone else's Priya, in Sales, listed before the team's own
     const { client, writes, state } = workspace({ sections: ["Sales", "Launch Room"], bots: [
@@ -249,7 +217,7 @@ describe("team apply", () => {
     // Claude limits MCP tools only: a built-in one in the selection would stop every turn it runs
     for (const visitor of [{ ...priya, tools: { deny: ["native:Bash"] } }, { ...priya, model: { instanceId: "claude", model: "claude-haiku-5" }, tools: { deny: ["native:Bash"] } }]) {
       await expect(reconcile(client, file({ bots: [lead, visitor] }), options({ apply: false })))
-        .rejects.toThrow('bot "Priya": claudeAgent: native tool selection is not supported by this engine');
+        .rejects.toThrow('bot "Priya": opencodeGo: native tool selection is not supported by this engine');
     }
     expect(writes).toEqual([]);
     expect((await reconcile(client, file(), options({ apply: false }))).created).toBe(4);

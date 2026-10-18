@@ -8,8 +8,11 @@ import type { DecisionRow } from "./decision-log.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 
 describe("describeTool", () => {
+  it.each(["Bash", "shell"])("names %s as a command action", (tool) => {
+    expect(describeTool(tool)).toEqual({ app: null, label: "Ran a command" });
+  });
+
   it("names the built-in agent tools as actions", () => {
-    expect(describeTool("Bash")).toEqual({ app: null, label: "Ran a command" });
     expect(describeTool("Read")).toEqual({ app: null, label: "Read a file" });
     expect(describeTool("Edit")).toEqual({ app: null, label: "Edited a file" });
     expect(describeTool("Write")).toEqual({ app: null, label: "Wrote a file" });

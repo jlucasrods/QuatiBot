@@ -139,7 +139,7 @@ describe("the stall handler", () => {
     const context = vm.createContext({
       process: { env: {} },
       RoomTurnStallRegistry: class { stall() {} },
-      TurnStops, stoppedTurnOutcome, reportsToRequester: () => true,
+      TurnStops, turnStops: new TurnStops(), stoppedTurnOutcome, reportsToRequester: () => true,
       TurnWatchdog: class { options: unknown; constructor(options: { onStall: (turn: WatchedTurn) => void }) { this.options = options; } },
       store: { messagesFor: () => messages, activePath: () => messages, appendMessage() {} },
       turnResourceOwners: new Map(), directTurnGenerationByThread: new Map([["t1", "gen-1"]]), directRequestOwners: new Map(),

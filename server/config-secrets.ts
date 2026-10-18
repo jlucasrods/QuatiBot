@@ -29,7 +29,13 @@ export function readConfigSecrets(dataDir: string) {
 
 export function saveConfigSecrets(dataDir: string, patch: Record<string, Record<string, string>>) {
   const secrets = readConfigSecrets(dataDir);
-  for (const [section, fields] of Object.entries(patch)) secrets[section] = { ...secrets[section], ...fields };
+  const changed: string[] = [];
+  for (const [section, fields] of Object.entries(patch)) {
+    for (const [field, value] of Object.entries(fields)) {
+      if ((secrets[section]?.[field] ?? "") !== value) changed.push(`${section}.${field}`);
+    }
+    secrets[section] = { ...secrets[section], ...fields };
+  }
 
   mkdirSync(dataDir, { recursive: true });
   const keyFile = join(dataDir, "credentials-key");
@@ -37,4 +43,5 @@ export function saveConfigSecrets(dataDir: string, patch: Record<string, Record<
   if (!/^[0-9a-f]{64}$/.test(key)) throw new Error("Server credentials key is invalid.");
   if (!existsSync(keyFile)) writeFileAtomic(keyFile, `${key}\n`, { mode: 0o600 });
   writeFileAtomic(join(dataDir, "credentials.enc"), encryptBrowserState(JSON.stringify(secrets), key), { mode: 0o600 });
+  return changed;
 }

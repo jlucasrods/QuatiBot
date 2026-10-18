@@ -368,6 +368,7 @@ let pendingAskQuestionId: number | null = null;
 let onAskQuestionAnswered: (() => void) | null = null;
 
 let hangingPromptId: unknown = null;
+let controlledPoll: ReturnType<typeof setInterval> | null = null;
 let hangKeepAlive: ReturnType<typeof setInterval> | null = null;
 
 type McpEntry = { command: string; args?: string[]; env?: Array<{ name: string; value: string }> };
@@ -421,6 +422,7 @@ async function listMcpTools(entry: AnyMcpEntry, handshake: unknown): Promise<str
   });
 }
 let liveSession: string | null = null;
+let sessionCwd: string | undefined;
 let rpcFailure: unknown = null;
 function emitSessionReports(): void {
   const updatesFile = process.env.FAKE_ACP_UPDATES_FILE;
@@ -442,8 +444,18 @@ function emitSessionReports(): void {
     } catch {}
   }
 }
+function fixtureFaultApplies(servers: AnyMcpEntry[]): boolean {
+  const targetFile = process.env.FAKE_ACP_FAULT_BOT_FILE;
+  if (!targetFile) return true;
+  if (!existsSync(targetFile)) return false;
+
+  const botId = readFileSync(targetFile, "utf8").trim();
+  return servers.some((server) => server.env?.some((entry) => entry.name === "QUATI_BOT_ID" && entry.value === botId));
+}
+
 function failRpc(msg: { method: string; id: unknown }): boolean {
   if (msg.method !== (process.env.FAKE_ACP_RPC_FAILURE_METHOD ?? "session/prompt")) return false;
+  if (!fixtureFaultApplies(sessionMcp)) return false;
   const failureFile = process.env.FAKE_ACP_RPC_FAILURE_FILE;
   if (failureFile && existsSync(failureFile)) rpcFailure = JSON.parse(readFileSync(failureFile, "utf8"));
   if (!rpcFailure) return false;
@@ -519,14 +531,14 @@ function driveMcp(entry: McpEntry, calls: Array<{ name: string | (() => string);
   });
 }
 
-function playTurn() {
-  out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { text: "hello from fake acp" } } } });
+function playTurn(withText = true) {
+  if (withText) out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { text: "hello from fake acp" } } } });
   if (process.env.FAKE_ACP_TOOL_CALLS) {
-    const calls = JSON.parse(process.env.FAKE_ACP_TOOL_CALLS) as Array<{ name: string; input?: Record<string, unknown>; ok?: boolean }>;
+    const calls = JSON.parse(process.env.FAKE_ACP_TOOL_CALLS) as Array<{ name: string; kind?: string; input?: Record<string, unknown>; ok?: boolean; output?: string }>;
     for (const [index, call] of calls.entries()) {
       const toolCallId = `scripted-${index}`;
-      out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "tool_call", toolCallId, title: call.name, rawInput: call.input ?? {} } } });
-      out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "tool_call_update", toolCallId, status: call.ok === false ? "failed" : "completed" } } });
+      out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "tool_call", toolCallId, title: call.name, kind: call.kind, rawInput: call.input ?? {} } } });
+      out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "tool_call_update", toolCallId, status: call.ok === false ? "failed" : "completed", rawOutput: call.output === undefined ? undefined : { output: call.output } } } });
     }
     return;
   }
@@ -634,6 +646,7 @@ function handle(msg: any) {
       result(msg.id, { result: { servers: [], sessionMcpResolved: true } });
       break;
     case "session/new": {
+      sessionCwd = msg.params?.cwd;
       if (failRpc(msg)) break;
       if (mode === "auth-required") {
         out({
@@ -650,24 +663,30 @@ function handle(msg: any) {
         writeDumpAtomic(process.env.FAKE_ACP_DUMP, JSON.stringify(dumpState, null, 2));
       }
       const offered = servers.find((s: any) => s?.name === "agents") ?? null;
-      agentsMcp = mode === "list-peers" ? agentsMcp ?? offered : offered;
+      agentsMcp = offered;
       sessionMcp = servers as AnyMcpEntry[];
       if (process.env.FAKE_ACP_DUMP) {
         writeFileSync(`${process.env.FAKE_ACP_DUMP}.mcp.json`, JSON.stringify(servers, null, 2));
       }
       const opts = configOptions();
       const mdls = sessionModels();
-      liveSession = "fake-acp-session";
+      liveSession = process.env.FAKE_ACP_UNIQUE_SESSIONS === "1"
+        ? `fixture-${process.pid}-${rpcMethods.length}` : "fake-acp-session";
       resultAndConfigUpdates(msg.id, {
-        sessionId: "fake-acp-session",
+        sessionId: liveSession,
         ...(opts ? { configOptions: opts } : {}),
         ...(mdls ? { models: mdls } : {}),
-      }, "session/new", "fake-acp-session");
+      }, "session/new", liveSession);
       break;
     }
     case "session/load": {
-      if (process.env.FAKE_ACP_LOAD_ERROR) {
-        out({ jsonrpc: "2.0", id: msg.id, error: JSON.parse(process.env.FAKE_ACP_LOAD_ERROR) });
+      sessionCwd = msg.params?.cwd;
+      const loadErrorFile = process.env.FAKE_ACP_LOAD_ERROR_FILE;
+      const loadError = process.env.FAKE_ACP_LOAD_ERROR
+        ?? (loadErrorFile && existsSync(loadErrorFile) && fixtureFaultApplies(msg.params?.mcpServers ?? [])
+          ? readFileSync(loadErrorFile, "utf8") : undefined);
+      if (loadError) {
+        out({ jsonrpc: "2.0", id: msg.id, error: JSON.parse(loadError) });
         break;
       }
       if (process.env.FAKE_ACP_LOAD_NULL) {
@@ -683,11 +702,8 @@ function handle(msg: any) {
         break;
       }
       const cachedLiveLoad = process.env.FAKE_ACP_CACHED_LIVE_LOAD === "1" && liveSession === msg.params?.sessionId;
-      if ((mode === "safe-agent-reads" || mode === "chief-delegate" || mode === "create-peer") && !cachedLiveLoad) {
+      if (!cachedLiveLoad) {
         agentsMcp = (msg.params?.mcpServers ?? []).find((server: any) => server.name === "agents") ?? null;
-      }
-      if (mode === "list-peers") {
-        agentsMcp ??= (msg.params?.mcpServers ?? []).find((server: any) => server.name === "agents") ?? null;
       }
       if (process.env.FAKE_ACP_DUMP) {
         writeFileSync(`${process.env.FAKE_ACP_DUMP}.session.json`, JSON.stringify(msg.params));
@@ -800,9 +816,9 @@ function handle(msg: any) {
       break;
     }
     case "session/prompt": {
-      if (process.env.FAKE_ACP_DUMP && (modes.length || models.length)) {
+      if (process.env.FAKE_ACP_DUMP) {
         appendFileSync(`${process.env.FAKE_ACP_DUMP}.prompts.jsonl`, JSON.stringify({
-          pid: process.pid, sessionId: msg.params?.sessionId, mode: currentMode, model: currentModel,
+          pid: process.pid, sessionId: msg.params?.sessionId, mode: currentMode, model: currentModel, prompt: msg.params?.prompt, mcpServers: sessionMcp, rpcMethods: [...rpcMethods], env: dumpEnv,
         }) + "\n");
       }
       emitConfigUpdates("session/prompt", msg.params.sessionId);
@@ -820,20 +836,44 @@ function handle(msg: any) {
         if (!entry?.command) throw new Error("Scripted ACP turns require the agents MCP");
         const browser = sessionMcp.find((server) => server.name === "browser");
         const text = (msg.params.prompt as Array<{ text?: string }>).map((block) => block.text ?? "").join("\n");
+        let planToolIndex = 0;
         void runRoomHandoffAgent([], process.env.FAKE_ACP_ROOM_PLAN, { message: { content: text } }, {
           integration: { command: entry.command, args: entry.args ?? [], env: Object.fromEntries((entry.env ?? []).map(({ name, value }) => [name, value])) },
           browser: browser?.command ? { command: browser.command, args: browser.args ?? [], env: Object.fromEntries((browser.env ?? []).map(({ name, value }) => [name, value])) } : undefined,
           system: "",
+          evidence: { model: currentModel, nativePermissions: JSON.parse(process.env.OPENCODE_CONFIG_CONTENT ?? "{}").permissions, sessionId: msg.params?.sessionId, rpcMethods: [...rpcMethods] },
+          approve: async (ask) => {
+            const allowed = await new Promise<boolean>((resolve) => {
+              pendingPermissionId = 9100 + planToolIndex++;
+              onPermissionAnswered = resolve;
+              out({ jsonrpc: "2.0", id: pendingPermissionId, method: "session/request_permission", params: {
+                toolCall: { toolCallId: `plan-approval-${msg.id}`, kind: /^(Bash|shell)$/.test(ask.tool_name) ? "execute" : "other", title: ask.tool_name, rawInput: ask.input },
+                options: [{ optionId: "allow-once", kind: "allow_once" }, { optionId: "reject", kind: "reject_once" }],
+              } });
+            });
+            return { behavior: allowed ? "allow" : "deny" };
+          },
+          toolResult: (name, input, ok) => {
+            const toolCallId = `plan-${msg.id}-${++planToolIndex}`;
+            out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params.sessionId, update: { sessionUpdate: "tool_call", toolCallId, title: name, rawInput: input } } });
+            out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params.sessionId, update: { sessionUpdate: "tool_call_update", toolCallId, status: ok ? "completed" : "failed" } } });
+          },
+        }, (progress) => {
+          out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params.sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: progress } } } });
         }).then((reply) => {
           out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params.sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: reply } } } });
           result(msg.id, { stopReason: "end_turn" });
         }).catch((error: Error) => {
-          out({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: error.message } });
+          out({ jsonrpc: "2.0", id: msg.id, error: { code: -32603, message: error.message } });
         });
         return;
       }
-      if (process.env.FAKE_ACP_TEXT_REPLY !== undefined) {
-        out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params?.sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: process.env.FAKE_ACP_TEXT_REPLY } } } });
+      const textRoutes: Record<string, string> = process.env.FAKE_ACP_TEXT_ROUTES
+        ? JSON.parse(readFileSync(process.env.FAKE_ACP_TEXT_ROUTES, "utf8")) : {};
+      const routePrompt = (msg.params.prompt as Array<{ text?: string }>).map((block) => block.text ?? "").join("\n");
+      const textReply = Object.entries(textRoutes).find(([marker]) => routePrompt.includes(marker))?.[1] ?? process.env.FAKE_ACP_TEXT_REPLY;
+      if (textReply !== undefined) {
+        out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params?.sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: textReply } } } });
         result(msg.id, { stopReason: "end_turn", _meta: { inputTokens: 12, outputTokens: 4 } });
         return;
       }
@@ -857,13 +897,41 @@ function handle(msg: any) {
       const complete = () => {
         emitSessionReports();
         recordMethod("session/prompt.result");
+        const usage = JSON.parse(process.env.FAKE_ACP_TOKEN_USAGE ?? '{"inputTokens":10,"outputTokens":5}');
         result(
           msg.id,
           process.env.FAKE_ACP_USAGE_ROOT
-            ? { stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 5 }, _meta: {} }
-            : { stopReason: "end_turn", _meta: { inputTokens: 10, outputTokens: 5 } },
+            ? { stopReason: "end_turn", usage, _meta: {} }
+            : { stopReason: "end_turn", _meta: usage },
         );
       };
+      if (mode === "reply-sequence") {
+        const replies: Array<string | string[]> = JSON.parse(process.env.FAKE_ACP_REPLIES ?? "[]");
+        const state = process.env.FAKE_ACP_REPLY_STATE!;
+        const index = existsSync(state) ? Number(readFileSync(state, "utf8")) : 0;
+        writeFileSync(state, String(index + 1));
+        const reply = replies[index] ?? "done";
+        for (const text of Array.isArray(reply) ? reply : [reply]) {
+          out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params.sessionId, update: {
+            sessionUpdate: "agent_message_chunk", content: { type: "text", text },
+          } } });
+        }
+
+        const gate = process.env.FAKE_ACP_GATE_FILE;
+        if (gate && !existsSync(gate)) {
+          hangingPromptId = msg.id;
+          hangKeepAlive = setInterval(() => {
+            if (!existsSync(gate)) return;
+            if (hangKeepAlive) clearInterval(hangKeepAlive);
+            hangKeepAlive = null;
+            hangingPromptId = null;
+            complete();
+          }, 50);
+        } else {
+          complete();
+        }
+        return;
+      }
       if (mode === "quiet-then-answer") {
         const lines: string[] = process.env.FAKE_ACP_QWEN_LOG ? JSON.parse(process.env.FAKE_ACP_QWEN_LOG) : [];
         let logTimer: ReturnType<typeof setInterval> | null = null;
@@ -916,7 +984,7 @@ function handle(msg: any) {
       const wokeFromDelegation = promptText.includes("[A delegated task just completed]")
         || promptText.includes("[A delegated task failed]")
         || runtimeReport !== null;
-      if (wokeFromDelegation) {
+      if (wokeFromDelegation && mode !== "controlled") {
         fakeLog("branch: wokeFromDelegation");
         const failed = promptText.includes("[A delegated task failed]")
           || (runtimeReport !== null && runtimeReport[1] !== "done" && runtimeReport[1] !== "completed");
@@ -1091,21 +1159,81 @@ function handle(msg: any) {
           });
         return;
       }
+      if (mode === "controlled" && agentsMcp) {
+        const directory = process.env.FAKE_ACP_CONTROL_DIR;
+        if (!directory) throw new Error("controlled mode needs FAKE_ACP_CONTROL_DIR");
+
+        const text = promptText.replace(/^[\s\S]*?Current time when this message was sent:[^\n]*\n\n?/, "");
+        let key = process.env.FAKE_ACP_CONTROL_KEY === "thread"
+          ? agentsMcp.env?.find((entry) => entry.name === "QUATI_THREAD_ID")?.value
+          : currentModel;
+        if (process.env.FAKE_ACP_CONTROL_MARKERS === "1") key = /\[\[gate:([\w-]+)\]\]/.exec(text)?.[1] ?? key;
+        if (!key) throw new Error("controlled mode needs a model or mounted thread ID");
+        const base = join(directory, String(key).replace(/[^\w-]/g, "_"));
+        const evidence = JSON.stringify({
+          pid: process.pid, model: currentModel, cwd: sessionCwd, promptStartedAt: Date.now(),
+          prompt: msg.params?.prompt, mcpServers: sessionMcp,
+          nativePermissions: JSON.parse(process.env.OPENCODE_CONFIG_CONTENT ?? "{}").permissions,
+        });
+        writeDumpAtomic(`${base}.json`, evidence);
+        appendFileSync(`${base}.prompts.jsonl`, `${evidence}\n`);
+
+        let requested: string | undefined;
+        hangingPromptId = msg.id;
+        if (process.env.FAKE_ACP_TOOL_CALLS) playTurn(false);
+        controlledPoll = setInterval(() => {
+          const requestFile = `${base}.permission.json`;
+          if (pendingPermissionId === null && existsSync(requestFile)) {
+            const permission: { key: string; tool?: string; input: Record<string, unknown> } = JSON.parse(readFileSync(requestFile, "utf8"));
+            if (permission.key !== requested) {
+              requested = permission.key;
+              pendingPermissionId = 9001;
+              process.env.FAKE_ACP_PERMISSION_ANSWER = join(directory, `${permission.key}.answer`);
+              onPermissionAnswered = null;
+              out({ jsonrpc: "2.0", id: pendingPermissionId, method: "session/request_permission", params: {
+                toolCall: { toolCallId: permission.key, kind: "execute", title: permission.tool ?? "shell", rawInput: permission.input },
+                options: [{ optionId: "allow-once", kind: "allow_once" }, { optionId: "reject", kind: "reject_once" }],
+              } });
+            }
+          }
+          if (pendingPermissionId !== null || !existsSync(`${base}.gate`)) return;
+          if (controlledPoll) clearInterval(controlledPoll);
+          controlledPoll = null;
+          hangingPromptId = null;
+          if (readFileSync(`${base}.gate`, "utf8").trim() === "fail") {
+            out({ jsonrpc: "2.0", id: msg.id, error: { code: -32603, message: "Fixture turn failed." } });
+            return;
+          }
+          out({ jsonrpc: "2.0", method: "session/update", params: { update: {
+            sessionUpdate: "agent_message_chunk", content: { text: `echo: ${text}` },
+          } } });
+          complete();
+        }, 50);
+        return;
+      }
       if (mode === "echo-gated") {
+        if (process.env.FAKE_ACP_TOOL_CALLS) playTurn(false);
+        const text = promptText.replace(/^[\s\S]*?Current time when this message was sent:[^\n]*\n\n?/, "");
         const finish = () => {
-          out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { text: `echo: ${promptText}` } } } });
+          out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { text: `echo: ${text}` } } } });
           complete();
         };
-        const gate = process.env.FAKE_ACP_GATE_FILE;
+        const gateRoutes: Record<string, string> = JSON.parse(process.env.FAKE_ACP_GATE_ROUTES ?? "{}");
+        const gate = Object.entries(gateRoutes).find(([marker]) => promptText.includes(marker))?.[1]
+          ?? process.env.FAKE_ACP_GATE_FILE;
         // FAKE_ACP_STARTED_FILE: written when the prompt arrives, so a test can act during the turn.
         const started = process.env.FAKE_ACP_STARTED_FILE;
         if (started) writeFileSync(started, String(Date.now()));
         if (gate && !existsSync(gate)) {
+          hangingPromptId = msg.id;
           const poll = setInterval(() => {
             if (!existsSync(gate)) return;
             clearInterval(poll);
+            hangingPromptId = null;
+            hangKeepAlive = null;
             finish();
           }, 50);
+          hangKeepAlive = poll;
           return;
         }
         finish();
@@ -1209,14 +1337,19 @@ function handle(msg: any) {
         return;
       }
       if (mode === "question") {
+        let finished = false;
+        hangingPromptId = msg.id;
         pendingPermissionId = 9002;
         onPermissionAnswered = () => {
+          if (finished || hangingPromptId !== msg.id) return;
           // FAKE_ACP_HOLD_ON_CANCELLED: a cancelled question holds the prompt until session/cancel, as Antigravity does.
           if (process.env.FAKE_ACP_HOLD_ON_CANCELLED && lastPermissionCancelled) {
             hangingPromptId = msg.id;
             return;
           }
           out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { text: "answered the question" } } } });
+          finished = true;
+          hangingPromptId = null;
           complete();
         };
         out({
@@ -1235,6 +1368,22 @@ function handle(msg: any) {
             ],
           },
         });
+        const endFile = process.env.FAKE_ACP_QUESTION_END_FILE;
+        if (endFile) {
+          const poll = setInterval(() => {
+            if (finished || hangingPromptId !== msg.id) {
+              clearInterval(poll);
+              return;
+            }
+            if (!existsSync(endFile)) return;
+            clearInterval(poll);
+            finished = true;
+            hangingPromptId = null;
+            out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { text: "Question left open." } } } });
+            complete();
+          }, 50);
+          poll.unref();
+        }
         return;
       }
       if (mode === "ask-question") {
@@ -1271,6 +1420,9 @@ function handle(msg: any) {
       break;
     }
     case "session/cancel":
+      if (process.env.FAKE_ACP_IGNORE_CANCEL === "1") break;
+      if (controlledPoll) clearInterval(controlledPoll);
+      controlledPoll = null;
       if (hangingPromptId !== null) {
         result(hangingPromptId, { stopReason: "cancelled", _meta: {} });
         if (hangKeepAlive) clearInterval(hangKeepAlive);

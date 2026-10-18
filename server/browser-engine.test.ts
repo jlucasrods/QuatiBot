@@ -551,34 +551,32 @@ describe("restoring exactly one browser profile", () => {
 });
 
 describe("finding the browser engine", () => {
-  it("pins the native-verified Windows revision in both download and desktop manifests", () => {
-    const asset = resolveAgentBrowserReleaseAsset("win32", "x64")!;
+  it("pins the Linux revision in both download and browser bundle manifests", () => {
+    const asset = resolveAgentBrowserReleaseAsset("linux", "x64")!;
     expect(asset).toEqual({
-      target: "win32-x64", version: "0.36.0-quati.1",
-      asset: "agent-browser-win32-x64-0.36.0-quati.1.exe",
-      url: "https://github.com/jlucasrods/QuatiBot/releases/download/browser-engine-v0.36.0-quati.1/agent-browser-win32-x64-0.36.0-quati.1.exe",
-      bytes: 13806080, sha256: "33bee834f6a6072ec8688b0914726e0262874d758f69f27e8baf7eaac6b5ed15",
+      target: "linux-x64", asset: "agent-browser-linux-x64",
+      bytes: 14253776, sha256: "78e0c5a14a7fa1f3d1ae2acdbdcc94a047b435b998a8c505fcc49d7fa4935a49",
     });
-    expect(agentBrowserReleaseVersion(asset)).toBe("0.36.0-quati.1");
-    expect(browserBundleSpec("win32-x64").engine).toEqual({
-      version: asset.version, asset: asset.asset, url: asset.url,
-      bytes: asset.bytes, sha256: asset.sha256, executable: "agent-browser.exe",
+    expect(agentBrowserReleaseVersion(asset)).toBe(AGENT_BROWSER_VERSION);
+    expect(browserBundleSpec("linux-x64").engine).toEqual({
+      version: AGENT_BROWSER_VERSION, asset: asset.asset, url: agentBrowserReleaseUrl(asset),
+      bytes: asset.bytes, sha256: asset.sha256, executable: "agent-browser",
     });
-    for (const [platform, arch] of [["darwin", "arm64"], ["darwin", "x64"], ["linux", "arm64"], ["linux", "x64"]] as const) {
+    for (const [platform, arch] of [["linux", "arm64"], ["linux", "x64"]] as const) {
       expect(agentBrowserReleaseVersion(resolveAgentBrowserReleaseAsset(platform, arch))).toBe("0.37.0");
     }
   });
 
-  it("does not reuse a pre-fix Windows managed install for a revised release", () => {
+  it("does not reuse an older Linux managed install for a revised release", () => {
     const dataDir = join(tmpdir(), "quati-versioned-browser-fixture");
-    const old = join(dataDir, "tools", "agent-browser", "0.36.0", "agent-browser.exe");
-    const revised = pinnedBinaryPath(dataDir, "win32", "x64");
-    expect(revised).toBe(join(dataDir, "tools", "agent-browser", "0.36.0-quati.1", "agent-browser.exe"));
+    const old = join(dataDir, "tools", "agent-browser", "0.36.0", "agent-browser");
+    const revised = pinnedBinaryPath(dataDir, "linux", "x64");
+    expect(revised).toBe(join(dataDir, "tools", "agent-browser", AGENT_BROWSER_VERSION, "agent-browser"));
     const files = new Set([old]);
-    const options = { dataDir, platform: "win32" as const, arch: "x64", env: { PATH: "" }, exists: (file: string) => files.has(file) };
+    const options = { dataDir, platform: "linux" as const, arch: "x64", env: { PATH: "" }, exists: (file: string) => files.has(file) };
     expect(resolveAgentBrowserBinary(options)).toBeNull();
     files.add(revised);
-    expect(browserEngineStatus(options)).toMatchObject({ kind: "ready", binaryPath: revised, version: "0.36.0-quati.1" });
+    expect(browserEngineStatus(options)).toMatchObject({ kind: "ready", binaryPath: revised, version: AGENT_BROWSER_VERSION });
     expect(resolveAgentBrowserBinary({ ...options, env: { PATH: "", QUATI_AGENT_BROWSER_PATH: old } })).toBe(old);
   });
 
@@ -666,9 +664,9 @@ describe("finding the browser engine", () => {
   it("hands agent-browser the Chrome QUATI prepared instead of the bundled shell, never when it attaches to the person's Chrome", () => {
     const resources = mkdtempSync(join(tmpdir(), "quati-browser-resources-"));
     scratch.push(resources);
-    const host = { platform: "darwin" as const, arch: "arm64" };
+    const host = { platform: "linux" as const, arch: "x64" };
     const env = { QUATI_RESOURCES_PATH: resources, PATH: "" };
-    const bundle = browserBundlePaths(join(resources, "browser-engine"), "darwin-arm64");
+    const bundle = browserBundlePaths(join(resources, "browser-engine"), "linux-x64");
     mkdirSync(bundle.licenses, { recursive: true });
     for (const file of [bundle.engine, bundle.chrome, bundle.manifest]) {
       mkdirSync(join(file, ".."), { recursive: true });
@@ -758,8 +756,8 @@ describe("finding the browser engine", () => {
     }
   });
 
-  it("knows every target Vercel publishes, and picks the musl build on Alpine", () => {
-    for (const [platform, arch] of [["darwin", "arm64"], ["darwin", "x64"], ["linux", "x64"], ["linux", "arm64"], ["win32", "x64"]] as const) {
+  it("knows the supported Linux targets and picks the musl build on Alpine", () => {
+    for (const [platform, arch] of [["linux", "x64"], ["linux", "arm64"]] as const) {
       const asset = resolveAgentBrowserReleaseAsset(platform, arch);
       expect(asset, `${platform}-${arch}`).not.toBeNull();
       expect(asset?.sha256).toMatch(/^[0-9a-f]{64}$/u);
