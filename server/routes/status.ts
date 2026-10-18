@@ -1,7 +1,6 @@
 import { DEFAULT_OUTBOUND_POLICY } from "../../shared/outbound.ts";
 import { readBotActivity } from "../activity.ts";
 import { activityCsv, activityEntries, parseActivityWhat, readAdminActivityRange } from "../admin-activity.ts";
-import { loadBrand } from "../brand.ts";
 import { browserEngineStatus, ensureChrome, installAgentBrowserBinary, resolveAgentBrowserBinary } from "../browser-engine.ts";
 import { DATA_DIR, EVENTS_DIR, NATIVE_DIR, type AppConfig } from "../config.ts";
 import { boundRetentionDays, decisionsCsv, readDecisionRange, readDecisions } from "../decision-log.ts";
@@ -68,9 +67,6 @@ export function createStatusRoutes(deps: StatusRouteDeps): RouteHandler {
       // A member learns what is entitled; when the key lapses is for admins.
       const status = editionStatus();
       return json(res, 200, auth.scopes.includes("admin") ? status : editionForMembers(status));
-    }
-    if (method === "GET" && path === "/api/brand") {
-      return json(res, 200, loadBrand());
     }
 
     m = path.match(/^\/api\/threads\/([\w-]+)\/events$/);

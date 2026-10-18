@@ -462,7 +462,6 @@ import {
   type ThreadOwner,
   type Viewer,
 } from "./bot-visibility.ts";
-import { describeBrand, loadBrand } from "./brand.ts";
 import { deliverSseFrame } from "./sse-fanout.ts";
 // Keep these two last, so loading the route table leaves module start-up order as is.
 import { json, onJsonBody, parsedBodyOf, readBody } from "./harness/http.ts";
@@ -11978,10 +11977,6 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
     if (method === "GET" && path === "/api/health" && !gate.auth) {
       return json(res, 200, { app: "quatibot" });
     }
-    // Public: the sign-in page needs the deployment's name and icon, and it holds nothing secret.
-    if (method === "GET" && path === "/api/brand" && !gate.auth) {
-      return json(res, 200, loadBrand());
-    }
     if (!gate.auth) return json(res, gate.status, { error: gate.error });
     const auth = gate.auth;
     if (HOSTED_WORKSPACE && auth.kind === "session") {
@@ -14551,7 +14546,6 @@ const workspaceAccessTimer = workspaceAccess ? setInterval(() => {
   void workspaceAccess!.revalidate().catch((error) => console.warn("workspace access revalidation failed", error));
 }, 10_000) : null;
 workspaceAccessTimer?.unref();
-console.log(describeBrand(loadBrand()));
 
 try {
   const reclaimedPartials = cleanupStaleAttachmentPartials();

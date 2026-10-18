@@ -6,7 +6,6 @@ import { EngineSetup, installCommandFor } from "@/components/EngineSetup";
 import { InstanceProviderMark } from "@/components/ProviderIcons";
 import { splitEngineRail } from "@/lib/engine-rail";
 import { t } from "@/lib/i18n";
-import { brand } from "../lib/brand";
 export function NoEngines() {
     const { state, dispatch, refreshInstances } = useStore();
     const [rechecking, setRechecking] = useState(false);
@@ -32,7 +31,7 @@ export function NoEngines() {
       <div className="mx-auto w-full max-w-[560px] px-6 py-12">
         <h1 className="text-[20px] font-semibold text-ink">{t("noEngines.title")}</h1>
         <p className="mt-1.5 text-[13.5px] leading-relaxed text-ink-secondary">
-          {t("noEngines.intro", { app: brand().name })}
+          {t("noEngines.intro", { app: "QuatiBot" })}
         </p>
 
         <div className="mt-6 flex flex-col gap-2.5">

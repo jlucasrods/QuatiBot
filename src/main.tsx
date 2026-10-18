@@ -4,7 +4,6 @@ import App from "./App";
 import {
   BROWSER_SIGN_IN_FAILED, previewBrowserSignIn, readSessionState, SERVICE_TRUST_REASON, takeBrowserSignInFromLocation, takePairingCodeFromLocation,
 } from "./lib/session";
-import { bootstrapBrand } from "./lib/brand";
 import { applySkin, readSkin } from "./lib/skins";
 import { applyChatWidth, readChatWidth } from "./lib/chat-width";
 import { applyFont, readFont } from "./lib/fonts";
@@ -38,6 +37,6 @@ async function chooseRoot(): Promise<React.ReactNode> {
   return <App />;
 }
 
-void Promise.all([bootstrapBrand(), chooseRoot()]).then(([, root]) => {
+void chooseRoot().then((root) => {
   createRoot(document.getElementById("root")!).render(<StrictMode>{root}</StrictMode>);
 });
