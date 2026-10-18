@@ -91,7 +91,7 @@ async function screenCalls(server: AgentsIntegration, count: number): Promise<Ar
  * gate; `approve` asks through Claude's permission-prompt tool (`replyIfDenied` otherwise);
  * `screenCalls` calls the mounted computer that many times. */
 export async function runRoomHandoffAgent(argv: string[], planPath: string, prompt?: unknown,
-  launch?: { integration: AgentsIntegration; system: string; evidence?: Record<string, unknown> },
+  launch?: { integration: AgentsIntegration; browser?: AgentsIntegration; system: string; evidence?: Record<string, unknown> },
   progress?: (text: string) => void): Promise<string> {
   const arg = (flag: string) => argv[argv.indexOf(flag) + 1];
   const mounted = launch ? [] : Object.values(JSON.parse(readAtLaunch(arg("--mcp-config"))).mcpServers as Record<string, AgentsIntegration>);
@@ -188,7 +188,7 @@ export async function runRoomHandoffAgent(argv: string[], planPath: string, prom
       evidence.push(await call("tools/list"));
       evidence.push(await call("tools/call", { name: "list_room_targets", arguments: {} }));
       for (const step of steps) {
-        const browser = step.server === "browser" ? (launch ? undefined : JSON.parse(readAtLaunch(arg("--mcp-config"))).mcpServers?.browser as AgentsIntegration | undefined) : undefined;
+        const browser = step.server === "browser" ? (launch ? launch.browser : JSON.parse(readAtLaunch(arg("--mcp-config"))).mcpServers?.browser as AgentsIntegration | undefined) : undefined;
         if (step.server === "browser" && !browser) throw new Error("A scripted browser step needs the turn's browser tools");
         const response = browser ? await browserToolCall(browser, step.tool, step.arguments) : await call("tools/call", { name: step.tool ?? "coordinate_bots", arguments: step.arguments });
         evidence.push({ step, response });

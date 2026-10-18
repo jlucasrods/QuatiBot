@@ -1,5 +1,4 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
@@ -21,7 +20,7 @@ describe("Preset bots in the real renderer", () => {
   let child: ChildProcess | undefined;
   afterAll(async () => { await waitForExit(child, { signal: "SIGINT", graceMs: 30_000 }); });
 
-  (enabled ? it : it.skip)("shares New bot defaults as a preset file, adds it back, and makes bots from file and organization presets", async () => {
+  (enabled ? it : it.skip)("shares New bot defaults as a preset file, adds it back, and makes a bot from the file preset", async () => {
     let stdout = "";
     let stderr = "";
     let info: { ui: string; url: string; botId: string; dataDir: string; logPath: string };
@@ -95,15 +94,6 @@ describe("Preset bots in the real renderer", () => {
     await expect.poll(snapshot, { timeout: 10_000 }).toContain("Preset bots added to New bot: 1");
     const [filePreset] = (await api("/api/bot-presets")).presets as Array<{ id: string }>;
 
-    // An organization preset, as the organization library stores one.
-    const presetsFile = join(info!.dataDir, "org-library", "presets.json");
-    const stored = JSON.parse(readFileSync(presetsFile, "utf8"));
-    const orgRow = { ...stored.presets[0], id: "org-preset-1", source: "org", installId: "0123456789abcdef0123456789abcdef", publisherName: "Acme Partners",
-      publisher: { organizationId: "org-acme", slug: "acme", name: "Acme Partners" }, ref: "acme/sky", sha256: "a".repeat(64), name: "Acme closer" };
-    stored.presets.push(orgRow);
-    stored.content[orgRow.installId] = stored.content[stored.presets[0].installId];
-    writeFileSync(presetsFile, JSON.stringify(stored));
-
     await clickWhenFree("New or share");
     await click("Templates");
     await click("Share");
@@ -125,7 +115,7 @@ describe("Preset bots in the real renderer", () => {
       await click("New Bot");
       await expect.poll(async () => (await ui("eval", "--js", "[...document.querySelectorAll('[role=dialog] button')].find(button => button.textContent.trim() === 'Create bot')?.disabled")).result, { timeout: 20_000 }).toBe(false);
       await expect.poll(() => evaluate("[...document.querySelectorAll('[role=dialog] select optgroup')].map(group => group.label).join(' | ')"), { timeout: 10_000 })
-        .toBe("From Acme Partners | Imported presets | Built-in roles");
+        .toBe("Imported presets | Built-in roles");
       // Native select popups do not take routed keys reliably in headless
       // Chrome; the real select's change handler runs without the OS popup.
       await evaluate(`(() => { const select = [...document.querySelectorAll('[role=dialog] select')].find(item => item.querySelector('optgroup')); select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
@@ -139,9 +129,6 @@ describe("Preset bots in the real renderer", () => {
     expect(fromFile).toMatchObject({ name: expect.stringMatching(/^Sky/), installedPackage: { source: "file", presetKey: "new-bot-defaults" } });
     expect((await api(`/api/bots/${fromFile.id}/skills`)).skills).toEqual([expect.objectContaining({ name: "follow-up", enabled: false })]);
     expect((await api(`/api/bots/${fromFile.id}/memory/file?path=MEMORY.md`)).text).toBe("- Customers first.\n");
-    const fromOrg = await create("preset:org-preset-1", "Skills, added switched on: follow-up", "new-bot-org");
-    expect(fromOrg.installedPackage).toMatchObject({ source: "org", presetKey: "new-bot-defaults", ref: "acme/sky" });
-    expect((await api(`/api/bots/${fromOrg.id}/skills`)).skills).toEqual([expect.objectContaining({ name: "follow-up", enabled: true })]);
-    process.stdout.write(`${JSON.stringify({ fixture: info!, savedFile: true, presetsInNewBot: 2 })}\n`);
+    process.stdout.write(`${JSON.stringify({ fixture: info!, savedFile: true, presetsInNewBot: 1 })}\n`);
   }, launchTimeout + 180_000);
 });

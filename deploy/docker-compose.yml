@@ -3,7 +3,8 @@ services:
   quati:
     build:
       context: ..
-    image: ghcr.io/jlucasrods/quatibot:latest
+    image: quatibot:local
+    pull_policy: build
     init: true
     shm_size: 512m
     restart: unless-stopped

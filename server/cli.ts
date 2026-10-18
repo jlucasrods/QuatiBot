@@ -638,7 +638,7 @@ export async function runOnboardingCommand(options: CliOptions, io: CliIo = defa
 } = {}): Promise<number> {
     const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
     if (options.command === "setup" && !interactive) {
-        io.error("Setup needs an interactive terminal. Run `npx quatibot setup` in a terminal, then use `npx quatibot serve` for unattended starts.");
+        io.error("Setup needs an interactive terminal. Run `pnpm quati setup` in a terminal, then use `pnpm start` for unattended starts.");
         return 1;
     }
     process.env.QUATI_DATA_DIR = options.dataDir;
@@ -657,7 +657,7 @@ export async function runOnboardingCommand(options: CliOptions, io: CliIo = defa
     try {
         if (options.command === "setup" || !(await isSetupComplete(options.dataDir))) {
             if (!interactive) {
-                io.error("No completed setup was found. Run `npx quatibot setup` in an interactive terminal first, or use `npx quatibot serve` with an existing configuration.");
+                io.error("No completed setup was found. Run `pnpm quati setup` in an interactive terminal first, or use `pnpm start` with an existing configuration.");
                 return 1;
             }
             if (!(await runSetup({ dataDir: options.dataDir, port: options.port }))) {
@@ -669,7 +669,7 @@ export async function runOnboardingCommand(options: CliOptions, io: CliIo = defa
         // Only setup revisits the access choice; normal starts reuse consent and never turn a local session public.
         const launch = options.command === "setup" ? options : applyStartupPreferences(options, saved);
         if (options.command === "setup") {
-            io.log("\nAll set. Start with: quatibot (or npx quatibot without a global install).");
+            io.log("\nAll set. Start with: pnpm start.");
             if (options.dataDir !== join(homedir(), ".quatibot") || options.port !== 8799) {
                 io.log(`Use the same --data-dir (${options.dataDir}) and --port (${options.port}) options when starting.`);
             }

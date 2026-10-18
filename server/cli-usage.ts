@@ -11,7 +11,6 @@ export const HEADLESS_USAGE = `Drive a running workspace (scripts, CI, other age
   quatibot export BOT --out DIR      write a job's transcripts, files and screens to DIR
   quatibot events [--job THREAD]     the server's live events as JSON lines
   quatibot team apply FILE           make the workspace match a team file (team export writes one)
-  quatibot engine set claude --key-env ANTHROPIC_API_KEY   give it an engine without a screen
   quatibot connect URL --code CODE --out FILE              get a token for a workspace elsewhere
   quatibot new-bot | new-channel | set-model | edit | mcp
 
@@ -42,9 +41,8 @@ pair    mints a pairing code against a running server (--client: chat only)
 sessions lists paired devices; "sessions revoke ID" signs one out
 status  what the server says about itself
 service keep the server running across reboots: writes a systemd unit
-        (Linux) or a launchd agent (macOS) for the same serve options and
-        prints the commands that install it. Install the package
-        permanently first (npm install -g quatibot).
+        for the same serve options and prints the install commands.
+        Run from a persistent checkout or local build.
 browser install: the bots' browser engine (agent-browser, pinned) into the
         data dir, and Chrome for Testing into the user's browser cache.
         --with-deps also installs
@@ -66,6 +64,5 @@ browser install: the bots' browser engine (agent-browser, pinned) into the
 
 ${HEADLESS_USAGE}
 
-Install once with \`npm install -g quatibot\`, then type \`quatibot\`.
-Or run without a global install: \`npx quatibot\`. Node 24+ is required.
+From the checkout: \`pnpm quati <command>\`. Node 24+ is required.
 `;

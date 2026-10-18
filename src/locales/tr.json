@@ -1506,8 +1506,6 @@
   "onboarding.reel.channels.body": "Bir kanal birden fazla botu ve sizi barındırır. Kimin cevap vereceğini seçmek için @ ile bahsedin. İş, Kişisel ve her projeyi ayrı tutun.",
   "onboarding.reel.automations.title": "Ayarlayın ve unutun",
   "onboarding.reel.automations.body": "Takvime bir bot bırakın, kendi kendine çalışsın. Harici bir uygulamaya webhook adresi verin, çağrıldığında bot uyansın.",
-  "onboarding.reel.terminal.title": "Terminalden de çalıştırın",
-  "onboarding.reel.terminal.body": "npx quatibot yazın, bir beyin seçin ve aynı uygulama tarayıcınızda açılsın. Bir telefon eşleştirin veya bir sunucuya kurun.",
   "onboarding.back": "Geri",
   "onboarding.progress": "Adım {current} / {total}",
   "onboarding.dialog": "Hoş geldiniz turu",

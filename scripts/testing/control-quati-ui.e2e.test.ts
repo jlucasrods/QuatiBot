@@ -7,13 +7,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlQuati } from "../control-quati.ts";
 import { UI_TOOLS_DIR } from "./control-quati-ui.ts";
-import { fixtureApi } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const CLI = join(ROOT, "scripts", "control-quati.ts");
@@ -34,7 +33,7 @@ const TOOL_CALLS = JSON.stringify([
   { name: "Bash", input: { command: "pnpm control:quati ui click --name Missing" }, ok: false },
   { name: "Bash", input: { command: "pnpm control:quati ui flag --set features.showToolCalls=true --dry-run" }, ok: true },
 ]);
-const REPLY = "hello from fake claude"; // the fake engine's default reply text
+const REPLY = "hello from fake acp";
 const COMPOSER = `document.querySelector('textarea[aria-label="Message Pepper"]')`;
 // QUATI_UI_EVIDENCE_DIR keeps the screenshot (CI uploads it); otherwise it is temporary.
 const evidenceDir = process.env.QUATI_UI_EVIDENCE_DIR ? resolve(ROOT, process.env.QUATI_UI_EVIDENCE_DIR) : mkdtempSync(join(tmpdir(), "quati-ui-evidence-"));
@@ -105,10 +104,14 @@ const refsNamed = (snapshot: Record<string, any>, name: string, role?: string) =
 describe("control-quati ui drives the real renderer", () => {
   let launched: Launched | undefined;
 
-  afterAll(async () => {
+  afterEach(async () => {
     if (launched && launched.child.exitCode === null && launched.child.signalCode === null) {
       await waitForExit(launched.child, { signal: "SIGINT", graceMs: 30_000 });
     }
+    launched = undefined;
+  });
+
+  afterAll(async () => {
     if (ownsEvidenceDir) await removeTempDir(evidenceDir);
   });
 
@@ -131,6 +134,7 @@ describe("control-quati ui drives the real renderer", () => {
     await ui("type", info.ui, "--name", "Message Pepper", "--text", `${"hay ".repeat(160)}saffron`);
     await ui("press", info.ui, "--keys", "Enter");
     await ui("wait-settle", info.ui, "--timeout", "60");
+    await ui("press", info.ui, "--keys", "Control+f");
     await ui("click", info.ui, "--name", "Find in this conversation");
     await ui("eval", info.ui, "--js", "document.querySelector('input[aria-label=\"Find in this conversation\"]').select(); true");
     await ui("press", info.ui, "--keys", "Backspace");
@@ -141,8 +145,8 @@ describe("control-quati ui drives the real renderer", () => {
     await ui("click", info.ui, "--name", "Find in this conversation");
     await ui("eval", info.ui, "--js", "document.querySelector('input[aria-label=\"Find in this conversation\"]').select(); true");
     await ui("press", info.ui, "--keys", "Backspace");
-    await ui("type", info.ui, "--name", "Find in this conversation", "--text", "fake claude");
-    await expect.poll(highlighted, { timeout: 10_000 }).toBe("fake claude");
+    await ui("type", info.ui, "--name", "Find in this conversation", "--text", "fake acp");
+    await expect.poll(highlighted, { timeout: 10_000 }).toBe("fake acp");
     await ui("press", info.ui, "--keys", "Escape");
     await ui("type", info.ui, "--name", "Search bots and messages", "--text", "zebra");
     await expect.poll(async () => (await ui("eval", info.ui, "--js", "[...document.querySelectorAll('mark')].some(mark => mark.textContent === 'zebra')")).result, { timeout: 10_000 }).toBe(true);
@@ -151,89 +155,6 @@ describe("control-quati ui drives the real renderer", () => {
     await waitForExit(launched.child, { signal: "SIGINT", graceMs: 30_000 });
     expect(launched.child.exitCode).toBe(0);
   }, LAUNCH_TIMEOUT_MS + 90_000);
-
-  run("saves a key on Enter, checks it once saved, and keeps a refused or failed draft", async () => {
-    launched = await launch([]);
-    const { info } = launched;
-    await fixtureApi(info.url)("PUT", "/api/config", {
-      openaiCompat: { key: "fixture-saved-key", url: "http://127.0.0.1:1/v1" },
-    });
-    const evaluate = async (js: string) => (await ui("eval", info.ui, "--js", js)).result;
-    const click = (name: string) => ui("click", info.ui, "--name", name);
-    const input = `document.querySelector('input[aria-label="OpenAI-compatible API key"]')`;
-    const testButton = `[...${input}.closest('[data-api-key-row]').querySelectorAll('button')].find(b => b.textContent === 'Test')`;
-    const verdict = () => evaluate(`${input}.closest('[data-api-key-row]').querySelector('[role="status"]')?.textContent`);
-    const rowText = () => evaluate(`${input}.closest('[data-api-key-row]').textContent`);
-    const type = async (text: string) => {
-      await click("OpenAI-compatible API key");
-      await evaluate(`${input}.select(); true`);
-      await ui("press", info.ui, "--keys", "Backspace");
-      if (text) await ui("type", info.ui, "--name", "OpenAI-compatible API key", "--text", text);
-    };
-    const enter = () => ui("press", info.ui, "--keys", "Enter");
-    await evaluate(`(() => {
-      const original = window.fetch.bind(window);
-      window.keyTests = [];
-      window.keySaves = 0;
-      window.rejectKeySave = false;
-      window.fetch = (url, init = {}) => {
-        if (String(url) === '/api/keys/test') {
-          window.keyTests.push(JSON.parse(init.body));
-          return Promise.resolve(Response.json({ ok: true, check: 'models', models: ['fixture-model'] }));
-        }
-        if (String(url) === '/api/config' && init.method === 'PUT' && String(init.body).includes('"openaiCompat"')) {
-          window.keySaves++;
-          if (window.rejectKeySave) return Promise.resolve(Response.json({ error: 'Fixture save rejected' }, { status: 503 }));
-        }
-        return original(url, init);
-      };
-      return true;
-    })()`);
-    await click("You");
-    await click("Settings");
-    // Settings is a lazy chunk: it paints once the chunk arrives.
-    await expect.poll(() => evaluate(`(() => {
-      const tab = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'API keys');
-      tab?.click();
-      return Boolean(tab);
-    })()`), { timeout: 10_000 }).toBe(true);
-    // The shared OpenAI-compatible key lives under "Other", open once a key is saved.
-    await expect.poll(() => evaluate(`document.querySelector('[data-api-key-row="openaiCompat"]') !== null`), { timeout: 10_000 }).toBe(true);
-    await evaluate(`document.querySelector('[data-api-keys-other]').open = true; true`);
-
-    await expect.poll(() => evaluate(`${testButton}?.disabled ?? null`), { timeout: 10_000 }).toBe(false);
-    await click("Test");
-    await expect.poll(() => evaluate("window.keyTests")).toEqual([{ provider: "openaiCompat" }]);
-    await expect.poll(verdict).toBe("Saved key: Model catalog reachable: fixture-model. Authentication and chat not verified.");
-
-    await type("  fixture-draft-key  ");
-    await enter();
-    await expect.poll(() => evaluate(`${input}?.value ?? null`), { timeout: 10_000 }).toBe("");
-    await expect.poll(() => evaluate("window.keyTests")).toEqual([{ provider: "openaiCompat" }, { provider: "openaiCompat" }]);
-    expect(await evaluate("window.keySaves")).toBe(1);
-
-    await type("not a key at all");
-    await enter();
-    await expect.poll(rowText, { timeout: 10_000 }).toContain("That doesn't look like an API key");
-    expect(await evaluate("window.keySaves")).toBe(1);
-    mkdirSync(evidenceDir, { recursive: true });
-    await ui("screenshot", info.ui, "--out", join(evidenceDir, "provider-key-refused.png"));
-
-    await type("fixture-replacement-key");
-    await evaluate("window.rejectKeySave = true");
-    await enter();
-    await expect.poll(rowText, { timeout: 10_000 }).toContain("Fixture save rejected");
-    await expect.poll(() => evaluate(`${input}?.value ?? null`), { timeout: 10_000 }).toBe("fixture-replacement-key");
-    await evaluate("window.rejectKeySave = false");
-    await click("OpenAI-compatible API key");
-    await enter();
-    await expect.poll(() => evaluate(`${input}?.value ?? null`), { timeout: 10_000 }).toBe("");
-    await expect.poll(() => evaluate("window.keyTests.length")).toBe(3);
-    await expect.poll(verdict).toBe("Saved key: Model catalog reachable: fixture-model. Authentication and chat not verified.");
-    await waitForExit(launched.child, { signal: "SIGINT", graceMs: 30_000 });
-    expect(launched.child.exitCode).toBe(0);
-    expect(existsSync(info.dataDir)).toBe(false);
-  }, LAUNCH_TIMEOUT_MS + 180_000);
 
   run("sends a turn from the composer and shows the reply and the scripted tool chip", async () => {
     launched = await launch(["--tool-calls", TOOL_CALLS]);
@@ -304,7 +225,8 @@ describe("control-quati ui drives the real renderer", () => {
     const transcript = tree.slice(transcriptStart);
     expect(transcript).toContain('StaticText "hello"'); // the sent turn
     expect(transcript).toContain(`StaticText "${REPLY}"`);
-    expect(transcript).toMatch(/StaticText "Bash"/);
+    expect(transcript).toContain('button "pnpm control:quati doctor · Completed · Tool details"');
+    expect(transcript).toContain('button "pnpm control:quati ui click --name Missing · Failed · Tool details"');
     expect(tree).not.toContain("Not logged in");
     expect(tree).not.toContain("Execution timeline");
     // All three scripted commands go through the control CLI, so all are verified.

@@ -2,6 +2,8 @@
 
 Linux x86-64 with Docker Engine and Docker Compose 2.17 or newer. The image includes Node.js 24, OpenCode V2, the agent's Chrome browser, and ffmpeg.
 
+Compose builds `quatibot:local` from this checkout. The repository does not publish application images or npm packages, and CI does not build or run containers.
+
 ## Local access
 
 From the repository root:

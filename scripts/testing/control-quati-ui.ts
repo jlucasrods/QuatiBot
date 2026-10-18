@@ -34,7 +34,7 @@ const ENTRIES = {
   threads: { entry: "/scripts/testing/threads-preview.tsx", route: "/__threads.html", title: "Isolated Quati Chat" },
   settings: { entry: "/src/testing/bot-settings.tsx", route: "/__bot-settings.html", title: "Isolated Bot Settings" },
 } as const satisfies Record<string, Parameters<typeof mountPreview>[1]>;
-const FAKE_MODES = ["happy", "exit-early", "hang", "malformed", "stream", "not-logged-in", "slow", "background-result"];
+const FAKE_MODES = ["happy", "exit-early", "hang", "image", "empty-reply", "reasoning-only", "fail-after-text", "interleave", "slow-tool"];
 const SEEDED_BOT = "Pepper";
 const PLATFORM_ENV = ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"];
 // Where `agent-browser install` unpacks Chrome for Testing below `$HOME/.agent-browser/browsers/chrome-<version>/`.
@@ -434,11 +434,11 @@ export async function launchUi(
     if (!Array.isArray(calls) || !calls.every((call) => call && typeof call === "object" && typeof (call as { name?: unknown }).name === "string")) {
       throw new ControlQuatiError("--tool-calls must be a JSON array of {name, input?, ok?}", 'example: --tool-calls \'[{"name":"Bash","input":{"command":"echo hi"},"ok":true}]\'');
     }
-    fakeEnv.FAKE_CLAUDE_TOOL_CALLS = JSON.stringify(calls);
+    fakeEnv.FAKE_ACP_TOOL_CALLS = JSON.stringify(calls);
   }
   if (values.mode !== undefined) {
     if (!FAKE_MODES.includes(String(values.mode))) throw new ControlQuatiError(`unknown --mode ${JSON.stringify(values.mode)}`, `fake engine modes: ${FAKE_MODES.join(", ")}`);
-    fakeEnv.FAKE_CLAUDE_MODE = String(values.mode);
+    fakeEnv.FAKE_ACP_MODE = String(values.mode);
   }
   const note = (line: string) => io.stderr.write(`ui launch: ${line}\n`);
 

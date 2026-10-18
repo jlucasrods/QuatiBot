@@ -707,8 +707,6 @@
   "onboarding.reel.channels.body": "Група вміщує кількох ботів і вас. Тегніть @, щоб обрати, хто відповість. Тримайте Роботу, Особисте та кожен проєкт окремо.",
   "onboarding.reel.automations.title": "Налаштував — і забув",
   "onboarding.reel.automations.body": "Поставте бота на календар — він запуститься сам. Дайте зовнішньому застосунку адресу вебхука, і бот прокинеться, коли його викличуть.",
-  "onboarding.reel.terminal.title": "Запускайтеся і з терміналу",
-  "onboarding.reel.terminal.body": "Введіть npx quatibot, оберіть мозок — і той самий застосунок відкриється у вашому браузері. Прив'яжіть телефон або поставте на сервер.",
   "onboarding.back": "Назад",
   "onboarding.progress": "Крок {current} з {total}",
   "onboarding.dialog": "Ознайомлення",

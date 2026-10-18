@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 const workflow = parse(readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"));
-const requiredRuntimeJobs = ["vitest", "behavior-evals", "packaged-server"];
+const requiredRuntimeJobs = ["vitest", "behavior-evals", "packaged-server", "ui-smoke", "browser-identity", "browser-driver"];
 function runGate(needs: Record<string, unknown>) {
     // Execute the actual gate, not a duplicate of its success/failure logic.
     const command = workflow.jobs.gate.steps[0].run as string;
@@ -24,6 +24,32 @@ function gateNeeds(runtime: string) {
     };
 }
 describe("CI concurrency", () => {
+    it("runs read-only Linux checks without publication or containers", () => {
+        for (const name of readdirSync(new URL("../.github/workflows/", import.meta.url))) {
+            const source = readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8");
+            const configured = parse(source);
+            expect(configured.permissions, name).not.toHaveProperty("packages", "write");
+            expect(configured.permissions, name).not.toHaveProperty("contents", "write");
+            expect(source, name).not.toMatch(/docker (?:build|run|compose|push)|npm publish|gh release|docker\/(?:login|build-push)-action/);
+        }
+        for (const job of Object.values(workflow.jobs) as { "runs-on": string; strategy?: { matrix: { os?: string[] | string } } }[]) {
+            if (job["runs-on"] === "${{ matrix.os }}") {
+                expect(job.strategy?.matrix.os).toSatisfy((os: string[] | string) => os === "${{ fromJSON(needs.static.outputs.vitest_os) }}" || JSON.stringify(os) === '["ubuntu-latest"]');
+            } else {
+                expect(job["runs-on"]).toMatch(/^ubuntu-/);
+            }
+        }
+    });
+
+    it("executes offline scenarios and golden replay only in the eval suite", () => {
+        const runs = workflow.jobs["behavior-evals"].steps.map((step: { run?: string }) => step.run ?? "").join("\n");
+        expect(runs).toContain("--config evals/vitest.config.ts");
+        expect(runs).not.toMatch(/pnpm eval(?:\n| --golden)/);
+        expect(workflow.jobs["behavior-evals"].env.QUATI_EVAL_LIVE).toBe("0");
+        const rootConfig = readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
+        expect(rootConfig).not.toContain('"evals/**/*.test.ts"');
+    });
+
     it("supersedes old PR checks but never cancels a running main or merge-queue run", () => {
         expect(workflow.on.push.branches).toEqual(["main"]);
         expect(workflow.on).toHaveProperty("merge_group");

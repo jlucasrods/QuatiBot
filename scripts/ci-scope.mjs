@@ -16,9 +16,9 @@ export function selectCiScope(files) {
   return { runtime };
 }
 
-/** True when two package.json texts differ only in the top-level "version"
- * (the release bump, prepare-release.yml). Anything else that changed, a
- * reordered key included, or text that is not a JSON object, is false. */
+/** True when two package.json texts differ only in the top-level "version".
+ * Anything else that changed, a reordered key included, or text that is not a
+ * JSON object, is false. */
 export function versionOnlyPackageJson(before, after) {
   let a, b;
   try {

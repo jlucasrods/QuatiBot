@@ -28,7 +28,7 @@ describe("bot setup and tools in the real renderer", () => {
     await waitForExit(child, { graceMs: 30_000 });
   });
 
-  (enabled ? it : it.skip)("creates roles, configures per-bot MCP access, and recovers a rejected preset", async () => {
+  (enabled ? it : it.skip)("creates roles, configures Quati MCP access, and recovers a rejected preset", async () => {
     let stdout = "";
     let stderr = "";
     // Windows kill("SIGINT") terminates immediately instead of delivering a
@@ -129,15 +129,15 @@ describe("bot setup and tools in the real renderer", () => {
     await runControlQuati(["send", "--bot", created[0].id, "--text", "Reply briefly for the sidebar test.", "--url", info.url]);
     expect((await runControlQuati(["wait", "--bot", created[0].id, "--timeout", "20", "--url", info.url]) as { status: string }).status).toBe("settled");
     await openTools();
-    await expect.poll(snapshot, { timeout: 10_000 }).toContain("No MCP servers added yet.");
+    await expect.poll(snapshot, { timeout: 10_000 }).toContain("global-local");
     const usageExpanded = () => evaluate("[...document.querySelectorAll('[role=dialog] button')].find(b => b.textContent.trim() === 'Usage')?.getAttribute('aria-expanded')");
     const openHeaderUsage = async () => {
       await click("More");
       const state = await ui("snapshot", "--interactive");
-      const cost = Object.entries(state.refs as Record<string, { role: string; name: string }>)
-        .filter(([, entry]) => entry.role === "menuitem" && entry.name.includes("$0.01"));
-      expect(cost).toHaveLength(1);
-      await ui("click", "--ref", `@${cost[0][0]}`);
+      const usage = Object.entries(state.refs as Record<string, { role: string; name: string }>)
+        .filter(([, entry]) => entry.role === "menuitem" && entry.name.startsWith("Usage"));
+      expect(usage).toHaveLength(1);
+      await ui("click", "--ref", `@${usage[0][0]}`);
       await expect.poll(usageExpanded, { timeout: 10_000 }).toBe("true");
       expect(await snapshot()).toContain("All bots");
       // Allow subpixel rounding at the bottom edge of the scroll viewport.
@@ -159,32 +159,22 @@ describe("bot setup and tools in the real renderer", () => {
     await click("Overview");
     await expect.poll(snapshot, { timeout: 10_000 }).toContain("Optional ways to customize this bot. You can start chatting now.");
     await click("Access");
-    await click("Add an MCP server…");
-    // The registry loads on mount; Paste config is disabled until it finishes.
-    await expect.poll(() => evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Paste config')?.disabled"), { timeout: 10_000 }).toBe(false);
-    await click("Paste config");
-    await expect.poll(() => evaluate("Boolean(document.querySelector('textarea[aria-label=\"Paste config\"]'))"), { timeout: 10_000 }).toBe(true);
-    const pasted = await ui("snapshot", "--interactive");
-    const textarea = Object.entries(pasted.refs as Record<string, { role: string; name: string }>)
-      .find(([, entry]) => entry.role === "textbox" && entry.name === "Paste config");
-    expect(textarea).toBeDefined();
-    await ui("type", "--ref", `@${textarea![0]}`, "--text", JSON.stringify({ mcpServers: {
-      fixture: { command: process.execPath, args: ["-e", "process.exit(0)"] },
-    } }));
-    await click("Add servers");
-    const registry = async () => (await fetch(`${info.url}/api/mcp/servers`).then((response) => response.json())).servers;
-    await expect.poll(registry, { timeout: 10_000 }).toMatchObject([{ name: "fixture", enabled: false }]);
-    await expect.poll(snapshot, { timeout: 10_000 }).toContain("Turn fixture on");
-    await click("Turn fixture on");
-    await expect.poll(registry, { timeout: 10_000 }).toMatchObject([{ name: "fixture", enabled: true }]);
+    const registry = async () => {
+      const response = await fetch(`${info.url}/api/opencode/extensions`);
+      return (await response.json()).servers;
+    };
+    const switchQuery = "document.querySelector('[aria-label=\"Usar global-local nos bots do Quati\"]')?.getAttribute('aria-checked')";
+    await expect.poll(() => evaluate(switchQuery), { timeout: 10_000 }).toBe("false");
+    await click("Usar global-local nos bots do Quati");
+    await expect.poll(registry, { timeout: 10_000 }).toEqual(expect.arrayContaining([expect.objectContaining({ name: "global-local", enabled: true })]));
     await press("Escape");
     await openTools();
-    await expect.poll(() => evaluate("document.querySelector('[aria-label=\"Let this bot use fixture\"]')?.getAttribute('aria-checked')"), { timeout: 10_000 }).toBe("true");
-    await click("Let this bot use fixture");
-    await expect.poll(async () => (await bots()).find((bot) => bot.id === created[0].id)?.mcpServers, { timeout: 10_000 }).toEqual([]);
+    await expect.poll(() => evaluate(switchQuery), { timeout: 10_000 }).toBe("true");
+    await click("Usar global-local nos bots do Quati");
+    await expect.poll(registry, { timeout: 10_000 }).toEqual(expect.arrayContaining([expect.objectContaining({ name: "global-local", enabled: false })]));
     await press("Escape");
     await openTools();
-    await expect.poll(() => evaluate("document.querySelector('[aria-label=\"Let this bot use fixture\"]')?.getAttribute('aria-checked')"), { timeout: 10_000 }).toBe("false");
+    await expect.poll(() => evaluate(switchQuery), { timeout: 10_000 }).toBe("false");
 
     // Opening New Bot above settings must replace the old modal, not leave
     // two focus traps competing. Escape closes only the one remaining layer.

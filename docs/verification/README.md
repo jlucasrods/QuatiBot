@@ -31,4 +31,10 @@ Stop the launcher with Ctrl-C when finished. It owns the child server and its te
 
 Fake ACP proves the application protocol and orchestration, not real provider inference. A browser test proves browser behavior, not VM behavior. To verify VM lifecycle, interactions and recordings, provide a working container runtime and sandbox image in a disposable environment. Do not claim a missing dependency was validated.
 
+## CI checks
+
+CI runs on Linux with Node.js 24. Its required `CI` gate covers static checks, sharded application tests, offline evals (including golden replay and the scripted skill bench), the bundled server smoke, renderer smoke, browser identity and browser-driver checks. Browser checks run directly on the runner, not in containers. Live model evals remain disabled.
+
+Run `pnpm test:evals` for the dedicated eval suite; the application shards do not repeat it. CI retains the eval JUnit report on failure and renderer screenshots as artifacts. Docker images are built locally using `deploy/`; no workflow builds containers, publishes packages or creates releases.
+
 For a UI change, open the fixture in a separate browser context, exercise the affected controls, then close only that context. Inspect only the relevant fixture logs and redact secrets before sharing evidence.

@@ -20,12 +20,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: [
-      "evals/**/*.test.ts",
       "server/**/*.test.ts",
-      "electron/**/*.test.mjs",
       "src/**/*.test.ts",
       "shared/**/*.test.ts",
-      "enterprise/**/*.test.ts",
       "scripts/**/*.test.mjs",
       "scripts/**/*.test.ts",
     ],
@@ -52,10 +49,8 @@ export default defineConfig({
     // clients that resolve IPv4 first
     host: "127.0.0.1",
     port: Number(process.env.QUATI_UI_PORT) || 5199,
-    // packager output lands inside the repo — its HTML files must never
-    // trigger dev full-page reloads
     watch: {
-      ignored: ["**/release/**", "**/build/**", "**/dist/**", "**/electron/resources/**"],
+      ignored: ["**/build/**", "**/dist/**"],
     },
     // the harness server owns every provider process; the app only ever
     // talks to /api — clients hold no transports

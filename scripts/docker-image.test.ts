@@ -5,7 +5,6 @@ import { parse } from "yaml";
 const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 const compose = parse(readFileSync(new URL("../deploy/docker-compose.yml", import.meta.url), "utf8"));
 const caddy = readFileSync(new URL("../deploy/Caddyfile", import.meta.url), "utf8");
-const workflow = parse(readFileSync(new URL("../.github/workflows/docker.yml", import.meta.url), "utf8"));
 
 describe("Linux container deployment", () => {
   it("installs the pinned OpenCode V2 CLI and checks its major version", () => {
@@ -47,14 +46,9 @@ describe("Linux container deployment", () => {
     expect(caddy).toContain("flush_interval -1");
   });
 
-  it("exercises paired HTTPS access before publishing the image", () => {
-    const steps = workflow.jobs["build-and-smoke"].steps;
-    const commands = steps.map((step: { run?: string }) => step.run ?? "").join("\n");
-    expect(commands).toContain("docker build -t quatibot:ci .");
-    expect(commands).toContain("QUATI_SITE=localhost");
-    expect(commands).toContain("$H/api/auth/pair");
-    expect(commands).toContain("Origin: https://evil.example");
-    expect(commands).toContain('probe "$ip" 8799');
-    expect(workflow.jobs.publish.needs).toBe("build-and-smoke");
+  it("builds the application locally instead of pulling a published image", () => {
+    expect(compose.services.quati.build.context).toBe("..");
+    expect(compose.services.quati.image).toBe("quatibot:local");
+    expect(compose.services.quati.pull_policy).toBe("build");
   });
 });

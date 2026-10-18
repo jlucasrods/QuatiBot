@@ -1523,8 +1523,6 @@
   "onboarding.reel.channels.body": "A channel holds several bots and you. Mention one with @ to pick who answers. Keep Work, Personal, and each project apart.",
   "onboarding.reel.automations.title": "Set it and forget it",
   "onboarding.reel.automations.body": "Drop a bot on the calendar and it runs by itself. Give an outside app a webhook address and the bot wakes when it's called.",
-  "onboarding.reel.terminal.title": "Run it from the terminal too",
-  "onboarding.reel.terminal.body": "Type npx quatibot, pick a brain, and the same app opens in your browser. Pair a phone, or put it on a server.",
   "onboarding.back": "Back",
   "onboarding.progress": "Step {current} of {total}",
   "onboarding.dialog": "Welcome tour",

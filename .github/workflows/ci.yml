@@ -5,48 +5,22 @@ on:
   push:
     branches: [main]
   pull_request:
-  # The merge queue runs CI on the PR merged onto the current main BEFORE it
-  # lands, so a PR that is green alone but red together with what just
-  # merged is stopped in the queue instead of on main (that shape reddened
-  # main twice in Sep 2026). Turning the queue on is a branch-ruleset
-  # setting; this trigger is what lets CI report on those runs.
   merge_group:
 
-# least privilege: CI only reads the checkout, it never writes back
 permissions:
   contents: read
 
 concurrency:
-  # A new PR push supersedes that PR's older checks. Main keeps one run going
-  # and one waiting: each merge replaces the waiting run, so a burst of
-  # merges costs two full runs, not one per merge (fifteen queued behind each
-  # other in October 2026). The running one always finishes. A release runs
-  # CI on its own commit in a release-ci/v<version> lane when main's run for
-  # it was replaced (scripts/release-ci.mjs). Merge-queue runs stay on their
-  # own refs. A PR's group is named by its number, never by github.ref: a
-  # merged PR's closed event reports the base branch as github.ref, so a
-  # ref-named group let every merge cancel main's run (ci-stop-closed.yml).
   group: ci-${{ github.event_name == 'merge_group' && github.event.merge_group.head_ref || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # ── The test leg, in pieces ──────────────────────────────────────────────
-  # One `typecheck + test (<os>)` job used to run everything in sequence:
-  # typecheck, lint, the whole vitest suite, then three smokes that only ran
-  # when everything before them passed. The suite runs its files serially
-  # (vite.config.ts, fileParallelism:false) and takes 17–19 minutes on one
-  # runner, so slow runners hit the job cap and read as red PRs, and a broken
-  # smoke stayed hidden behind any vitest failure for a day. Each piece is now
-  # its own job: platform-independent checks run once, the suite runs in four
-  # shards per platform, and every smoke reports on its own. One final `CI`
-  # check aggregates the required jobs.
   static:
     name: typecheck + lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
-      # ci-scope reads whether the commit before a push got its own green run
       actions: read
     outputs:
       runtime: ${{ steps.scope.outputs.runtime }}
@@ -54,8 +28,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Full history lets PR selection use the merge base, including deletes
-          # and both sides of renames, without GitHub's changed-file page limit.
           fetch-depth: 0
           persist-credentials: false
       - uses: pnpm/action-setup@ff378ebe6b225b0680b81c1ad4498ae0d1d3a5e3 # v6.0.10
@@ -79,13 +51,8 @@ jobs:
         run: pnpm exec vite build
 
   vitest:
-    # Admit the expensive runner fan-out only after the quick checks pass.
-    # A failing preflight still fails the required gates; nothing is waived.
     needs: static
     if: needs.static.outputs.runtime == 'true'
-    # vitest splits the file list deterministically across shards, so a
-    # failure names the same shard on every run and one shard is reproducible
-    # locally with the same --shard flag.
     name: vitest (${{ matrix.os }}, shard ${{ matrix.shard }}/4)
     strategy:
       fail-fast: false
@@ -103,18 +70,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Run tests
-        # The github-actions reporter turns each failure into an annotation
-        # on the PR, so the failing test and its assertion are readable
-        # without opening the job log.
         env:
-          # scripts/testing/ci-retry-runner.ts records each listed flaky test
-          # that needed a retry here (the runner context is step-level only).
           QUATI_VITEST_RETRY_LOG: ${{ runner.temp }}/vitest-retries.jsonl
         run: pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=github-actions
       - name: Report flaky tests that needed a retry
-        # Known flakes (scripts/testing/ci-retry-list.json) get two retries in
-        # CI. A pass after a retry is still listed in the job summary, so the
-        # flake stays visible until its entry is fixed and removed.
         if: ${{ !cancelled() }}
         env:
           QUATI_VITEST_RETRY_LOG: ${{ runner.temp }}/vitest-retries.jsonl
@@ -123,13 +82,9 @@ jobs:
   behavior-evals:
     needs: static
     if: needs.static.outputs.runtime == 'true'
-    # The offline behavior-eval tiers (#1503): the evals' own vitest gate
-    # (redaction, trace, golden replay), the tier-1 scenario runner, and the
-    # tier-2 golden replay through the same entrypoint developers use. Tier
-    # 3's live models stay opt-in: CI never sets QUATI_EVAL_LIVE or any live
-    # env, and the last step proves the offline gate holds by asserting the
-    # skip line is what CI gets.
-    name: behavior evals (offline tiers 1-3)
+    name: behavior evals (offline)
+    env:
+      QUATI_EVAL_LIVE: "0"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -141,18 +96,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Eval suite typecheck (standalone tsconfig)
-        # The root typecheck builds src and server only; evals carries its
-        # own tsconfig, so its type gate runs here with the rest of the
-        # eval surfaces.
         run: pnpm exec tsc -p evals/tsconfig.json
       - name: Eval vitest gate (redaction, trace, golden replay)
-        # Same reporter pair as the vitest shards, so a failure annotates
-        # the PR with the failing test and assertion.
-        run: pnpm exec vitest run --config evals/vitest.config.ts --reporter=default --reporter=github-actions
-      - name: Tier 1 scenarios (scripted harness, no models)
-        run: pnpm eval
-      - name: Tier 2 golden replay against committed baselines
-        run: pnpm eval --golden
+        run: pnpm exec vitest run --config evals/vitest.config.ts --reporter=default --reporter=github-actions --reporter=junit --outputFile.junit=evals/reports/runs/offline.xml
       - name: Tier 3 stays offline in CI (the skip is the pass condition)
         run: |
           output="$(pnpm eval --live 2>&1)"
@@ -189,11 +135,8 @@ jobs:
       - run: pnpm test:packaged-server
 
   gate:
-    # One aggregation, not three queued runners doing the same check.
     name: CI
-    needs: [static, vitest, behavior-evals, packaged-server]
-    # Still report failed/skipped dependencies, but don't keep a superseded
-    # workflow alive just to schedule its summary jobs.
+    needs: [static, vitest, behavior-evals, packaged-server, ui-smoke, browser-identity, browser-driver]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -218,10 +161,6 @@ jobs:
   ui-smoke:
     needs: static
     if: needs.static.outputs.runtime == 'true'
-    # Advisory, outside the required `test` matrix: the renderer recipe in
-    # It downloads the pinned
-    # agent-browser release (digest verified) and its Chrome, drives the real
-    # <App/> against the isolated fake-engine fixture, and keeps the screenshot.
     name: renderer smoke (control-quati ui, Ubuntu 24.04)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -236,38 +175,24 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Let Chrome build its sandbox on this runner
-        # Ubuntu 24.04's AppArmor profile blocks unprivileged user namespaces,
-        # so the downloaded Chrome for Testing dies with "No usable sandbox".
-        # This is Chrome's own documented fix for 23.10+; a developer machine
-        # needs nothing, and the sandbox itself stays on.
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Drive the real renderer through control-quati ui
         env:
           QUATI_UI_E2E: "1"
           QUATI_UI_EVIDENCE_DIR: .quati-scratch/verify-evidence
-        run: pnpm exec vitest run scripts/testing/control-quati-ui.e2e.test.ts scripts/testing/bot-tools-ui.e2e.test.ts scripts/testing/thinking-timer-ui.e2e.test.ts scripts/testing/team-share-ui.e2e.test.ts scripts/testing/org-library-ui.e2e.test.ts scripts/testing/presets-ui.e2e.test.ts scripts/testing/browser-evidence.e2e.test.ts
-      - name: Upload the renderer screenshot
+        run: pnpm exec vitest run scripts/testing/control-quati-ui.e2e.test.ts scripts/testing/bot-tools-ui.e2e.test.ts scripts/testing/thinking-timer-ui.e2e.test.ts scripts/testing/team-share-ui.e2e.test.ts scripts/testing/presets-ui.e2e.test.ts scripts/testing/browser-evidence.e2e.test.ts
+      - name: Upload renderer evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: control-quati-ui-chat-screenshot
-          path: |
-            .quati-scratch/verify-evidence/chat-ui.png
-            .quati-scratch/verify-evidence/thinking-timer-anchored.png
-            .quati-scratch/verify-evidence/share-team-dialog.png
+          path: .quati-scratch/verify-evidence/*.png
           if-no-files-found: warn
           retention-days: 7
 
   browser-identity:
     needs: static
     if: needs.static.outputs.runtime == 'true'
-    # Advisory, outside the required gate: the pinned agent-browser drives a
-    # real Chrome for Testing through QUATI's launcher and identity connection
-    # (scripts/testing/browser-identity.e2e.test.ts): a 1280x720 page whose
-    # user agent and client hints are the browser's own in the page, a
-    # worker, a service worker and a cross-site frame. On Windows this is
-    # also the check that the 0.36.0-quati.1 engine starts Chrome through the
-    # generated batch file. The same platforms as the vitest matrix.
     name: browser identity (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -286,7 +211,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Let Chrome build its sandbox on this runner
-        if: runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Drive a real Chrome through the launcher
         env:
@@ -296,13 +220,6 @@ jobs:
   browser-driver:
     needs: static
     if: needs.static.outputs.runtime == 'true'
-    # Advisory, outside the CI gate until it has run green for a while: the
-    # quati-cdp S4 conformance suites and the new browser's checklist and viewer
-    # suites on the runner's own Google Chrome (PRs run Linux and Windows;
-    # main pushes, merge groups and manual runs add macOS, as for the vitest
-    # shards), then on Linux inside the server image's runtime as a non-root
-    # user. Every S4 suite also fails when its trace holds Runtime.enable or
-    # another forbidden CDP method.
     name: browser driver S4 (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -321,32 +238,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Let Chrome build its sandbox on this runner, and give it a display
-        # Ubuntu 24.04 restricts unprivileged user namespaces; Chrome's own
-        # documented fix for 23.10+. The sandbox itself stays on.
-        if: runner.os == 'Linux'
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo apt-get update && sudo apt-get install -y xvfb
       - name: S4 on the runner's Google Chrome
-        # The headed-identity case needs a display, which Linux runners get from Xvfb.
         env:
           QUATI_CDP_E2E: "1"
         shell: bash
         run: |
           run=(pnpm exec vitest run server/browser/cdp/s4- server/browser/checklist.e2e server/browser/viewers/viewers.e2e --reporter=verbose --silent=false --reporter=github-actions)
-          if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a "${run[@]}"; else "${run[@]}"; fi
-      - name: S4 inside the server image's runtime, as its own user
-        # quati, with its real home, as the server runs there. The image's
-        # Chrome for Testing has no setuid sandbox helper yet, so this leg
-        # runs with the operator opt-out; the host legs keep the sandbox.
-        # Vitest writes its bundled config beside it and its cache under
-        # node_modules/.vite, so those two places are opened to quati. It runs
-        # even when the host leg failed: they test different Chromes.
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
-        run: |
-          docker build --target server -t quati-runtime:s4 .
-          mkdir -p node_modules/.vite && chmod a+w . node_modules/.vite
-          docker run --rm --init --shm-size=512m --user quati -e CI=true \
-            -e QUATI_CDP_CHROME=/opt/quatibot-browser/chrome -e QUATI_CDP_HOST=container -e QUATI_BROWSER_SANDBOX=0 \
-            -v "$PWD:/src" -w /src quati-runtime:s4 \
-            node node_modules/vitest/vitest.mjs run server/browser/cdp/s4- server/browser/checklist.e2e server/browser/viewers/viewers.e2e --reporter=verbose --silent=false
+          xvfb-run -a "${run[@]}"

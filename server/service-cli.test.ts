@@ -35,7 +35,7 @@ describe("quatibot service", () => {
     out.length = 0;
     const refused = runServiceCommand({ action: "install", dataDir: join(dir, "x"), port: 8799, script: "/home/quati/.npm/_npx/deadbeef/node_modules/quatibot/cli.js", node: "/usr/bin/node", platform: "linux" }, io);
     expect(refused).toBe(1);
-    expect(err.join("\n")).toMatch(/npm install -g quatibot/);
+    expect(err.join("\n")).toMatch(/persistent checkout or local build/);
     expect(existsSync(join(dir, "x", "quatibot.service"))).toBe(false);
   });
 

@@ -47,7 +47,8 @@
     "build:duckdb": "node scripts/prepare-duckdb.mjs",
     "smoke:browser": "node scripts/smoke-browser-bundle.mjs",
     "test:packaged-server": "pnpm build:server && node scripts/smoke-packaged-server.mjs",
-    "test": "vitest run && pnpm test:packaged-server",
+    "test:evals": "vitest run --config evals/vitest.config.ts",
+    "test": "vitest run && pnpm test:evals && pnpm test:packaged-server",
     "start": "node --experimental-strip-types server/quatibot.ts serve"
   },
   "dependencies": {

@@ -48,7 +48,7 @@ describe("service units", () => {
   });
 
   it("refuses to point a service at an npx cache, and knows where each platform's file goes", () => {
-    expect(unstableInstallWarning("/home/quati/.npm/_npx/abc123/node_modules/quatibot/cli.js")).toMatch(/npm install -g quatibot/);
+    expect(unstableInstallWarning("/home/quati/.npm/_npx/abc123/node_modules/quatibot/cli.js")).toMatch(/persistent checkout or local build/);
     expect(unstableInstallWarning("/usr/lib/node_modules/quatibot/cli.js")).toBeNull();
     const linux = servicePlan("linux", "/home/quati/.quatibot");
     expect(linux?.installed).toBe("/etc/systemd/system/quatibot.service");

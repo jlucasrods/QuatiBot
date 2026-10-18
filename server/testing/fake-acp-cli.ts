@@ -521,6 +521,15 @@ function driveMcp(entry: McpEntry, calls: Array<{ name: string | (() => string);
 
 function playTurn() {
   out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { text: "hello from fake acp" } } } });
+  if (process.env.FAKE_ACP_TOOL_CALLS) {
+    const calls = JSON.parse(process.env.FAKE_ACP_TOOL_CALLS) as Array<{ name: string; input?: Record<string, unknown>; ok?: boolean }>;
+    for (const [index, call] of calls.entries()) {
+      const toolCallId = `scripted-${index}`;
+      out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "tool_call", toolCallId, title: call.name, rawInput: call.input ?? {} } } });
+      out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "tool_call_update", toolCallId, status: call.ok === false ? "failed" : "completed" } } });
+    }
+    return;
+  }
   out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "tool_call", toolCallId: "tc-1", title: "run", rawInput: { path: "/fixture/readme.md", password: "acp-input-secret" } } } });
   out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "tool_call_update", toolCallId: "tc-1", status: "completed", rawOutput: { text: "fixture file content", api_key: "acp-output-secret" } } } });
 }
@@ -809,9 +818,11 @@ function handle(msg: any) {
       if (process.env.FAKE_ACP_ROOM_PLAN) {
         const entry = sessionMcp.find((server) => server.name === "agents");
         if (!entry?.command) throw new Error("Scripted ACP turns require the agents MCP");
+        const browser = sessionMcp.find((server) => server.name === "browser");
         const text = (msg.params.prompt as Array<{ text?: string }>).map((block) => block.text ?? "").join("\n");
         void runRoomHandoffAgent([], process.env.FAKE_ACP_ROOM_PLAN, { message: { content: text } }, {
           integration: { command: entry.command, args: entry.args ?? [], env: Object.fromEntries((entry.env ?? []).map(({ name, value }) => [name, value])) },
+          browser: browser?.command ? { command: browser.command, args: browser.args ?? [], env: Object.fromEntries((browser.env ?? []).map(({ name, value }) => [name, value])) } : undefined,
           system: "",
         }).then((reply) => {
           out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params.sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: reply } } } });

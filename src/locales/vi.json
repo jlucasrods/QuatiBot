@@ -1506,8 +1506,6 @@
   "onboarding.reel.channels.body": "Một kênh chứa nhiều bot và bạn. Nhắc đến một bot bằng @ để chọn bot trả lời. Tách biệt Công việc, Cá nhân và từng dự án.",
   "onboarding.reel.automations.title": "Thiết lập một lần là xong",
   "onboarding.reel.automations.body": "Kéo bot vào lịch và bot sẽ tự chạy. Cung cấp địa chỉ webhook cho ứng dụng bên ngoài và bot sẽ được kích hoạt khi được gọi.",
-  "onboarding.reel.terminal.title": "Chạy cả từ terminal",
-  "onboarding.reel.terminal.body": "Nhập npx quatibot, chọn một bộ não, và chính ứng dụng đó sẽ mở trong trình duyệt của bạn. Ghép nối điện thoại hoặc đưa ứng dụng lên máy chủ.",
   "onboarding.back": "Quay lại",
   "onboarding.progress": "Bước {current} trên {total}",
   "onboarding.dialog": "Khám phá nhanh",

@@ -35,7 +35,7 @@ afterAll(() => waitForExit(child, { signal: "SIGINT", graceMs: 30_000 }));
   expect(await dialog()).toContain("Open thread");
   const { runs } = await fetch(`${fixture!.url}/api/routines`).then(r => r.json());
   expect(runs.filter((run: any) => run.routineId === routine.id)).toHaveLength(1);
-  expect(await dialog()).toContain("hello from fake claude");
+  expect(await dialog()).toContain("hello from fake acp");
   // A newer run of the same routine must not replace the run we started here.
   const changed = await fetch(`${fixture!.url}/api/routines/${routine.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: "A different competing run." }) });
   expect(changed.ok).toBe(true);
