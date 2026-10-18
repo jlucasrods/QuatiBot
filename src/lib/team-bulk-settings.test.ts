@@ -73,7 +73,7 @@ describe("team-wide settings", () => {
         return { bot: bots[0]! };
       });
       const plan = planTeamChange(bots, instances, { kind: "approval", mode });
-      await applyTeamPlan(plan, (target, patch) => persistBotUpdate(target.id, patch, new AbortController().signal, request, undefined, target));
+      await applyTeamPlan(plan, (target, patch) => persistBotUpdate(target.id, patch, new AbortController().signal, request, target));
       expect(sent, mode).toEqual(bots.map((target) => [`/api/bots/${target.id}`, { approvalMode: mode, applyToAllThreads: true }]));
     }
   });
@@ -81,7 +81,7 @@ describe("team-wide settings", () => {
   it("sends a model as a bulk change, so each bot's threads with a model of their own keep it", async () => {
     const request = vi.fn(async (_path: string, _init?: RequestInit) => ({ bot: bot("a") }));
     const plan = planTeamChange([bot("a")], instances, { kind: "model", model: "sonnet" });
-    await applyTeamPlan(plan, (target, patch) => persistBotUpdate(target.id, patch, new AbortController().signal, request, undefined, target));
+    await applyTeamPlan(plan, (target, patch) => persistBotUpdate(target.id, patch, new AbortController().signal, request, target));
     expect(request.mock.calls.map(([path, init]) => [path, JSON.parse(String(init?.body))])).toEqual([
       ["/api/bots/a", { modelSelection: { instanceId: "claude", model: "sonnet" }, keepThreadModels: true }],
     ]);

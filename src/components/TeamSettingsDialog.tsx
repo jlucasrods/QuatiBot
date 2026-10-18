@@ -4,7 +4,7 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { applyTeamPlan, planTeamChange, TEAM_APPROVAL_MODES, teamBots, teamEffortChoices, teamModelChoices, teamResultCounts, type TeamApprovalMode, type TeamChange, type TeamPlanRow, type TeamResultRow, } from "@/lib/team-bulk-settings";
-import { api, desktopApprovalBridge, persistBotUpdate, useStore } from "@/state/store";
+import { api, persistBotUpdate, useStore } from "@/state/store";
 import { EFFORT_LEVELS, type EffortLevel } from "../../shared/wire";
 import { approvalModeOptions } from "./ApprovalModeSelector";
 import { effortLabel } from "./ModelPicker";
@@ -66,7 +66,7 @@ export function TeamSettingsDialog({ team, onClose }: {
         setRunning(true);
         setProgress(0);
         const outcome = await applyTeamPlan(plan, async (bot, patch) => {
-            const saved = await persistBotUpdate(bot.id, patch, new AbortController().signal, api, desktopApprovalBridge(), bot);
+            const saved = await persistBotUpdate(bot.id, patch, new AbortController().signal, api, bot);
             dispatch({ type: "botPatched", bot: saved });
         }, { acknowledgeLocalAuto, onProgress: setProgress });
         setResults(outcome);
