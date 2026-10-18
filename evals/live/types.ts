@@ -62,7 +62,7 @@ export type LiveConfig = z.infer<typeof liveConfigSchema>;
  * keys never have to be inlined anywhere. */
 export const liveInstanceSchema = z.object({
   instanceId: z.string().min(1),
-  driver: z.string().min(1),
+  driver: z.literal("opencodeGo"),
   displayName: z.string().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   environment: z.record(z.string(), z.string()).optional(),

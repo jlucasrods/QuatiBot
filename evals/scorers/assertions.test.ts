@@ -36,6 +36,25 @@ const world: WorldSnapshot = {
 const score = (assertion: Assertion) => evaluateAssertions([assertion], world)[0];
 
 describe("evaluateAssertions", () => {
+  it.each([
+    { prompt: JSON.stringify({ message: { content: '<quati-skill id="fixture">' } }), includes: '<quati-skill id="fixture"', pass: true },
+    { prompt: JSON.stringify({ message: { content: "plain" }, metadata: "fixture" }), includes: "fixture", pass: false },
+    { prompt: "raw fixture text", includes: "fixture", pass: true },
+  ])("checks decoded prompt text rather than JSON escaping or metadata: $prompt", ({ prompt, includes, pass }) => {
+    const snapshot = { ...world, turns: [{ ...world.turns[0], prompt }] };
+    expect(evaluateAssertions([{ kind: "promptIncludes", bot: "chief", turn: 0, includes }], snapshot)[0].pass).toBe(pass);
+    expect(evaluateAssertions([{ kind: "promptOmits", bot: "chief", turn: 0, omits: includes }], snapshot)[0].pass).toBe(!pass);
+  });
+
+  it.each([
+    { bot: "chief", turn: 0, omits: "absent", pass: true },
+    { bot: "chief", turn: 0, omits: "go", pass: false },
+    { bot: "chief", turn: 99, omits: "absent", pass: false },
+    { bot: "missing", turn: 0, omits: "absent", pass: false },
+  ])("checks prompt omissions without accepting missing evidence: $bot/$turn/$omits", ({ pass, ...assertion }) => {
+    expect(score({ kind: "promptOmits", ...assertion }).pass).toBe(pass);
+  });
+
   it("counts activities and pins a gate answer HTTP status", () => {
     expect(score({ kind: "activityCount", bot: "auto", prefix: "error: computer unavailable", count: 1 }).pass).toBe(true);
     expect(score({ kind: "activityCount", bot: "auto", prefix: "error: computer unavailable", count: 2 }).pass).toBe(false);

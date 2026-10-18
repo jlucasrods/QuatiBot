@@ -47,6 +47,7 @@ import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { runRoomHandoffAgent } from "./room-handoff-agent.ts";
 
 const mode = process.env.FAKE_ACP_MODE ?? "happy";
 
@@ -684,6 +685,10 @@ function handle(msg: any) {
         writeFileSync(`${process.env.FAKE_ACP_DUMP}.mcp.json`, JSON.stringify(msg.params?.mcpServers ?? []));
       }
       if (!cachedLiveLoad) sessionMcp = msg.params?.mcpServers ?? [];
+      if (process.env.FAKE_ACP_DUMP) {
+        dumpState.mcpServers = sessionMcp;
+        writeDumpAtomic(process.env.FAKE_ACP_DUMP, JSON.stringify(dumpState, null, 2));
+      }
       const opts = configOptions();
       const mdls = sessionModels();
       liveSession = typeof msg.params?.sessionId === "string" ? msg.params.sessionId : liveSession;
@@ -801,6 +806,21 @@ function handle(msg: any) {
         writeFileSync(`${process.env.FAKE_ACP_DUMP}.prompt.json`, JSON.stringify(msg.params?.prompt ?? null, null, 2));
       }
       if (failRpc(msg)) return;
+      if (process.env.FAKE_ACP_ROOM_PLAN) {
+        const entry = sessionMcp.find((server) => server.name === "agents");
+        if (!entry?.command) throw new Error("Scripted ACP turns require the agents MCP");
+        const text = (msg.params.prompt as Array<{ text?: string }>).map((block) => block.text ?? "").join("\n");
+        void runRoomHandoffAgent([], process.env.FAKE_ACP_ROOM_PLAN, { message: { content: text } }, {
+          integration: { command: entry.command, args: entry.args ?? [], env: Object.fromEntries((entry.env ?? []).map(({ name, value }) => [name, value])) },
+          system: "",
+        }).then((reply) => {
+          out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params.sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: reply } } } });
+          result(msg.id, { stopReason: "end_turn" });
+        }).catch((error: Error) => {
+          out({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: error.message } });
+        });
+        return;
+      }
       if (process.env.FAKE_ACP_TEXT_REPLY !== undefined) {
         out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params?.sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: process.env.FAKE_ACP_TEXT_REPLY } } } });
         result(msg.id, { stopReason: "end_turn", _meta: { inputTokens: 12, outputTokens: 4 } });

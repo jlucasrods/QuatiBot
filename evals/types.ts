@@ -88,6 +88,7 @@ export const assertionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("systemPromptIncludes"), bot: z.string(), turn: z.number().int(), includes: z.string() }),
   z.object({ kind: z.literal("systemPromptOmits"), bot: z.string(), turn: z.number().int(), omits: z.string() }),
   z.object({ kind: z.literal("promptIncludes"), bot: z.string(), turn: z.number().int(), includes: z.string() }),
+  z.object({ kind: z.literal("promptOmits"), bot: z.string(), turn: z.number().int(), omits: z.string() }),
   z.object({
     kind: z.literal("handoffTree"),
     equals: z.array(z.object({ bot: z.string(), status: z.string(), hasParent: z.boolean().optional() })),

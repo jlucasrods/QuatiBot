@@ -56,6 +56,15 @@ export function evaluateAssertions(assertions: Assertion[], world: WorldSnapshot
   });
 }
 
+function promptText(prompt: string): string {
+  try {
+    const envelope = JSON.parse(prompt) as { message?: { content?: unknown } };
+    return typeof envelope?.message?.content === "string" ? envelope.message.content : prompt;
+  } catch {
+    return prompt;
+  }
+}
+
 function score(assertion: Assertion, world: WorldSnapshot): { pass: boolean; detail: string } {
   switch (assertion.kind) {
     case "sendNotQueued": {
@@ -136,9 +145,17 @@ function score(assertion: Assertion, world: WorldSnapshot): { pass: boolean; det
       const turn = world.turns.find((entry) => entry.bot === assertion.bot && entry.index === assertion.turn);
       return turn === undefined
         ? { pass: false, detail: "no evidence turn " + assertion.turn + " for this bot" }
-        : turn.prompt.includes(assertion.includes)
+        : promptText(turn.prompt).includes(assertion.includes)
           ? { pass: true, detail: "user prompt contains the pinned text" }
           : { pass: false, detail: "prompt lacked: " + assertion.includes + "\n" + fmt(turn.prompt) };
+    }
+    case "promptOmits": {
+      const turn = world.turns.find((entry) => entry.bot === assertion.bot && entry.index === assertion.turn);
+      return turn === undefined
+        ? { pass: false, detail: "no evidence turn " + assertion.turn + " for this bot" }
+        : promptText(turn.prompt).includes(assertion.omits)
+          ? { pass: false, detail: "prompt unexpectedly contained: " + assertion.omits }
+          : { pass: true, detail: "prompt omits the pinned text" };
     }
     case "handoffTree": {
       const actual = world.handoffs.map((node) => ({

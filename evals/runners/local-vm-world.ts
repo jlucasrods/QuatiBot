@@ -1,10 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { freePortBlock } from "../../server/testing/ports.ts";
+import { verificationServerEnvironment } from "../../scripts/control-quati.ts";
 import type { Scenario, Step } from "../types.ts";
 import { buildScriptedPlan } from "../providers/mock/scripted-plan.ts";
 import { BaseWorld, type WorldContext } from "./base-world.ts";
@@ -36,33 +37,25 @@ export class LocalVmWorld extends BaseWorld {
     writeFileSync(join(ui, "index.html"), "<title>evals</title>");
     writeFileSync(join(ui, "assets", "eval.css"), "body{}");
     mkdirSync(data, { recursive: true });
+    mkdirSync(join(this.fixtureHome, "tmp"));
     this.vmState({});
     writeFileSync(join(data, "config.json"), JSON.stringify({
       instances: {
-        claude: {
-          driver: "claudeAgent",
-          config: { cli: join(ROOT, "server", "testing", "fake-claude-cli.ts") },
-          environment: { FAKE_CLAUDE_ROOM_PLAN: this.planPath, FAKE_CLAUDE_DUMP: this.dumpFile },
+        opencodeGo: {
+          driver: "opencodeGo",
+          config: { cli: join(ROOT, "server", "testing", "fake-acp-cli.ts") },
         },
       },
     }));
     const port = await freePortBlock([0, 1]);
     const hooks = pathToFileURL(join(ROOT, "server", "testing", "group-local-vm-hooks.mjs")).href;
     const env: NodeJS.ProcessEnv = {
-      PATH: dirname(process.execPath),
-      HOME: this.fixtureHome,
-      USERPROFILE: this.fixtureHome,
+      ...verificationServerEnvironment({}, this.fixtureHome, port),
       QUATI_DATA_DIR: data,
-      APPDATA: join(this.fixtureHome, "appdata"),
-      LOCALAPPDATA: join(this.fixtureHome, "localappdata"),
-      TEMP: this.fixtureHome,
-      TMP: this.fixtureHome,
-      TMPDIR: this.fixtureHome,
-      QUATI_PORT: String(port),
-      QUATI_WEBHOOK_PORT: String(port + 1),
       QUATI_STATIC_DIR: ui,
       QUATI_TEST_VM_STATE: this.stateFile,
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+      FAKE_ACP_ROOM_PLAN: this.planPath,
+      FAKE_ACP_DUMP: this.dumpFile,
     };
     const child = this.child = spawn(process.execPath, ["--import", hooks, join(ROOT, "server", "index.ts")], {
       cwd: ROOT,
@@ -97,13 +90,11 @@ export class LocalVmWorld extends BaseWorld {
       const created = await this.api.post("/api/bots", { name: bot.name });
       if (created.status >= 300) throw new Error("bot create failed: " + JSON.stringify(created.body));
       this.bots.set(bot.key, { id: created.body.bot.id, threadId: created.body.bot.threadId });
-      const patch: Record<string, unknown> = {};
+      const patch: Record<string, unknown> = { modelSelection: { instanceId: "opencodeGo", model: "fixture/default" } };
       if (bot.computer !== undefined) patch.computer = bot.computer;
       if (bot.browser !== undefined) patch.browser = bot.browser;
-      if (Object.keys(patch).length > 0) {
-        const response = await this.api.patch("/api/bots/" + created.body.bot.id, patch);
-        if (response.status >= 300) throw new Error("bot patch failed: " + JSON.stringify(response.body));
-      }
+      const response = await this.api.patch("/api/bots/" + created.body.bot.id, patch);
+      if (response.status >= 300) throw new Error("bot patch failed: " + JSON.stringify(response.body));
     }
     const plan = buildScriptedPlan(scenario, (ref) => this.botId(ref), (gate) => this.gatePath(gate));
     writeFileSync(this.planPath, JSON.stringify(plan));
@@ -113,16 +104,14 @@ export class LocalVmWorld extends BaseWorld {
     writeFileSync(this.stateFile, JSON.stringify(state));
   }
 
-  /** The fake engine dumps once per process; reads must tolerate a torn
-   * partial write, and every read consumes the file so the next dump is
-   * unambiguous. */
   private async readDump(timeoutMs: number): Promise<any> {
     const dump = await waitUntil(
       "engine dump",
       () => {
         if (!existsSync(this.dumpFile)) return null;
         try {
-          return JSON.parse(readFileSync(this.dumpFile, "utf8"));
+          const dump = JSON.parse(readFileSync(this.dumpFile, "utf8"));
+          return Array.isArray(dump.mcpServers) ? dump : null;
         } catch {
           return null;
         }
@@ -146,9 +135,10 @@ export class LocalVmWorld extends BaseWorld {
       }
       case "captureComputer": {
         const dump = await this.readDump(20_000);
-        const computer = dump?.mcpConfig?.mcpServers?.computer;
-        if (!computer?.env?.QUATI_CONTROL_URL) throw new Error("no computer mount in dump: " + JSON.stringify(dump?.mcpConfig ?? null));
-        this.computers.set(step.bot, { url: computer.env.QUATI_CONTROL_URL, token: computer.env.QUATI_CONTROL_TOKEN });
+        const computer = dump?.mcpServers?.find((server: { name: string }) => server.name === "computer");
+        const env = Object.fromEntries((computer?.env ?? []).map(({ name, value }: { name: string; value: string }) => [name, value]));
+        if (!env.QUATI_CONTROL_URL) throw new Error("no computer mount in dump: " + JSON.stringify(dump?.mcpServers ?? null));
+        this.computers.set(step.bot, { url: env.QUATI_CONTROL_URL, token: env.QUATI_CONTROL_TOKEN });
         return "computer gate captured for " + step.bot;
       }
       case "pollComputerGate": {

@@ -226,7 +226,7 @@ export async function launchVerificationServer(
   /** A stand-in enterprise layer (the folder shape core loads) and the key
    * it should accept, so a recipe can prove entitled behaviour offline. */
   enterprise?: { dir: string; licenseKey: string },
-  _room?: { scripted: boolean },
+  room?: { scripted: boolean },
   /** Optional repository-owned fake providers for multi-engine setup checks. */
   _extraProviders: Array<"codex" | "cline"> = [],
   /** Programmatic tests only: an owned loopback Boat provider, never a live account. */
@@ -277,6 +277,7 @@ export async function launchVerificationServer(
 
   const log = openSync(logPath, "a", 0o600);
   const childEnv = verificationServerEnvironment(parentEnv, dataDir, port);
+  if (room?.scripted) childEnv.FAKE_ACP_ROOM_PLAN = join(dataDir, "room-plan.json");
   // Opt-in live Local VM fixture: keep the temporary home and fake engine,
   // granting only the explicitly selected machine connection and static UI.
   if (localVm) Object.assign(childEnv, {

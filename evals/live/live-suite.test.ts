@@ -119,7 +119,7 @@ describe("committed live scenarios", () => {
 
 describe("judge prompts", () => {
   it("verify the manifest checksum and refuse unknown versions", () => {
-    const prompt = loadJudgePrompt("open-ended-v1");
+    const prompt = loadJudgePrompt("open-ended-v2");
     expect(prompt.text).toContain("{{task}}");
     expect(prompt.text).toContain("{{reply}}");
     expect(() => loadJudgePrompt("missing-v9")).toThrow(/no judge prompt version/);
@@ -135,12 +135,12 @@ describe("judge prompts", () => {
 });
 
 describe("live instance loading", () => {
-  const instance = { instanceId: "local", driver: "ollama", config: {}, model: "qwen3:1.7b" };
+  const instance = { instanceId: "local", driver: "opencodeGo", config: {}, model: "ollama/qwen3:1.7b" };
 
   it("reads inline JSON", () => {
     expect(loadLiveInstance({ QUATI_EVAL_LIVE_INSTANCE: JSON.stringify(instance) })).toMatchObject({
       instanceId: "local",
-      model: "qwen3:1.7b",
+      model: "ollama/qwen3:1.7b",
     });
   });
 
@@ -152,6 +152,10 @@ describe("live instance loading", () => {
 
   it("fails closed with neither source set", () => {
     expect(() => loadLiveInstance({})).toThrow(/no engine instance is configured/);
+  });
+
+  it.each(["ollama", "claudeAgent", "codex"])("rejects the unsupported %s driver", (driver) => {
+    expect(() => loadLiveInstance({ QUATI_EVAL_LIVE_INSTANCE: JSON.stringify({ ...instance, driver }) })).toThrow();
   });
 });
 

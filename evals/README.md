@@ -2,7 +2,9 @@
 
 Offline behavior evals for the QuatiBot harness (upstream issue #1503, tiers 1-3). The unit and e2e suite tests code paths; these scenarios test what the harness *does*: which tools a turn's model was allowed to call, where work was dispatched, what the handoff tree looks like, how routines defer, and when the computer claim fires.
 
-The principle: evaluate the harness, never the models. A scripted engine replays deterministic turns (tool calls, text, refusals) from a plan file; no external API is called; a run is hermetic and repeatable.
+The offline tiers evaluate the harness, not model quality. A fake OpenCode V2 ACP CLI replays deterministic turns (tool calls, text, refusals) from a plan file against real backend APIs and injected MCP proxies. Each server has a disposable HOME, data directory and ports; no provider credentials or external model APIs are used.
+
+ACP carries instructions and the person's message together in `session/prompt`. Offline prompt assertions inspect that actual combined payload, not a separate system-role message. A matching phrase proves delivery, not that a model understood or followed it.
 
 ## Run
 
@@ -38,7 +40,7 @@ Each fixture declares a `world`, the `bots` to create with their scripted `turns
 ## Worlds
 
 - `coordination` — the packaged verification server with the scripted room engine: ordinary chat, `coordinate_bots` handoffs, routines.
-- `localVm` — the real server with the container boundary replaced by the in-repo VM fixture (`server/testing/group-local-vm-hooks.mjs`): hermetic Local VM lifecycle, no Podman. The runner plays the bridge's computer-control poll, which is the seam the lazy claim lives at.
+- `localVm` — the real server with the container boundary replaced by the in-repo VM fixture (`server/testing/group-local-vm-hooks.mjs`): hermetic Local VM lifecycle, no container runtime or VM image required. The runner polls the real computer-control gate to exercise lazy claims, contention and revocation. This does not validate a running VM, screenshots or screen interaction.
 
 ## Tier 2 — golden-thread replay
 
@@ -55,13 +57,17 @@ The redaction step rewrites ids, names, and free text into stable synthetic plac
 
 Live-model runs never execute by default: `pnpm eval --live` prints one skip line and exits 0 unless the gate is open.
 
+Only the `opencodeGo` driver is supported. Provider logins and model configuration belong to OpenCode.
+
     QUATI_EVAL_LIVE=1 QUATI_EVAL_LIVE_CONFIG=/path/to/instance.json pnpm eval --live
 
 The instance file (or inline `QUATI_EVAL_LIVE_INSTANCE` JSON) uses the product's own instance shape — `instanceId`, `driver`, `model`, optional `config` and `environmentFrom` — so credential variables are copied from the launching shell (`QUATI_EVAL_LIVE_PASS_ENV` lists names to forward) and never inlined. Thresholds live in the committed `evals/live/config.json`: minimum suite score, maximum drift from the last recorded baseline, and turn and judge timeouts. Scenarios run cheap real models with state-based waits, deterministic checks (`botReplied`, tool traces), and a versioned judge whose prompt files are pinned by sha256 in a manifest; drift against the gitignored `evals/live/baselines/` baseline fails the suite.
 
 ## Skill bench (alpha)
 
-The skill bench measures one fixture skill against its own prompts through the same scripted machinery as tier 1. Each prompt runs twice — with the skill installed as a user skill under the booted server's data dir and without it — so the contrast covers the real seams: trigger-term selection, the `<quati-skill>` block riding the system prompt, and the scripted follower's behavior against a no-skill baseline. It evaluates the harness, never a model.
+The skill bench measures one fixture skill against its own prompts through the same scripted machinery as tier 1. Each prompt runs twice — with the skill installed as a user skill under the booted server's data dir and without it — so the contrast covers the real seams: trigger-term selection, the `<quati-skill>` block riding the ACP prompt, and the scripted follower's behavior against a no-skill baseline. It evaluates the harness, never a model.
+
+The with/without tool calls are scripted separately by the fixture. Their score difference checks the runner and delivery plumbing; it is not evidence that installing the skill improves a real model's behavior.
 
     node --experimental-strip-types evals/runners/run-skill-bench.ts [--fixture bench-triage-handoff] [--replicates 2]
 

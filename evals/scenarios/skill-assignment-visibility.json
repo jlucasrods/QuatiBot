@@ -1,7 +1,7 @@
 {
   "id": "skill-assignment-visibility",
   "title": "Assigning a library skill changes what the next turn sees",
-  "behavior": "With features.skillsLibrary on, a turn before assignment omits the library skill from its system prompt; after the Skills surface's assignment PUT, the next turn's system prompt carries the skill.",
+  "behavior": "With features.skillsLibrary on, a turn before assignment omits the library skill from its ACP prompt; after the Skills surface's assignment PUT, the next turn's ACP prompt carries the skill.",
   "issue": 1803,
   "world": "coordination",
   "gates": [],
@@ -30,7 +30,7 @@
     { "kind": "waitForTurns", "bot": "shop", "count": 2, "timeoutMs": 20000 }
   ],
   "assertions": [
-    { "kind": "systemPromptOmits", "bot": "shop", "turn": 0, "omits": "order-audit" },
-    { "kind": "systemPromptIncludes", "bot": "shop", "turn": 1, "includes": "order-audit" }
+    { "kind": "promptOmits", "bot": "shop", "turn": 0, "omits": "order-audit" },
+    { "kind": "promptIncludes", "bot": "shop", "turn": 1, "includes": "order-audit" }
   ]
 }

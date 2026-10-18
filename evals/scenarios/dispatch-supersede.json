@@ -134,7 +134,7 @@
       ]
     },
     {
-      "kind": "instructionsInclude",
+      "kind": "promptIncludes",
       "bot": "chief",
       "turn": 1,
       "includes": "Assignments you already sent are still outstanding"
