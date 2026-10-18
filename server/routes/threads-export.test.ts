@@ -28,7 +28,6 @@ async function serve(store: Store): Promise<string> {
     viewerFor: () => ({}),
     visibleTo: () => ({ bot: () => true, group: () => true }),
     workspaceAccess: () => null,
-    desktopMutationToken: () => undefined,
     cliOwnerToken: () => undefined,
   } as unknown as ThreadRouteDeps;
   const routes = [createThreadRoutes(deps)];

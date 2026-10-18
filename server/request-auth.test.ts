@@ -222,50 +222,6 @@ describe("resolveRequestAuth", () => {
     expect(sessions.list()).toEqual([]);
   });
 
-  it("requires the packaged desktop capability for public loopback mutations", () => {
-    const options = (path: string) => ({
-      sessions,
-      cookieName,
-      streamPath: "/api/events",
-      url: new URL(path, "http://x"),
-      loopbackMutationToken: "owner-token-123",
-    });
-    const denied = resolveRequestAuth(
-      request({ host: "127.0.0.1:8799" }, "PATCH"),
-      options("/api/bots/bot-1"),
-    );
-    expect(denied.auth).toBeNull();
-    expect(denied.status).toBe(403);
-    expect(denied.error).toMatch(/desktop app or a paired device/);
-
-    const desktop = resolveRequestAuth(
-      request({
-        host: "127.0.0.1:8799",
-        "x-quatibot-desktop-owner": "owner-token-123",
-      }, "POST"),
-      options("/api/routines"),
-    );
-    expect(desktop.auth?.kind).toBe("loopback");
-
-    expect(resolveRequestAuth(
-      request({ host: "127.0.0.1:8799" }, "GET"),
-      options("/api/bots"),
-    ).auth?.kind).toBe("loopback");
-    const connectorRefresh = resolveRequestAuth(
-      request({ host: "127.0.0.1:8799" }, "GET"),
-      options("/api/bots/bot-1/connector-cards/card-1/status?threadId=thread-1"),
-    );
-    expect(connectorRefresh.auth).toBeNull();
-    expect(connectorRefresh.status).toBe(403);
-    for (const path of ["/api/desktop-viewer/vps/bot-1", "/api/desktop-viewer/local/shared/websockify"]) {
-      expect(resolveRequestAuth(request({ host: "127.0.0.1:8799" }, "GET"), options(path)).status).toBe(403);
-    }
-    expect(resolveRequestAuth(
-      request({ host: "127.0.0.1:8799" }, "POST"),
-      options("/api/internal/coordinate-bots"),
-    ).auth?.kind).toBe("loopback");
-  });
-
   it("never grants loopback trust to a request that came through a proxy, whatever Host it carries", () => {
     expect(isProxied(request({ host: "localhost", "x-forwarded-for": "203.0.113.9" }))).toBe(true);
     expect(isProxied(request({ host: "localhost", "x-forwarded-proto": "https" }))).toBe(true);
@@ -433,11 +389,10 @@ describe("loopback trust: owner on one person's machine, service on a shared wor
   let sessions: SessionRegistry;
   const cookieName = "quati_session_8799_env";
   const local = { host: "127.0.0.1:8799" };
-  const check = (method: string, path: string, options: { trust?: "owner" | "service"; headers?: Record<string, string>; desktopToken?: string } = {}) =>
+  const check = (method: string, path: string, options: { trust?: "owner" | "service"; headers?: Record<string, string> } = {}) =>
     resolveRequestAuth(request({ ...local, ...options.headers }, method), {
       sessions, cookieName, streamPath: "/api/events", url: new URL(path, "http://x"),
       ...(options.trust ? { loopbackTrust: options.trust } : {}),
-      ...(options.desktopToken !== undefined ? { loopbackMutationToken: options.desktopToken } : {}),
     });
 
   beforeEach(() => {
@@ -506,8 +461,6 @@ describe("loopback trust: owner on one person's machine, service on a shared wor
   });
 
   it("ignores service trust while the desktop capability is in force", () => {
-    expect(check("PUT", "/api/config", { trust: "service", desktopToken: "owner-token", headers: { "x-quatibot-desktop-owner": "owner-token" } }).auth)
-      .toEqual({ kind: "loopback", scopes: ["admin", "client"] });
   });
 
   it("defaults to service on a hosted workspace, owner elsewhere, and lets the operator choose", () => {
@@ -566,10 +519,9 @@ describe("a browser on this machine is not the owner", () => {
   const navigation = { host: "127.0.0.1:8799", "sec-fetch-site": "none", "sec-fetch-mode": "navigate", "sec-fetch-dest": "document", "sec-fetch-user": "?1" };
   const socket = { host: "127.0.0.1:8799", origin: "http://localhost:3000", upgrade: "websocket", connection: "Upgrade" };
   const ownUi = { host: "127.0.0.1:8799", origin: "http://127.0.0.1:8799", "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" };
-  const check = (headers: Record<string, string>, path = "/api/bots", method = "GET", options: { desktopToken?: string; trust?: "owner" | "service"; localBrowsers?: boolean } = {}) =>
+  const check = (headers: Record<string, string>, path = "/api/bots", method = "GET", options: { trust?: "owner" | "service"; localBrowsers?: boolean } = {}) =>
     resolveRequestAuth(request(headers, method), {
       sessions, cookieName, streamPath: "/api/events", url: new URL(path, "http://x"),
-      ...(options.desktopToken !== undefined ? { loopbackMutationToken: options.desktopToken } : {}),
       ...(options.trust ? { loopbackTrust: options.trust } : {}),
       ...(options.localBrowsers ? { trustLocalBrowser: true } : {}),
     });
@@ -610,21 +562,6 @@ describe("a browser on this machine is not the owner", () => {
     expect(check({ host: "127.0.0.1:8799" }, "/api/health", "GET", { trust: "service" }).auth?.kind).toBe("loopback");
   });
 
-  it("lets the desktop app's own window in with its owner header, on http and WebSocket alike", () => {
-    const desktop = { desktopToken: "owner-token-123" };
-    const owner = { "x-quatibot-desktop-owner": "owner-token-123" };
-    expect(check({ ...ownUi, ...owner }, "/api/bots", "GET", desktop).auth?.kind).toBe("loopback");
-    expect(check({ ...ownUi, ...owner }, "/api/bots/bot-1", "PATCH", desktop).auth?.kind).toBe("loopback");
-    expect(check({ ...socket, origin: "http://127.0.0.1:8799", ...owner }, "/api/desktop-viewer/local/shared/websockify", "GET", desktop).auth?.kind).toBe("loopback");
-    for (const headers of [ownUi, page, socket, { ...ownUi, "x-quatibot-desktop-owner": "owner-token-999" }]) {
-      expect(check(headers, "/api/bots", "GET", desktop).status, JSON.stringify(headers)).toBe(401);
-    }
-    // Before the desktop app has sent its capability, nothing a browser sends matches.
-    expect(check({ ...ownUi, "x-quatibot-desktop-owner": "" }, "/api/bots", "GET", { desktopToken: "" }).auth).toBeNull();
-    // Node clients send no Sec-Fetch-*.
-    expect(check({ host: "127.0.0.1:8799" }, "/api/bots", "GET", desktop).auth?.kind).toBe("loopback");
-  });
-
   it("still admits a browser that signed in", () => {
     const { code } = sessions.openPairing({ scopes: ["admin", "client"] });
     const paired = sessions.exchange({ code, label: "This browser", source: "127.0.0.1" });
@@ -635,8 +572,6 @@ describe("a browser on this machine is not the owner", () => {
 
   it("trusts local browsers only on a development server that asked for it", () => {
     expect(check(page, "/api/bots", "GET", { localBrowsers: true }).auth).toEqual({ kind: "loopback", scopes: ["admin", "client"] });
-    // The desktop owner header is still required for desktop mutations.
-    expect(check(page, "/api/bots/bot-1", "PATCH", { localBrowsers: true, desktopToken: "owner-token-123" }).status).toBe(403);
     const pick = (env: NodeJS.ProcessEnv, flags: { fromSource?: boolean; desktopManaged?: boolean; hostedWorkspace?: boolean } = {}) =>
       resolveLoopbackTrust({ env, desktopManaged: false, hostedWorkspace: false, ...flags });
     const dev = { QUATI_DEV_TRUST_LOCAL_BROWSER: "1" };

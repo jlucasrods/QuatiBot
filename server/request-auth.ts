@@ -365,10 +365,8 @@ export interface ResolveOptions {
   cookieName: string;
   streamPath: string;
   url: URL;
-  /** Desktop capability over Electron's private child port: with it, every public loopback mutation must come through the desktop's web session. */
-  loopbackMutationToken?: string;
   features?: { sharedComputers?: boolean };
-  /** Absent is `owner`; ignored while loopbackMutationToken is in force. */
+  /** Absent is `owner`. */
   loopbackTrust?: LoopbackTrust;
   /** Under `service`: a per-launch secret from `quatibot serve` over stdin (never env, which other children read); it opens only pairing codes. */
   cliOwnerToken?: string;
@@ -379,23 +377,6 @@ export interface ResolveOptions {
 const CLI_OWNER_HEADER = "x-quatibot-cli-owner";
 const CLI_OWNER_ROUTE = /^\/api\/auth\/pairing$/;
 
-const DESKTOP_OWNER_HEADER = "x-quatibot-desktop-owner";
-
-function mutatingPublicRoute(method: string, path: string): boolean {
-  const upper = method.toUpperCase();
-  // A legacy GET that syncs upstream state and can resume a paused turn: classify by effect, not verb.
-  if (
-    upper === "GET" &&
-    /^\/api\/bots\/[\w-]+\/connector-cards\/[\w-]+\/status$/.test(path)
-  ) return true;
-  // Hands out a desktop's VNC password and control.
-  if (path.startsWith("/api/desktop-viewer/")) return true;
-  if (["GET", "HEAD", "OPTIONS"].includes(upper)) return false;
-  // Internal routes carry their own per-boot authorization; pairing-code exchange is public (the one-time code is its authorization).
-  return !path.startsWith("/api/internal/") &&
-    path !== "/api/testing/internal-capability" &&
-    path !== "/api/auth/pair";
-}
 
 function secureTokenMatch(actual: string | undefined, expected: string): boolean {
   if (!actual || !expected) return false;
@@ -450,13 +431,8 @@ export function resolveRequestAuth(req: IncomingMessage, options: ResolveOptions
   const proxied = isProxied(req);
   const loopback = !proxied && isLoopbackHost(headerValue(req.headers.host)) && isAllowedOrigin(headerValue(req.headers.origin));
   if (loopback) {
-    const desktopOwner = options.loopbackMutationToken !== undefined &&
-      secureTokenMatch(headerValue(req.headers[DESKTOP_OWNER_HEADER]), options.loopbackMutationToken);
-    if (fromBrowser(req) && !desktopOwner && !options.trustLocalBrowser) return deny(401, BROWSER_SIGN_IN);
-    if (options.loopbackMutationToken !== undefined && mutatingPublicRoute(method, path) && !desktopOwner) {
-      return deny(403, "forbidden: this change must come from the desktop app or a paired device");
-    }
-    if (options.loopbackMutationToken === undefined && options.loopbackTrust === "service") {
+    if (fromBrowser(req) && !options.trustLocalBrowser) return deny(401, BROWSER_SIGN_IN);
+    if (options.loopbackTrust === "service") {
       if (
         options.cliOwnerToken && CLI_OWNER_ROUTE.test(path) && ["GET", "POST"].includes(method.toUpperCase()) &&
         secureTokenMatch(headerValue(req.headers[CLI_OWNER_HEADER]), options.cliOwnerToken)

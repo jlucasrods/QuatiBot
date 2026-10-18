@@ -8991,29 +8991,10 @@ describe("harness HTTP API", () => {
       partitionId: "Client",
       phase: "committed",
     }]));
-
-    const ackDesktopPrelude = `data:text/javascript,${encodeURIComponent(`
-      const { EventEmitter } = await import("node:events");
-      const messages = new EventEmitter();
-      Object.defineProperty(process, "parentPort", {
-        value: {
-          on(event, callback) { messages.on(event, callback); },
-          postMessage(message) {
-            if (message?.requestId && /browser-(?:bot|profile)-deleted/.test(message.type ?? "")) {
-              queueMicrotask(() => messages.emit("message", { data: {
-                type: "quatibot:browser-lifecycle-result",
-                requestId: message.requestId,
-                ok: true,
-              } }));
-            }
-          },
-        },
-      });
-    `)}`;
     let isolatedStderr = "";
     const isolatedChild = spawn(
       process.execPath,
-      ["--import", ackDesktopPrelude, join(SERVER_DIR, "index.ts")],
+      [join(SERVER_DIR, "index.ts")],
       {
         cwd: ROOT,
         env: {

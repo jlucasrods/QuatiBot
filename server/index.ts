@@ -33,8 +33,7 @@ import { canWorkOnCloud, type CloudEngine } from "../shared/cloud-computer.ts";
 import {
   approvalModeFor,
   modelSwitchNeedsAsk,
-  isEmergencyApprovalDowngrade,
-  isApprovalMode, setDefaultApprovalMode,
+  setDefaultApprovalMode,
   type ApprovalMode,
 } from "../shared/approval-mode.ts";
 import { createApprovalModeSupport } from "./harness-capabilities.ts";
@@ -59,7 +58,6 @@ import type { CommandAllowlistCandidate, CommandAllowlistResponse } from "../sha
 import {
   BrowserCleanupCoordinator,
   requireBrowserCleanupAcknowledged,
-  type BrowserCleanupWireRequest,
 } from "./browser-lifecycle-cleanup.ts";
 import * as checkpoints from "./checkpoints.ts";
 import { commandReceipt } from "./commands.ts";
@@ -646,8 +644,6 @@ if (process.env.QUATI_CLI_OWNER_STDIN === "1" && LOOPBACK.trust === "service" &&
   });
 }
 delete process.env.QUATI_CLI_OWNER_STDIN;
-// Empty is a deny-all bootstrap state; only Electron's private utility-process port replaces it.
-let desktopMutationToken: string | undefined = DESKTOP_MANAGED ? "" : undefined;
 const FALLBACK_PUBLIC_URL = process.env.QUATI_PUBLIC_URL?.trim().replace(/\/+$/, "") || null;
 const cfg = loadConfig();
 const providerConfigs = () => instanceConfigs(cfg);
@@ -1455,54 +1451,6 @@ function resyncOpenCodeProviderKeys(): void {
 await registry.load(providerConfigs());
 const bundledSkills = loadBundledSkills();
 const availableSkills = () => mergeSkills(bundledSkills, loadUserSkills(join(DATA_DIR, "skills")));
-
-type UtilityParentPort = {
-  on(event: "message", listener: (event: { data?: object }) => void): void;
-  postMessage(message: object): void;
-};
-// Only Electron's utility process supplies parentPort, private to the desktop main process; plain Node leaves it absent.
-const utilityParentPort = (process as NodeJS.Process & { parentPort?: UtilityParentPort }).parentPort;
-type DesktopPrivateMessage = BrowserCleanupWireRequest | {
-  type: "quatibot:browser-control";
-  botId: string;
-  held: true;
-} | {
-  type: "approval-trusted-mode-result" | "approval-trusted-mode-commit-result";
-  requestId: string;
-  ok: boolean;
-  bot?: ReturnType<typeof wireBot>;
-  error?: string;
-} | {
-  type: "approval-trusted-mode-confirm-result";
-  requestId: string;
-  ok: boolean;
-  error?: string;
-} | {
-  type: "approval-trusted-mode-activate-result" | "approval-trusted-mode-finalize-result";
-  requestId: string;
-  ok: boolean;
-  error?: string;
-};
-function postDesktopPrivateMessage(message: DesktopPrivateMessage): boolean {
-  if (!utilityParentPort) return false;
-  try {
-    utilityParentPort.postMessage(message);
-    return true;
-  } catch (error) {
-    console.error(`[desktop-sync] could not send private parent message: ${error instanceof Error ? error.message : String(error)}`);
-    return false;
-  }
-}
-function applyDesktopMutationTokenMessage(raw: unknown): boolean {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
-  const message = raw as Record<string, unknown>;
-  if (message.type !== "quatibot:desktop-mutation-token") return false;
-  if (typeof message.token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(message.token)) {
-    throw new Error("invalid desktop mutation capability");
-  }
-  desktopMutationToken = message.token;
-  return true;
-}
 const browserCleanup: BrowserCleanupCoordinator = new BrowserCleanupCoordinator({
   file: join(DATA_DIR, "browser-cleanups.json"),
   send: (request) => {
@@ -1530,16 +1478,6 @@ const browserCleanup: BrowserCleanupCoordinator = new BrowserCleanupCoordinator(
     });
     return true;
   },
-});
-utilityParentPort?.on("message", (event) => {
-  const message = event?.data;
-  try {
-    if (applyDesktopMutationTokenMessage(message)) return;
-    if (handleDesktopTrustedApprovalMessage(message)) return;
-    if (browserCleanup.receive(message)) return;
-  } catch (error) {
-    console.error(`[desktop-sync] rejected private parent message: ${error instanceof Error ? error.message : String(error)}`);
-  }
 });
 
 const bus = new EventBus();
@@ -2439,7 +2377,6 @@ const computerControl = new ComputerControl((key, snapshot) => {
   computerControlRevision.set(botId, (computerControlRevision.get(botId) ?? 0) + 1);
   // One-way, fail-closed mirror into Electron: never send release, since a loopback caller can influence the server record.
   if (snapshot.held && /^[A-Za-z0-9_-]{1,120}$/.test(botId)) {
-    postDesktopPrivateMessage({ type: "quatibot:browser-control", botId, held: true });
   }
   broadcast({ kind: "computer-control", botId, held: snapshot.held, helpReason: snapshot.helpReason, ...(snapshot.help ? { help: snapshot.help } : {}) });
   }
@@ -2893,11 +2830,6 @@ function toolScopeForTurn(botId: string) {
   return parsed.scope;
 }
 
-const wireTrustedApprovalBot = (bot: NonNullable<ReturnType<typeof store.bot>>) => {
-  const { resumeCursors: _resumeCursors, tasks, approvalGrant: _approvalGrant, lastProfileRequestId: _lastProfileRequestId, lastTeamSetupReceipt: _lastTeamSetupReceipt, packageBase: _packageBase, assignedSkills: _assignedSkills, ...rest } = bot;
-  return { ...rest, approvalMode: approvalModeFor(rest), mainThreadId: botMainThread(bot.id), avatarUrl: rest.avatarUrl ?? null, ...(tasks ? { tasks: tasks.map((task) => wireTask(task, bot.modelSelection)) } : {}) };
-};
-
 function previewSystemPrompt(bot: BotRecord) {
   const persona = botPersona(bot);
   const instance = registry.get(bot.modelSelection.instanceId);
@@ -3099,413 +3031,6 @@ function roomTurnLevel(bot: BotRecord, threadId: string, source: Pick<HandoffVie
   const from = source ? store.bot(source.botId) : undefined;
   const own = approvalModeForTurn(bot, source !== undefined, threadId);
   return (from && source && delegatedLevel(from, source.threadId, bot, own)) || own;
-}
-
-/** Custom transitions never go over loopback HTTP (a bot's shell could curl it); only Electron's private utility-process channel delivers them. */
-function handleDesktopTrustedApprovalMessage(raw: unknown): boolean {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
-  const message = raw as Record<string, unknown>;
-  const grantTarget = (bot: BotRecord) => bot.approvalGrant?.threadOnly
-    ? store.projectBotForTask(bot.id, bot.approvalGrant.threadId!) : bot;
-  const grantBusy = (bot: BotRecord) => bot.approvalGrant?.threadOnly
-    ? threadBusy(bot.id, bot.approvalGrant.threadId!) : bot.busy ||
-      Boolean(bot.approvalGrant?.allThreads && store.tasks(bot.id).some(task => threadBusy(bot.id, task.threadId)));
-  const grantSupported = (bot: BotRecord, mode: ApprovalMode) => supportsApprovalMode(
-    grantTarget(bot)?.modelSelection, mode) &&
-    (!bot.approvalGrant?.allThreads || store.tasks(bot.id).every(task => supportsApprovalMode(
-      task.modelSelection ?? bot.modelSelection, mode)));
-  const clearGrant = (bot: BotRecord) => store.patchBot(bot.id, {
-    ...(!bot.approvalGrant?.threadOnly ? { approvalMode: "ask" as const, autoApprove: false } : {}),
-    approvalGrant: undefined,
-  });
-  const threadCanReceiveGrant = (bot: BotRecord): boolean => {
-    const threadId = bot.approvalGrant?.threadId;
-    if (!threadId) return true;
-    const target = store.projectBotForTask(bot.id, threadId);
-    return Boolean(target && !threadBusy(bot.id, threadId) && (bot.approvalGrant?.threadOnly ||
-      registry.cliTarget(target.modelSelection.instanceId)?.driverKind === registry.cliTarget(bot.modelSelection.instanceId)?.driverKind));
-  };
-  if (message.type === "approval-trusted-mode-commit") {
-    const requestId = typeof message.requestId === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(message.requestId)
-      ? message.requestId
-      : null;
-    const botId = typeof message.botId === "string" && /^[\w-]{1,128}$/.test(message.botId)
-      ? message.botId
-      : null;
-    const mode = message.mode === "full" || message.mode === "custom" ? message.mode : null;
-    if (!requestId) return true;
-    if (!botId || !mode) return true;
-    const bot = store.bot(botId);
-    if (
-      bot?.approvalGrant?.requestId === requestId &&
-      bot.approvalGrant.mode === mode &&
-      bot.approvalGrant.phase === "committed" &&
-      (bot.approvalGrant.threadOnly || bot.approvalMode === mode) &&
-      !grantBusy(bot) &&
-      threadCanReceiveGrant(bot) &&
-      grantSupported(bot, mode)
-    ) {
-      if (bot.approvalGrant.allThreads && mode === "full") {
-        store.setAllThreadApprovalMode(botId, mode);
-      } else if (bot.approvalGrant.refreshPermissions && bot.approvalGrant.threadId) {
-        store.refreshTaskPermissions(botId, bot.approvalGrant.threadId);
-      } else if (bot.approvalGrant.threadId) {
-        store.patchTask(botId, bot.approvalGrant.threadId, { approvalMode: mode, autoApprove: false });
-      }
-      if (bot.approvalGrant) store.patchBot(botId, { approvalGrant: undefined });
-      postDesktopPrivateMessage({ type: "approval-trusted-mode-commit-result", requestId, ok: true, bot: wireBot(store.bot(botId)!) });
-    } else if (bot?.approvalGrant?.requestId === requestId) {
-      clearGrant(bot);
-      postDesktopPrivateMessage({ type: "approval-trusted-mode-commit-result", requestId, ok: false });
-    } else {
-      postDesktopPrivateMessage({ type: "approval-trusted-mode-commit-result", requestId, ok: false });
-    }
-    return true;
-  }
-  if (message.type === "approval-trusted-mode-confirm") {
-    const requestId = typeof message.requestId === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(message.requestId)
-      ? message.requestId
-      : null;
-    const botId = typeof message.botId === "string" && /^[\w-]{1,128}$/.test(message.botId)
-      ? message.botId
-      : null;
-    const mode = message.mode === "full" || message.mode === "custom" ? message.mode : null;
-    if (!requestId) return true;
-    const confirm = (ok: boolean, error?: string) => {
-      postDesktopPrivateMessage({
-        type: "approval-trusted-mode-confirm-result",
-        requestId,
-        ok,
-        ...(error ? { error } : {}),
-      });
-    };
-    if (!botId || !mode) {
-      confirm(false, "The approval confirmation was invalid");
-      return true;
-    }
-    const bot = store.bot(botId);
-    if (
-      bot?.approvalGrant?.requestId === requestId &&
-      bot.approvalGrant.mode === mode &&
-      bot.approvalGrant.phase === "prepared" &&
-      (bot.approvalGrant.threadOnly || bot.approvalMode === mode)
-    ) {
-      if (!grantSupported(bot, mode)) {
-        clearGrant(bot);
-        confirm(false, "This provider does not support the selected approval level");
-        return true;
-      }
-      store.patchBot(botId, {
-        approvalGrant: { ...bot.approvalGrant, requestId, mode, phase: "confirmed" },
-      });
-      confirm(true);
-      return true;
-    }
-      // Ambiguous journal: revoke only this request, never a newer grant for the same bot.
-    if (bot?.approvalGrant?.requestId === requestId) {
-      clearGrant(bot);
-    }
-    confirm(false, "The approval confirmation no longer matches this bot");
-    return true;
-  }
-  if (message.type === "approval-trusted-mode-activate") {
-    const requestId = typeof message.requestId === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(message.requestId)
-      ? message.requestId
-      : null;
-    const botId = typeof message.botId === "string" && /^[\w-]{1,128}$/.test(message.botId)
-      ? message.botId
-      : null;
-    const mode = message.mode === "full" || message.mode === "custom" ? message.mode : null;
-    if (!requestId) return true;
-    const activate = (ok: boolean, error?: string) => {
-      postDesktopPrivateMessage({
-        type: "approval-trusted-mode-activate-result",
-        requestId,
-        ok,
-        ...(error ? { error } : {}),
-      });
-    };
-    if (!botId || !mode) {
-      activate(false, "The approval activation was invalid");
-      return true;
-    }
-    const bot = store.bot(botId);
-    if (
-      bot?.approvalGrant?.requestId === requestId &&
-      bot.approvalGrant.mode === mode &&
-      bot.approvalGrant.phase === "confirmed" &&
-      (bot.approvalGrant.threadOnly || bot.approvalMode === mode)
-    ) {
-      if (grantBusy(bot) || !grantSupported(bot, mode)) {
-        clearGrant(bot);
-        activate(false, grantBusy(bot)
-          ? "Stop this bot's turn before changing its approval level"
-          : "This provider does not support the selected approval level");
-        return true;
-      }
-      // Still inert until Electron acknowledges this and requests finalization.
-      store.patchBot(botId, { approvalGrant: { ...bot.approvalGrant, requestId, mode, phase: "activated" } });
-      activate(true);
-      return true;
-    }
-    if (bot?.approvalGrant?.requestId === requestId) {
-      clearGrant(bot);
-    }
-    activate(false, "The approval activation no longer matches this bot");
-    return true;
-  }
-  if (message.type === "approval-trusted-mode-finalize") {
-    const requestId = typeof message.requestId === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(message.requestId)
-      ? message.requestId
-      : null;
-    const botId = typeof message.botId === "string" && /^[\w-]{1,128}$/.test(message.botId)
-      ? message.botId
-      : null;
-    const mode = message.mode === "full" || message.mode === "custom" ? message.mode : null;
-    if (!requestId) return true;
-    const finalize = (ok: boolean, error?: string) => {
-      postDesktopPrivateMessage({
-        type: "approval-trusted-mode-finalize-result",
-        requestId,
-        ok,
-        ...(error ? { error } : {}),
-      });
-    };
-    if (!botId || !mode) {
-      finalize(false, "The approval finalization was invalid");
-      return true;
-    }
-    const bot = store.bot(botId);
-    if (
-      bot?.approvalGrant?.requestId === requestId &&
-      bot.approvalGrant.mode === mode &&
-      bot.approvalGrant.phase === "activated" &&
-      (bot.approvalGrant.threadOnly || bot.approvalMode === mode) &&
-      !grantBusy(bot) &&
-      threadCanReceiveGrant(bot) &&
-      grantSupported(bot, mode)
-    ) {
-      // Durable but still inert until Electron sends the commit release for this exact ACK.
-      store.patchBot(botId, { approvalGrant: { ...bot.approvalGrant, requestId, mode, phase: "committed" } });
-      finalize(true);
-      return true;
-    }
-    if (bot?.approvalGrant?.requestId === requestId) {
-      clearGrant(bot);
-    }
-    finalize(false, bot?.busy
-      ? "Stop this bot's turn before changing its approval level"
-      : "The approval finalization no longer matches this bot");
-    return true;
-  }
-  if (message.type !== "approval-trusted-mode-set") return false;
-  const requestId = typeof message.requestId === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(message.requestId)
-    ? message.requestId
-    : null;
-  if (!requestId) return true;
-  const respond = (result: { ok: boolean; bot?: ReturnType<typeof wireBot>; error?: string }) => {
-    postDesktopPrivateMessage({
-      type: "approval-trusted-mode-result",
-      requestId,
-      ...result,
-    });
-  };
-  const botId = typeof message.botId === "string" && /^[\w-]{1,128}$/.test(message.botId)
-    ? message.botId
-    : null;
-  if (!botId) {
-    respond({ ok: false, error: "The bot id is invalid" });
-    return true;
-  }
-  const mode = isApprovalMode(message.mode) ? message.mode : null;
-  if (!mode) {
-    respond({ ok: false, error: "The approval mode is invalid" });
-    return true;
-  }
-  const existing = store.bot(botId);
-  if (!existing) {
-    respond({ ok: false, error: "No such bot" });
-    return true;
-  }
-  const currentMode = approvalModeFor(existing);
-  const threadId = message.threadId;
-  if (message.allThreads !== undefined && (typeof message.allThreads !== "boolean" ||
-    (message.allThreads && (threadId !== undefined || message.threadOnly === true ||
-      message.modelSelection !== undefined || message.updateBotDefault !== undefined ||
-      mode === "custom")))) {
-    respond({ ok: false, error: "Invalid all-threads approval scope" });
-    return true;
-  }
-  if (message.allThreads === true && mode === "ask") {
-    const updated = store.setAllThreadApprovalMode(botId, "ask")!;
-    void stopBotForEmergencyApprovalDowngrade(botId).then(
-      () => respond({ ok: true, bot: wireBot(store.bot(botId) ?? updated) }),
-      () => respond({ ok: false, error: "Approval was reset to Ask, but an active turn could not be stopped" }),
-    );
-    return true;
-  }
-  if (message.allThreads === true && (existing.approvalGrant || store.tasks(botId).some(task =>
-      threadBusy(botId, task.threadId) || !supportsApprovalMode(
-        task.modelSelection ?? existing.modelSelection, mode)))) {
-    respond({ ok: false, error: "Finish this bot's active turns and approval changes first. Every thread's provider must support this approval level." });
-    return true;
-  }
-  // Edits and Auto are not elevated: one write, no two-phase grant. Only this channel may move a team off Custom.
-  if (message.allThreads === true && (mode === "edits" || mode === "auto")) {
-    if (!supportsApprovalMode(existing.modelSelection, mode)) {
-      respond({ ok: false, error: "This provider does not support the selected approval level" });
-      return true;
-    }
-    if (mode === "auto" && existing.computer === "local" && message.acknowledgeLocalAuto !== true &&
-      [existing, ...store.tasks(botId).map(task => store.projectBotForTask(botId, task.threadId) ?? {})].some(owner => approvalModeFor(owner) !== "auto")) {
-      respond({ ok: false, error: "Auto mode on this computer requires confirming the warning" });
-      return true;
-    }
-    store.setAllThreadApprovalMode(botId, mode);
-    respond({ ok: true, bot: wireTrustedApprovalBot(store.bot(botId)!) });
-    return true;
-  }
-  if (message.threadOnly !== undefined && typeof message.threadOnly !== "boolean") {
-    respond({ ok: false, error: "Invalid thread approval scope" });
-    return true;
-  }
-  if (message.refreshPermissions !== undefined && message.refreshPermissions !== true) {
-    respond({ ok: false, error: "Invalid permission refresh" });
-    return true;
-  }
-  if (message.refreshPermissions === true) {
-    const target = typeof threadId === "string" ? store.projectBotForTask(botId, threadId) : null;
-    const savedMode = approvalModeFor({ ...existing, approvalGrant: undefined });
-    if (message.threadOnly !== true || !target || message.allThreads === true || message.modelSelection !== undefined || message.updateBotDefault !== undefined || savedMode !== mode) {
-      respond({ ok: false, error: "Choose this bot's approval level in bot settings before refreshing a thread" });
-      return true;
-    }
-    if (existing.approvalGrant || threadBusy(botId, target.threadId)) {
-      respond({ ok: false, error: "Stop this thread and finish its pending approval change first" });
-      return true;
-    }
-    if (!supportsApprovalMode(target.modelSelection, mode)) {
-      respond({ ok: false, error: "This thread's provider does not support that approval level" });
-      return true;
-    }
-    if (mode === "auto" && target.computer === "local" && approvalModeFor(target) !== "auto" && message.acknowledgeLocalAuto !== true) {
-      respond({ ok: false, error: "Auto mode on this computer requires confirming the warning" });
-      return true;
-    }
-    if (mode === "full" || mode === "custom") {
-      store.patchBot(botId, { approvalGrant: { requestId, mode, phase: "prepared", threadId: target.threadId, threadOnly: true, refreshPermissions: true } });
-    } else if (!store.refreshTaskPermissions(botId, target.threadId)) {
-      respond({ ok: false, error: "That thread is no longer available" });
-      return true;
-    }
-    respond({ ok: true, bot: wireTrustedApprovalBot(store.bot(botId)!) });
-    return true;
-  }
-  if (message.threadOnly === true) {
-    const target = typeof threadId === "string" ? store.projectBotForTask(botId, threadId) : null;
-    if (!target || message.modelSelection !== undefined || message.updateBotDefault !== undefined) {
-      respond({ ok: false, error: "Choose an existing thread for this approval change" });
-      return true;
-    }
-    // An ambiguous scoped grant may be cleared, but never a different grant.
-    const clearsOwnGrant = mode === "ask" && existing.approvalGrant?.threadOnly && existing.approvalGrant.threadId === threadId;
-    if ((existing.approvalGrant && !clearsOwnGrant) || threadBusy(botId, target.threadId)) {
-      respond({ ok: false, error: "Stop this thread and finish its pending approval change first" });
-      return true;
-    }
-    if (!supportsApprovalMode(target.modelSelection, mode)) {
-      respond({ ok: false, error: "This thread's provider does not support that approval level" });
-      return true;
-    }
-    if (mode === "auto" && target.computer === "local" && approvalModeFor(target) !== "auto" && message.acknowledgeLocalAuto !== true) {
-      respond({ ok: false, error: "Auto mode on this computer requires confirming the warning" });
-      return true;
-    }
-    if (mode === "full" || mode === "custom") {
-      store.patchBot(botId, { approvalGrant: { requestId, mode, phase: "prepared", threadId: target.threadId, threadOnly: true } });
-    } else {
-      if (clearsOwnGrant) clearGrant(existing);
-      store.patchTask(botId, target.threadId, { approvalMode: mode, autoApprove: mode === "auto", alwaysAllow: [] });
-    }
-    respond({ ok: true, bot: wireTrustedApprovalBot(store.bot(botId)!) });
-    return true;
-  }
-  if (message.modelSelection !== undefined) {
-    const target = typeof threadId === "string" ? store.projectBotForTask(botId, threadId) : null;
-    if (mode !== "ask" || !target || typeof message.updateBotDefault !== "boolean") {
-      respond({ ok: false, error: "A confirmed model switch must select a thread and Ask permissions" });
-      return true;
-    }
-    const checked = checkedTaskModelSwitch(target, message.modelSelection, message.updateBotDefault, true, false, true);
-    if (!checked.ok) { respond({ ok: false, error: checked.error }); return true; }
-    try {
-      store.switchTaskModel(botId, threadId as string, checked.selection, message.updateBotDefault, true);
-      const fresh = { ...wireBot(store.bot(botId)!), approvalMode: approvalModeFor(store.bot(botId)!) };
-      broadcast({ kind: "bot", bot: fresh });
-      respond({ ok: true, bot: fresh });
-    } catch {
-      respond({ ok: false, error: "The model switch could not be saved. No settings were changed." });
-    }
-    return true;
-  }
-  if (threadId !== undefined) {
-    const target = typeof threadId === "string" && /^[\w-]{1,128}$/.test(threadId)
-      ? store.projectBotForTask(botId, threadId) : null;
-    if (!target || (mode !== "full" && mode !== "custom") || currentMode !== mode || existing.approvalGrant) {
-      respond({ ok: false, error: "Choose this bot's approval level in bot settings before applying it to an existing thread" });
-      return true;
-    }
-    if (threadBusy(botId, threadId as string) ||
-      registry.cliTarget(target.modelSelection.instanceId)?.driverKind !== registry.cliTarget(existing.modelSelection.instanceId)?.driverKind) {
-      respond({ ok: false, error: "Stop this thread and use the bot's provider before applying its approval level" });
-      return true;
-    }
-  }
-  const emergencyDowngrade = existing.busy && isEmergencyApprovalDowngrade(currentMode, mode);
-  const clearsPendingElevation = mode === "ask" && existing.approvalGrant !== undefined;
-  if (existing.busy && !emergencyDowngrade && !clearsPendingElevation) {
-    respond({ ok: false, error: "Stop this bot's turn before changing its approval level" });
-    return true;
-  }
-  if (!supportsApprovalMode(existing.modelSelection, mode)) {
-    respond({ ok: false, error: "Custom approval settings are available only for Codex bots" });
-    return true;
-  }
-  if (
-    mode === "auto" &&
-    existing.computer === "local" &&
-    approvalModeFor(existing) !== "auto" &&
-    message.acknowledgeLocalAuto !== true
-  ) {
-    respond({ ok: false, error: "Auto mode on this computer requires confirming the warning" });
-    return true;
-  }
-  const updated = store.patchBot(botId, {
-    approvalMode: mode,
-    autoApprove: mode === "auto",
-    approvalGrant: mode === "full" || mode === "custom"
-      ? { requestId, mode, phase: "prepared", ...(typeof threadId === "string" ? { threadId } : {}), ...(message.allThreads === true ? { allThreads: true } : {}) }
-      : undefined,
-  });
-  if (!updated) {
-    respond({ ok: false, error: "No such bot" });
-    return true;
-  }
-  if (emergencyDowngrade) {
-    // Fail closed: persist Ask before the first await, and answer only once the interrupt is issued so Electron cannot advance a newer selection meanwhile.
-    void stopBotForEmergencyApprovalDowngrade(updated.id).then(
-      () => respond({ ok: true, bot: wireBot(store.bot(updated.id) ?? updated) }),
-      (error) => respond({
-        ok: false,
-        error: `Approval was reset to Ask, but the active turn could not be stopped: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      }),
-    );
-    return true;
-  }
-  respond({ ok: true, bot: wireTrustedApprovalBot(updated) });
-  return true;
 }
 
 const storedAvatarExists = (avatarUrl: string): boolean =>
@@ -8440,44 +7965,6 @@ async function interruptRoutineGroupGoal(
   closeOpenApprovals(threadId);
 }
 
-/** Cancellation flags flip synchronously; the awaited work only drains capabilities and interrupts started processes. */
-async function stopBotForEmergencyApprovalDowngrade(botId: string): Promise<void> {
-  const bot = store.bot(botId);
-  if (!bot) return;
-  for (const task of store.tasks(botId)) {
-    if (task.approvalMode === "full" || task.approvalMode === "custom") {
-      store.patchTask(botId, task.threadId, { approvalMode: "ask", autoApprove: false, alwaysAllow: [] });
-    }
-  }
-  const directStop = interruptAllDirectThreads(botId);
-
-  const routineRun = routines?.activeBotRunForBot(bot.id);
-  if (routineRun) {
-    if (routineRun.threadId) revokeInternalCapabilitiesForThread(routineRun.threadId);
-    cancelDirectTurnDispatch(bot.id, routineRun.threadId);
-    await routines!.cancelRun(routineRun.id);
-    if (routineRun.threadId) closeOpenApprovals(routineRun.threadId);
-    await directStop;
-    return;
-  }
-
-  const groupTurn = activeGroupTurnForBot(bot.id);
-  if (groupTurn) {
-    revokeInternalCapabilitiesForThread(groupTurn.threadId);
-    cancelGroupTurnOperations(groupTurn.group.id, groupTurn.threadId);
-    const results = await Promise.allSettled([
-      directStop,
-      runningTurnInstance(bot, groupTurn.threadId)?.adapter.interruptTurn(groupTurn.threadId),
-    ]);
-    closeOpenApprovals(groupTurn.threadId);
-    const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
-    if (failure) throw failure.reason;
-    return;
-  }
-
-  await directStop;
-}
-
 routines = new RoutineManager({
   emit: broadcast,
   launchId: DESKTOP_MANAGED && /^[\w-]{1,100}$/.test(process.env.QUATI_DESKTOP_LAUNCH_ID ?? "")
@@ -11978,7 +11465,7 @@ const workspaceBackupAccess = {
     const current = resolveRequestAuth(req, {
       sessions, cookieName: SESSION_COOKIE, streamPath: "/api/events",
       url: new URL(req.url ?? "/", `http://localhost:${PORT}`),
-      loopbackMutationToken: desktopMutationToken, loopbackTrust: LOOPBACK.trust, cliOwnerToken, trustLocalBrowser: LOOPBACK.localBrowsers,
+      loopbackTrust: LOOPBACK.trust, cliOwnerToken, trustLocalBrowser: LOOPBACK.localBrowsers,
     }).auth;
     return Boolean(current?.scopes.includes("admin") && current.kind === original.kind &&
       (current.kind !== "session" || (original.kind === "session" && current.session.id === original.session.id)));
@@ -12043,7 +11530,6 @@ ROUTES.push(createThreadRoutes({
   store, cfg, sessions, groupUsageReader, lendingEnabled,
   hostedWorkspace: HOSTED_WORKSPACE, sessionCookie: SESSION_COOKIE, loopback: LOOPBACK, defaultPage: DEFAULT_PAGE,
   workspaceAccess: () => workspaceAccess,
-  desktopMutationToken: () => desktopMutationToken,
   cliOwnerToken: () => cliOwnerToken,
   pageSize, messagePage, messageWindow, publicBotQueuedMessages, publicGroupState, wireBot, wireTask,
   botComputerControlSnapshot: botId => computerControl.snapshot(botId), messageFileRootsForThread, viewerFor, visibleTo, coordinator, groupThreadIsWorking,
@@ -12492,7 +11978,6 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       cookieName: SESSION_COOKIE,
       streamPath: "/api/events",
       url,
-      loopbackMutationToken: desktopMutationToken,
       features: { sharedComputers: lendingEnabled() },
       loopbackTrust: LOOPBACK.trust,
       cliOwnerToken, trustLocalBrowser: LOOPBACK.localBrowsers,
