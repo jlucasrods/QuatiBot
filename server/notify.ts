@@ -15,14 +15,6 @@ export interface NotifyBot {
   notifications?: boolean;
 }
 
-export function buildSpendNotification(
-  bot: Pick<NotifyBot, "id" | "name">,
-  threadId: string,
-  text: { title: string; body: string },
-): Notification {
-  return { kind: "spend", botId: bot.id, botName: bot.name, threadId, title: text.title, body: summarize(text.body, 200) };
-}
-
 export function buildNotification(
   kind: NotifyKind,
   bot: NotifyBot,

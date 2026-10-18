@@ -665,10 +665,10 @@ describe("a config.json saved with a byte order mark", () => {
   it("loads instead of being ignored", () => {
     const path = join(DATA_DIR, "config.json");
     mkdirSync(DATA_DIR, { recursive: true });
-    writeFileSync(path, bom + JSON.stringify({ budgets: { monthlyUsd: 25, warnAtPercent: 70 } }, null, 2));
+    writeFileSync(path, bom + JSON.stringify({ profile: { name: "Fixture" } }, null, 2));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      expect(loadConfig().budgets).toEqual({ monthlyUsd: 25, warnAtPercent: 70 });
+      expect(loadConfig().profile).toMatchObject({ name: "Fixture" });
       expect(warn.mock.calls.some(([line]) => String(line).includes("ignoring"))).toBe(false);
     } finally {
       warn.mockRestore();
@@ -684,71 +684,13 @@ describe("a config.json saved with a byte order mark", () => {
       mcpServers: { notes: { command: "npx", args: ["notes-mcp"] } },
     }, null, 2));
     try {
-      saveConfig({ budgets: { monthlyUsd: 25, warnAtPercent: 70 } });
+      saveConfig({ profile: { name: "Fixture" } });
       const disk = JSON.parse(readFileSync(path, "utf8"));
       expect(disk).toMatchObject({
         xai: { key: "xai-fixture" },
         mcpServers: { notes: { command: "npx", args: ["notes-mcp"] } },
-        budgets: { monthlyUsd: 25, warnAtPercent: 70 },
+        profile: { name: "Fixture" },
       });
-    } finally {
-      rmSync(path, { force: true });
-    }
-  });
-});
-
-describe("saving the newer sections", () => {
-  it("persists the Anthropic key, the spend limit and the price list, section by section", () => {
-    const path = join(DATA_DIR, "config.json");
-    mkdirSync(DATA_DIR, { recursive: true });
-    writeFileSync(path, JSON.stringify({ xai: { key: "xai-fixture" } }));
-    try {
-      saveConfig({ anthropic: { key: "sk-ant-fixture" } });
-      saveConfig({ budgets: { monthlyUsd: 25, warnAtPercent: 70 } });
-      saveConfig({ billing: { currency: "EUR", prices: { default: { inputPerMillion: 1, outputPerMillion: 2 } } } });
-      saveConfig({ billing: { prices: { "gpt-5": { inputPerMillion: 3, outputPerMillion: 4 } } } });
-      const disk = JSON.parse(readFileSync(path, "utf8"));
-      expect(disk).toMatchObject({
-        xai: { key: "xai-fixture" },
-        anthropic: { key: "sk-ant-fixture" },
-        budgets: { monthlyUsd: 25, warnAtPercent: 70 },
-        billing: { currency: "EUR", prices: { "gpt-5": { inputPerMillion: 3, outputPerMillion: 4 } } },
-      });
-      expect(disk.billing.prices.default).toBeUndefined();
-    } finally {
-      rmSync(path, { force: true });
-    }
-  });
-
-  it("clears a thread event-log knob with null while other keys survive", () => {
-    const path = join(DATA_DIR, "config.json");
-    mkdirSync(DATA_DIR, { recursive: true });
-    writeFileSync(path, JSON.stringify({}));
-    try {
-      saveConfig({ threads: { maxConcurrentPerBot: 3, eventLogRetentionDays: 30, eventLogMaxBytes: 50 * 1024 * 1024 } });
-      saveConfig({ threads: { eventLogRetentionDays: null } });
-      let disk = JSON.parse(readFileSync(path, "utf8"));
-      expect(disk.threads).toEqual({ maxConcurrentPerBot: 3, eventLogMaxBytes: 50 * 1024 * 1024 });
-      saveConfig({ threads: { eventLogMaxBytes: null } });
-      disk = JSON.parse(readFileSync(path, "utf8"));
-      expect(disk.threads).toEqual({ maxConcurrentPerBot: 3 });
-      expect(parseStoredConfig(disk).threads).toEqual({ maxConcurrentPerBot: 3 });
-      expect(threadEventLogRetentionDays(parseStoredConfig(disk))).toBeNull();
-      expect(threadEventLogMaxBytes(parseStoredConfig(disk))).toBeNull();
-    } finally {
-      rmSync(path, { force: true });
-    }
-  });
-
-  it("seeds the concurrency default when the first threads save is an event-log knob", () => {
-    const path = join(DATA_DIR, "config.json");
-    mkdirSync(DATA_DIR, { recursive: true });
-    writeFileSync(path, JSON.stringify({}));
-    try {
-      saveConfig({ threads: { eventLogRetentionDays: 30 } });
-      const disk = JSON.parse(readFileSync(path, "utf8"));
-      expect(disk.threads).toEqual({ maxConcurrentPerBot: 3, eventLogRetentionDays: 30 });
-      expect(parseStoredConfig(disk).threads).toEqual({ maxConcurrentPerBot: 3, eventLogRetentionDays: 30 });
     } finally {
       rmSync(path, { force: true });
     }

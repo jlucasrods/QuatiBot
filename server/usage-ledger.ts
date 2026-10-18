@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { CostSource } from "./model-prices.ts";
-import { billableFor, type PriceList } from "./prices.ts";
 
 /** `helper`: a job the helper model wrote for `botId`, kept apart from `bot` so its cost reads on its own. */
 export type UsageTrigger =
@@ -43,7 +42,6 @@ export interface UsageGroup {
   costUsd: number | null;
   estimatedUsd: number | null;
   unpriced: number;
-  billableUsd: number | null;
 }
 
 export interface UsageSummary {
@@ -232,7 +230,7 @@ function groupOf(row: UsageRow, groupBy: UsageGroupBy): { key: string; label: st
 }
 
 function emptyGroup(key: string, label: string): UsageGroup {
-  return { key, label, turns: 0, input: 0, output: 0, cachedInput: 0, costUsd: null, estimatedUsd: null, unpriced: 0, billableUsd: null };
+  return { key, label, turns: 0, input: 0, output: 0, cachedInput: 0, costUsd: null, estimatedUsd: null, unpriced: 0 };
 }
 
 export function costSourceOf(row: Pick<UsageRow, "costUsd" | "costSource">): CostSource | null {
@@ -240,7 +238,7 @@ export function costSourceOf(row: Pick<UsageRow, "costUsd" | "costSource">): Cos
   return row.costSource === "estimated" ? "estimated" : "reported";
 }
 
-function add(group: UsageGroup, row: UsageRow, prices: PriceList | null): void {
+function add(group: UsageGroup, row: UsageRow): void {
   group.turns += 1;
   group.input += clean(row.input);
   group.output += clean(row.output);
@@ -251,11 +249,9 @@ function add(group: UsageGroup, row: UsageRow, prices: PriceList | null): void {
     group.costUsd = (group.costUsd ?? 0) + cost;
     if (costSourceOf(row) === "estimated") group.estimatedUsd = (group.estimatedUsd ?? 0) + cost;
   }
-  const billable = prices ? billableFor(row, prices) : null;
-  if (billable !== null) group.billableUsd = (group.billableUsd ?? 0) + billable;
 }
 
-export function summarizeUsage(rows: UsageRow[], groupBy: UsageGroupBy, prices: PriceList | null = null): UsageSummary {
+export function summarizeUsage(rows: UsageRow[], groupBy: UsageGroupBy): UsageSummary {
   const groups = new Map<string, UsageGroup>();
   const total = emptyGroup("total", "total");
   for (const row of rows) {
@@ -265,8 +261,8 @@ export function summarizeUsage(rows: UsageRow[], groupBy: UsageGroupBy, prices: 
       group = emptyGroup(key, label);
       groups.set(key, group);
     }
-    add(group, row, prices);
-    add(total, row, prices);
+    add(group, row);
+    add(total, row);
   }
   const ordered = [...groups.values()];
   if (groupBy === "day") ordered.sort((a, b) => a.key.localeCompare(b.key));
@@ -288,8 +284,8 @@ export function csvCell(value: string | number | null): string {
   return /[",\n\r]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
 }
 
-export function usageCsv(rows: UsageRow[], prices: PriceList | null = null): string {
-  const header = ["time", "bot", "model", "engine", "triggered_by", "input_tokens", "output_tokens", "cached_input_tokens", "cost_usd", "cost_source", ...(prices ? ["billable_usd"] : []), "thread"];
+export function usageCsv(rows: UsageRow[]): string {
+  const header = ["time", "bot", "model", "engine", "triggered_by", "input_tokens", "output_tokens", "cached_input_tokens", "cost_usd", "cost_source", "thread"];
   const lines = [header.join(",")];
   for (const row of rows) {
     lines.push([
@@ -303,7 +299,6 @@ export function usageCsv(rows: UsageRow[], prices: PriceList | null = null): str
       clean(row.cachedInput),
       finiteOrNull(row.costUsd),
       costSourceOf(row),
-      ...(prices ? [billableFor(row, prices)] : []),
       row.threadId,
     ].map(csvCell).join(","));
   }

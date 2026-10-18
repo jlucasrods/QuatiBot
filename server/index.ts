@@ -141,13 +141,11 @@ import { registerEnginesBinDir } from "./engine-install.ts";
 import { appendUsage, flushUsageLedger, type UsageRow, type UsageTrigger } from "./usage-ledger.ts";
 import { GroupUsageReader } from "./group-thread-usage.ts";
 import { ledgerCost } from "./model-prices.ts";
-import type { PriceList } from "./prices.ts";
 import type { RequestAuth } from "./request-auth.ts";
 import { onKeyRejectionChange } from "./key-rejections.ts";
-import { assertWithinBudget, noteSpend, spendAlertText, spendState, takeSpendAlert } from "./spend.ts";
 import { HOSTED_CONTRACT_HEADER, HOSTED_CONTRACT_METADATA, HOSTED_CONTRACT_VERSION } from "./hosted-contract.ts";
 import { describeSpawnFailure, execCli } from "./procs.ts";
-import { buildMentionNotification, buildNotification, buildSpendNotification, type Notification } from "./notify.ts";
+import { buildMentionNotification, buildNotification, type Notification } from "./notify.ts";
 import { isModelVariant, TurnNotStartedError, type ModelSelection, type RequestOutcome, type RuntimeEvent, type SteerOutcome, newId } from "./contracts.ts";
 import { RETRY_MAX_ATTEMPTS } from "./drivers/retry.ts";
 import { recoveryCapabilityError } from "./automatic-recovery.ts";
@@ -1403,20 +1401,9 @@ function usageTriggerFor(auth: RequestAuth): UsageTrigger {
     : { kind: "owner" };
 }
 
-function operatorPrices(): PriceList | null {
-  return entitled("billing") && cfg.billing?.prices && Object.keys(cfg.billing.prices).length ? cfg.billing.prices : null;
-}
-
-function bookTurnUsage(row: Omit<UsageRow, "at" | "costSource">, tokensReported = true, notificationThreadId = row.threadId): void {
-  const cost = tokensReported || row.costUsd !== null ? ledgerCost(row, operatorPrices()) : { costUsd: null };
-  const booked = { ...row, ...cost, at: new Date().toISOString() };
-  // The append is async; noteSpend counts the row from memory until it lands, so the cap check sees it.
-  noteSpend(DATA_DIR, booked, appendUsage(DATA_DIR, booked));
-  const state = spendState(cfg, DATA_DIR);
-  const alert = takeSpendAlert(DATA_DIR, state);
-  if (alert && state) {
-    broadcast({ kind: "notify", notification: logNotification(buildSpendNotification({ id: row.botId, name: row.botName }, notificationThreadId, spendAlertText(alert, state))) }, { adminOnly: true });
-  }
+function bookTurnUsage(row: Omit<UsageRow, "at" | "costSource">, tokensReported = true): void {
+  const cost = tokensReported || row.costUsd !== null ? ledgerCost(row) : { costUsd: null };
+  void appendUsage(DATA_DIR, { ...row, ...cost, at: new Date().toISOString() });
 }
 
 function queuedTurnTrigger(item: { trigger?: UsageTrigger; sender?: ResolvedSender; peerAsk?: unknown }): UsageTrigger | undefined {
@@ -4793,7 +4780,6 @@ const sideJobs = createSideJobs({
   bot: (botId) => store.bot(botId),
   instance: (instanceId) => registry.get(instanceId),
   helper: cacheUntilConfigChanges((config) => helperSelection(config)),
-  assertWithinBudget: () => assertWithinBudget(cfg, DATA_DIR),
   book: bookTurnUsage,
   log: (line) => console.log(line),
 });
@@ -6476,7 +6462,7 @@ class DirectSendRefused extends Error {
 
 function directSendRefusal(botId: string, threadId: string): DirectSendRefused | null {
   try {
-    assertWithinBudget(cfg, DATA_DIR);
+
   } catch (error) {
     return new DirectSendRefused(409, { error: error instanceof Error ? error.message : String(error), code: "spend_cap" });
   }
@@ -6672,7 +6658,7 @@ async function deliverLateQuestionAnswer(
     if (!latestCard || latestCard.answered || latestCard.dismissed) {
       throw Object.assign(new Error("this question has already been answered"), { status: 409 });
     }
-    assertWithinBudget(cfg, DATA_DIR);
+
     const sender = messageSender(auth);
     const trigger = usageTriggerFor(auth);
     if (group) {
@@ -6873,7 +6859,7 @@ function threadTitleGate(bot: Pick<BotRecord, "modelSelection">): { ok: true; in
   const instance = registry.get(bot.modelSelection.instanceId);
   if (!instance?.generateText) return { ok: false, refusal: "this bot's model can't generate a title — rename the thread instead" };
   try {
-    assertWithinBudget(cfg, DATA_DIR);
+
   } catch (error) {
     return { ok: false, refusal: error instanceof Error ? error.message : String(error) };
   }
@@ -7764,7 +7750,7 @@ async function startTurn(
             { driverKind: target.driverKind, capabilities: target.adapter.capabilities });
         if (!refusal && checked.ok && target) {
           try {
-            assertWithinBudget(cfg, DATA_DIR);
+
             store.switchTaskModel(bot.id, threadId, checked.selection, false, false, { rewound: true,
             });
             store.appendMessage(threadId, { role: "bot", kind: "activity", tool: {
@@ -9003,7 +8989,7 @@ async function runClaimedGroupMemberTurn(
   let roomFailure: string | undefined;
   const reportDispatchError = (message: string) => { roomFailure = message; onDispatchError?.(message); };
   try {
-  assertWithinBudget(cfg, DATA_DIR);
+
   assertModelVariantSupported(preparedSelection, instance.adapter.capabilities);
   const integrations: NonNullable<Parameters<typeof instance.adapter.sendTurn>[0]["integrations"]> = {};
   const skillAuthoring =
@@ -11234,11 +11220,7 @@ function configStatus() {
     openai: { configured: Boolean(cfg.openai?.key) },
     openrouter: { configured: Boolean(cfg.openrouter?.key) },
     edition: editionForSettings(editionStatus()),
-    budgets: {
-      ...(cfg.budgets?.monthlyUsd !== undefined ? { monthlyUsd: cfg.budgets.monthlyUsd } : {}),
-      ...(cfg.budgets?.warnAtPercent !== undefined ? { warnAtPercent: cfg.budgets.warnAtPercent } : {}),
-    },
-    billing: { currency: cfg.billing?.currency ?? "USD", prices: cfg.billing?.prices ?? {} },
+
     decisions: { retentionDays: decisionRetentionDays(cfg.decisions?.retentionDays) },
     safetyFloor: { enabled: safetyFloorOn() },
     openaiCompat: { configured: Boolean(cfg.openaiCompat?.key), url: cfg.openaiCompat?.url ?? "" },
@@ -11704,9 +11686,6 @@ ROUTES.push(createBrowserEvidenceRoutes({ evidence: browserEvidence.attach({ onC
 ROUTES.push(createLoginRoutes(botLogins.routes((id) => Boolean(store.bot(id)))));
 ROUTES.push(createUsageRoutes({
   dataDir: DATA_DIR,
-  prices: operatorPrices,
-  budget: () => spendState(cfg, DATA_DIR),
-  currency: () => cfg.billing?.currency ?? "USD",
 }));
 ROUTES.push(createThreadModelRoutes({
   bot: (id) => store.bot(id),

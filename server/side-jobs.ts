@@ -56,7 +56,6 @@ export interface SideJobsDeps {
   bot: (botId: string) => SideJobBot | null | undefined;
   instance: (instanceId: string) => SideJobInstance | null | undefined;
   helper: () => { instanceId: string; model?: string } | null;
-  assertWithinBudget: () => void;
   book: (row: Omit<UsageRow, "at" | "costSource">, tokensReported: boolean, notificationThreadId: string) => void;
   log?: (line: string) => void;
 }
@@ -85,7 +84,6 @@ export function createSideJobs(deps: SideJobsDeps): SideJobs {
   /** Every call checks the spend limit: one upkeep pass makes several in a row. */
   const booked = (job: SideJob, bot: SideJobBot, instance: SideJobInstance, call: TextCall, trigger: UsageTrigger, model?: string): SideJobText["generateText"] =>
     async (prompt, options) => {
-      deps.assertWithinBudget();
       const threadId = `${job}-${randomUUID()}`;
       return call(prompt, {
         ...options,

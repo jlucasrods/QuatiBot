@@ -11,7 +11,7 @@ import {
   restoreHeldChannelQueue,
   settleHeldChannelQueueHead,
 } from "../channel-queue.ts";
-import { DATA_DIR, type AppConfig } from "../config.ts";
+import { type AppConfig } from "../config.ts";
 import type { ProviderInstance, SteerOutcome } from "../contracts.ts";
 import { cancelledChatFollowup } from "../message-db.ts";
 import { promptWithReply } from "../replies.ts";
@@ -21,7 +21,6 @@ import { parseConversationTurnTimeout } from "../room-turn-timeout.ts";
 import type { RoutineManager } from "../routines.ts";
 import { acceptedSendMatch, parseSendId, sendFingerprint, type SendSequencer } from "../send-idempotency.ts";
 import type { SkillReview } from "../skill-review.ts";
-import { assertWithinBudget } from "../spend.ts";
 import type { BotRecord, GroupRecord, Message, Store } from "../store.ts";
 import type { ThreadStarters } from "../thread-starters.ts";
 import { extractSteerImages } from "../turn-images.ts";
@@ -36,7 +35,7 @@ export interface ChannelRouteDeps {
     | "group" | "groupTaskByThread" | "bot" | "switchGroupTask" | "setGroupTaskTurnTimeout" | "setGroupTaskPinned"
     | "renameGroupTask" | "patchGroup" | "messagesFor" | "groupTasks" | "deleteGroupTasks" | "deleteGroup"
     | "createGroupTask" | "appendMessage">;
-  cfg: Pick<AppConfig, "profile" | "budgets">;
+  cfg: Pick<AppConfig, "profile">;
   /** The desktop app owns this server, so a loopback caller is its owner. */
   desktopManaged: boolean;
   routines(): Pick<RoutineManager, "disableForGroup"> | null;
@@ -294,7 +293,6 @@ export function createChannelRoutes(deps: ChannelRouteDeps): RouteHandler {
       const threadId = body.threadId ?? group.threadId;
       const trigger = usageTriggerFor(auth);
       try {
-        assertWithinBudget(cfg, DATA_DIR);
       } catch (error) {
         return json(res, 409, { error: error instanceof Error ? error.message : String(error), code: "spend_cap" });
       }

@@ -23,8 +23,6 @@ export interface ConfigStatus {
     features: string[];
     license?: { expiresAt: string; expiresInDays: number; graceEndsAt?: string };
   };
-  budgets?: { monthlyUsd?: number; warnAtPercent?: number };
-  billing?: { currency?: string; prices?: Record<string, { inputPerMillion: number; outputPerMillion: number; cachedInputPerMillion?: number }> };
   composio: { configured: boolean; mode?: "managed" | "self-hosted" | "unavailable" };
   /** `included`: cloud computers come with Cloud Pro, no key is saved. */
   box: { configured: boolean; included?: boolean };

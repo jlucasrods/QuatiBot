@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildNotification, buildSpendNotification, summarize } from "./notify.ts";
+import { buildNotification, summarize } from "./notify.ts";
 
 const bot = { id: "bot-1", name: "Scout", threadId: "thread-1" };
 
@@ -108,15 +108,5 @@ describe("summarize", () => {
     expect(long).toHaveLength(140);
     expect(long.endsWith("…")).toBe(true);
     expect(summarize("short")).toBe("short");
-  });
-});
-
-describe("buildSpendNotification", () => {
-  it("opens the thread whose turn crossed the line, and a bot's own toggle does not silence it", () => {
-    const quiet = { ...bot, notifications: false };
-    expect(buildSpendNotification(quiet, "thread-9", { title: "Monthly spend limit reached", body: "$100.00 of $100.00 spent this month (2026-09)." })).toEqual({
-      kind: "spend", botId: "bot-1", botName: "Scout", threadId: "thread-9",
-      title: "Monthly spend limit reached", body: "$100.00 of $100.00 spent this month (2026-09).",
-    });
   });
 });

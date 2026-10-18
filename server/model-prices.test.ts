@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimatePriceFor, LIST_PRICES, ledgerCost, listPriceFor } from "./model-prices.ts";
-import type { PriceList } from "./prices.ts";
+import { LIST_PRICES, ledgerCost, listPriceFor } from "./model-prices.ts";
 
 const OFFICIAL = [
   "https://developers.openai.com/",
@@ -46,33 +45,21 @@ describe("what the ledger books for a settled turn", () => {
   const codexListCost = 0.6 * 5 + 0.4 * 0.5 + 0.1 * 30;
 
   it("keeps an engine's own cost as reported", () => {
-    expect(ledgerCost({ ...codex, costUsd: 0.42 }, null)).toEqual({ costUsd: 0.42, costSource: "reported" });
-    expect(ledgerCost({ ...codex, costUsd: 0 }, null)).toEqual({ costUsd: 0, costSource: "reported" });
+    expect(ledgerCost({ ...codex, costUsd: 0.42 })).toEqual({ costUsd: 0.42, costSource: "reported" });
+    expect(ledgerCost({ ...codex, costUsd: 0 })).toEqual({ costUsd: 0, costSource: "reported" });
   });
 
   it("estimates a turn that reported tokens but no price from the list", () => {
-    const booked = ledgerCost({ ...codex, costUsd: null }, null);
+    const booked = ledgerCost({ ...codex, costUsd: null });
     expect(booked.costSource).toBe("estimated");
     expect(booked.costUsd).toBeCloseTo(codexListCost, 9);
-    expect(ledgerCost({ ...codex, costUsd: Number.NaN }, null).costUsd).toBeCloseTo(codexListCost, 9);
-    expect(ledgerCost({ ...codex, costUsd: -1 }, null).costSource).toBe("estimated");
-    expect(ledgerCost({ driverKind: "openaiCompat", model: "x-ai/grok-4.7", input: 1_000_000, output: 1_000_000, costUsd: null }, null).costUsd).toBeCloseTo(1.6 + 4.8, 9);
-  });
-
-  it("lets the operator's price for that model replace the list, and uses their default only for unlisted models", () => {
-    const operator: PriceList = {
-      "codex/gpt-5.5": { inputPerMillion: 1, outputPerMillion: 2 },
-      "grok-4.7": { inputPerMillion: 3, outputPerMillion: 3 },
-      default: { inputPerMillion: 10, outputPerMillion: 10 },
-    };
-    expect(ledgerCost({ ...codex, costUsd: null }, operator).costUsd).toBeCloseTo(1 * 1 + 0.1 * 2, 9);
-    expect(estimatePriceFor({ driverKind: "grok", model: "grok-4.7" }, operator)).toEqual({ inputPerMillion: 3, outputPerMillion: 3 });
-    expect(estimatePriceFor({ driverKind: "codex", model: "gpt-5.4" }, operator)?.inputPerMillion).toBe(2.5);
-    expect(ledgerCost({ driverKind: "acp", model: "fake-model", input: 1_000_000, output: 0, costUsd: null }, operator)).toEqual({ costUsd: 10, costSource: "estimated" });
+    expect(ledgerCost({ ...codex, costUsd: Number.NaN }).costUsd).toBeCloseTo(codexListCost, 9);
+    expect(ledgerCost({ ...codex, costUsd: -1 }).costSource).toBe("estimated");
+    expect(ledgerCost({ driverKind: "openaiCompat", model: "x-ai/grok-4.7", input: 1_000_000, output: 1_000_000, costUsd: null }).costUsd).toBeCloseTo(1.6 + 4.8, 9);
   });
 
   it("books an unpriced model as unpriced, not as free", () => {
-    expect(ledgerCost({ driverKind: "grokAgent", model: "fake-model", input: 5000, output: 100, costUsd: null }, null)).toEqual({ costUsd: null });
-    expect(ledgerCost({ driverKind: "codex", model: "gpt-5.3-codex-spark", input: 5000, output: 100, costUsd: undefined }, { "claude-sonnet-5": { inputPerMillion: 1, outputPerMillion: 1 } })).toEqual({ costUsd: null });
+    expect(ledgerCost({ driverKind: "grokAgent", model: "fake-model", input: 5000, output: 100, costUsd: null })).toEqual({ costUsd: null });
+    expect(ledgerCost({ driverKind: "codex", model: "gpt-5.3-codex-spark", input: 5000, output: 100, costUsd: undefined })).toEqual({ costUsd: null });
   });
 });

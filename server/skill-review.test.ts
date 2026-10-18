@@ -366,7 +366,6 @@ describe("the scheduler", () => {
       bot: (id) => (id === BOT.id ? { ...BOT, threadId: "main", modelSelection: { instanceId: "pi" } } : undefined),
       instance: (id) => engines[id] ?? null,
       helper: () => helper,
-      assertWithinBudget: () => {},
       book: (row) => booked.push(row),
     });
     return { engine: (botId: string) => jobs.text("skill-review", botId), booked };

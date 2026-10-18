@@ -339,29 +339,6 @@ const appConfigSchema = z.object({
   openai: z.object({ key: optionalText }).optional(),
   /** OpenRouter key, for the `openrouter` instance only. */
   openrouter: z.object({ key: optionalText }).optional(),
-  /** Workspace monthly spend limit; enforced only with the `budgets` entitlement. */
-  budgets: z
-    .object({
-      monthlyUsd: z.number().min(0).max(1_000_000).optional(),
-      warnAtPercent: z.number().int().min(1).max(100).optional(),
-    })
-    .optional(),
-  /** Operator sell prices per million tokens by model id, `driver/model` or `default`; read only with the `billing` entitlement. */
-  billing: z
-    .object({
-      currency: z.string().regex(/^[A-Z]{3}$/).optional(),
-      prices: z
-        .record(
-          z.string().min(1).max(160),
-          z.object({
-            inputPerMillion: z.number().min(0).max(1_000_000),
-            outputPerMillion: z.number().min(0).max(1_000_000),
-            cachedInputPerMillion: z.number().min(0).max(1_000_000).optional(),
-          }),
-        )
-        .optional(),
-    })
-    .optional(),
   /** `model` seeds the default selection; `provider` pins an OpenRouter upstream (e.g. "fireworks"). */
   openaiCompat: z
     .object({ key: optionalText, url: optionalText, model: optionalText, provider: optionalText })
@@ -486,11 +463,9 @@ export interface AppConfig extends HelperConfig {
   anthropic?: { key?: string; url?: string; everyClaudeBot?: boolean };
   openai?: { key?: string };
   openrouter?: { key?: string };
-  budgets?: { monthlyUsd?: number; warnAtPercent?: number };
   decisions?: { retentionDays?: number };
   loopGuard?: LoopGuardConfig;
   safetyFloor?: { enabled?: boolean };
-  billing?: { currency?: string; prices?: Record<string, { inputPerMillion: number; outputPerMillion: number; cachedInputPerMillion?: number }> };
   openaiCompat?: { key?: string; url?: string; model?: string; provider?: string };
   composio?: { apiKey?: string; userId?: string; sessionId?: string };
   /** Boat token (ascii.dev renamed Box to Boat); config key "box", env BOX_TOKEN. */
@@ -1002,7 +977,7 @@ export function saveConfig(
   const before = configSaveListeners.size ? structuredClone(disk) : disk;
   const storedProfiles = storedBrowserProfilesSchema.safeParse(disk.browserProfiles);
   if (storedProfiles.success) disk.browserProfiles = storedProfiles.data;
-  for (const key of ["xai", "anthropic", "mistral", "cerebras", "groq", "meta", "openai", "openrouter", "openaiCompat", "composio", "box", "opencodeGo", "tts", "decider", "imageGen", "live", "profile", "rooms", "mcp", "threads", "context", "memory", "localVm", "features", "budgets", "billing", "decisions", "loopGuard", "onboarding", "browserEngine", "newBots", "safetyFloor"] as const) {
+  for (const key of ["xai", "anthropic", "mistral", "cerebras", "groq", "meta", "openai", "openrouter", "openaiCompat", "composio", "box", "opencodeGo", "tts", "decider", "imageGen", "live", "profile", "rooms", "mcp", "threads", "context", "memory", "localVm", "features", "decisions", "loopGuard", "onboarding", "browserEngine", "newBots", "safetyFloor"] as const) {
     const section = checkedPatch[key];
     if (!section) continue;
     const current = jsonObjectSchema.safeParse(disk[key]);

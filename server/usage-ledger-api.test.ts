@@ -6,9 +6,10 @@ import { launchVerificationServer, runControlQuati, type VerificationServer } fr
 
 describe("usage ledger through real turns", () => {
   let session: VerificationServer;
+  const turnCost = (10 * 5 + 5 * 30) / 1_000_000;
 
   beforeEach(async () => {
-    session = await launchVerificationServer();
+    session = await launchVerificationServer({ ...process.env, FAKE_ACP_MODELS: "openai/gpt-5.5" });
   }, 60_000);
 
   afterEach(async () => {
@@ -46,20 +47,22 @@ describe("usage ledger through real turns", () => {
     await expect.poll(() => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").length : 0), { timeout: 10_000 }).toBe(2);
     const rows = readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line));
     expect(rows[0]).toMatchObject({
-      botId, botName: "Ledger probe", instanceId: "claude", driverKind: "claudeAgent", costUsd: 0.01, trigger: { kind: "owner" },
+      botId, botName: "Ledger probe", instanceId: "opencodeGo", driverKind: "opencodeGo", costSource: "estimated", trigger: { kind: "owner" },
     });
     expect(rows[0].input).toBeGreaterThanOrEqual(10);
     expect(rows[0].output).toBeGreaterThanOrEqual(1);
     expect(rows[0].model).toBeTypeOf("string");
-    expect(rows[1]).toMatchObject({ botId, costUsd: 0.01, trigger: { kind: "user", label: "Ada's phone" } });
+    expect(rows[0].costUsd).toBeCloseTo(turnCost, 9);
+    expect(rows[1]).toMatchObject({ botId, costSource: "estimated", trigger: { kind: "user", label: "Ada's phone" } });
+    expect(rows[1].costUsd).toBeCloseTo(turnCost, 9);
     expect(readFileSync(file, "utf8")).not.toContain("hello from");
 
     const byUser = (await (await api("/api/usage?groupBy=user")).json()) as any;
-    expect(byUser.groups.map((g: any) => [g.key, g.turns, g.costUsd])).toEqual(
-      expect.arrayContaining([["owner", 1, 0.01], ["user:ada's phone", 1, 0.01]]),
+    expect(byUser.groups.map((g: any) => [g.key, g.turns])).toEqual(
+      expect.arrayContaining([["owner", 1], ["user:ada's phone", 1]]),
     );
     expect(byUser.total).toMatchObject({ turns: 2, unpriced: 0 });
-    expect(byUser.total.costUsd).toBeCloseTo(0.02, 6);
+    expect(byUser.total.costUsd).toBeCloseTo(turnCost * 2, 9);
     const byBot = (await (await api("/api/usage?groupBy=bot")).json()) as any;
     expect(byBot.groups).toEqual([expect.objectContaining({ key: `bot:${botId}`, label: "Ledger probe", turns: 2 })]);
 

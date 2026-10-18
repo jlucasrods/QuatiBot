@@ -71,7 +71,6 @@ function setup(options: { helper?: { instanceId: string; model?: string } | null
       ["muse", turnsOnly("muse", "museCode")],
     ]),
     bots: new Map<string, SideJobBot>(["claude", "openrouter", "grok", "codex", "pi", "muse"].map((id) => [id, bot(id, id)])),
-    overBudget: false,
     booked: [] as Booked[],
     logs: [] as string[],
   };
@@ -79,9 +78,6 @@ function setup(options: { helper?: { instanceId: string; model?: string } | null
     bot: (id) => state.bots.get(id),
     instance: (id) => state.instances.get(id) ?? null,
     helper: () => state.helper,
-    assertWithinBudget: () => {
-      if (state.overBudget) throw new Error("this workspace has reached its monthly spend limit");
-    },
     book: (row, tokensReported, notificationThreadId) => state.booked.push({ row, tokensReported, notificationThreadId }),
     log: (line) => state.logs.push(line),
   });
@@ -272,15 +268,6 @@ describe("what a helper call is booked as", () => {
     ]);
   });
 
-  it("makes no call for a workspace at its spend limit, on the helper as on the bot's own background calls", async () => {
-    const { jobs, state, claude } = setup();
-    state.overBudget = true;
-    await expect(jobs.text("memory", "pi")!.generateText("p")).rejects.toThrow("monthly spend limit");
-    await expect(jobs.text("compaction", "codex")!.generateText("p")).rejects.toThrow("monthly spend limit");
-    await expect(jobs.text("memory", "claude")!.generateText("p")).rejects.toThrow("monthly spend limit");
-    expect(claude.calls).toEqual([]);
-    expect(state.booked).toEqual([]);
-  });
 });
 
 describe("when the helper is not used", () => {
@@ -320,7 +307,6 @@ describe("when the helper is not used", () => {
         bot: (id) => bot(id, id),
         instance: (id) => engines[id] ?? null,
             helper: () => ({ instanceId: "claude" }),
-        assertWithinBudget: () => {},
         book: () => {},
         log: (line) => logs.push(line),
         ...deps,
@@ -472,7 +458,7 @@ describe("memory upkeep through the resolver", () => {
     expect(claude.calls).toEqual([]);
   });
 
-  it("writes nothing and fails nothing when the helper throws or the workspace is at its spend limit", async () => {
+  it("leaves memory unchanged when the helper throws", async () => {
     const failing = setup();
     failing.state.instances.set("claude", textEngine("claude", "claudeAgent", () => Promise.reject(new Error("503 from the provider"))).instance);
     ensureWorkspace(BOT.id);
@@ -480,10 +466,5 @@ describe("memory upkeep through the resolver", () => {
     expect(await upkeep(failing.jobs).capture({ botId: BOT.id, threadId: "t1", turns })).toMatchObject({ added: 0, note: "The capture call did not answer in time." });
     expect(memory()).toBe(before);
 
-    const capped = setup();
-    capped.state.overBudget = true;
-    expect(await upkeep(capped.jobs).capture({ botId: BOT.id, threadId: "t1", turns })).toMatchObject({ added: 0, note: "The capture call did not answer in time." });
-    expect(capped.claude.calls).toEqual([]);
-    expect(memory()).toBe(before);
   });
 });

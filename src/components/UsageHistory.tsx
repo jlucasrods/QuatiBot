@@ -6,7 +6,6 @@ import { t } from "@/lib/i18n";
 import { cachedUsageNote, formatTokens, formatUsd, hasFiniteCost, headlineTokens, tokensColumnLabel } from "@/lib/usage";
 import { Select } from "./Select";
 import { Card } from "./SettingsPrimitives";
-import { UsageBudgetCards, type BudgetState } from "./UsageBudget";
 
 export type UsageGroupBy = "bot" | "model" | "user" | "day" | "engine" | "routine";
 export const USAGE_GROUPINGS: readonly UsageGroupBy[] = ["bot", "model", "user", "day", "engine", "routine"];
@@ -22,7 +21,6 @@ export interface UsageGroup {
   costUsd: number | null;
   estimatedUsd?: number | null;
   unpriced: number;
-  billableUsd?: number | null;
 }
 
 export interface UsageSummary {
@@ -31,8 +29,6 @@ export interface UsageSummary {
   groupBy: UsageGroupBy;
   groups: UsageGroup[];
   total: UsageGroup;
-  budget?: BudgetState | null;
-  billing?: { currency: string } | null;
 }
 
 export function usagePeriodRange(period: UsagePeriod, now = new Date()): { from: string; to: string } {
@@ -82,10 +78,8 @@ export function UsageHistoryTable({ summary }: { summary: UsageSummary }) {
   if (summary.groups.length === 0) {
     return <div className="text-[13px] text-ink-secondary">{t("usage.history.empty")}</div>;
   }
-  const billable = Boolean(summary.billing);
   const cachedNote = cachedUsageNote(summary.total);
-  const columns = billable ? "grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-x-5" : "grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-5";
-  const money = (value: number | null | undefined) => (hasFiniteCost(value) ? formatUsd(value) : "—");
+  const columns = "grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-5";
   return (
     <div className="flex flex-col">
       <div className={cn(columns, "border-b border-hairline/40 pb-2 text-[11.5px] font-medium uppercase tracking-wide text-ink-secondary")}>
@@ -93,7 +87,6 @@ export function UsageHistoryTable({ summary }: { summary: UsageSummary }) {
         <span className="text-right">{t("usage.colTurns")}</span>
         <span className="text-right">{tokensColumnLabel(summary.total)}</span>
         <span className="text-right">{t("usage.colCost")}</span>
-        {billable && <span className="text-right">{t("usage.history.colBillable")}</span>}
       </div>
       {summary.groups.map((group) => (
         <div key={group.key} className={cn(columns, "border-b border-hairline/20 py-2 text-[13px]")}>
@@ -103,7 +96,6 @@ export function UsageHistoryTable({ summary }: { summary: UsageSummary }) {
             {formatTokens(headlineTokens(group))}
           </span>
           <CostCell group={group} />
-          {billable && <span className="text-right tabular-nums text-ink">{money(group.billableUsd)}</span>}
         </div>
       ))}
       <div className={cn(columns, "pt-2.5 text-[13px] font-medium text-ink")}>
@@ -111,7 +103,6 @@ export function UsageHistoryTable({ summary }: { summary: UsageSummary }) {
         <span className="text-right tabular-nums">{summary.total.turns}</span>
         <span className="text-right tabular-nums">{formatTokens(headlineTokens(summary.total))}</span>
         <CostCell group={summary.total} strong />
-        {billable && <span className="text-right tabular-nums">{money(summary.total.billableUsd)}</span>}
       </div>
       {cachedNote && (
         <div className="mt-3 text-[12px] leading-relaxed text-ink-secondary">{cachedNote}</div>
@@ -151,7 +142,6 @@ export function UsageHistory({ load = fetchUsage }: { load?: typeof fetchUsage }
 
   return (
     <>
-    <UsageBudgetCards budget={summary?.budget ?? null} />
     <Card title={t("usage.history.title")} subtitle={t("usage.history.subtitle")}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Select
