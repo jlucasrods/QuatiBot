@@ -8,9 +8,6 @@ import type { AppConfig } from "../config.ts";
 import { createDecider, deciderPatchKey, deciderReady, deciderSavePatch, describeDecider } from "./index.ts";
 import { DECIDER_LOG_DIR, flushDeciderLog } from "./log.ts";
 import { jevEndpoint, parseJevResponse } from "./jev.ts";
-import { KEY_CHECK_QUESTION, KEY_CHECK_STATE, RELAY_MAX_STATE_BYTES, relayAccepts } from "./relay.ts";
-import { ROOM_ROUTING_STATE_KEYS, roomRoutingRequest } from "./room-routing.ts";
-import type { DeciderJob, DeciderSeam } from "./types.ts";
 
 const KEY = "tsk_unit_secret_key_0123456789abcdef";
 const ON: AppConfig = { decider: { enabled: true, key: KEY, jobs: { roomRouting: true } } };
@@ -297,197 +294,6 @@ describe("settings rules", () => {
   });
 });
 
-describe("Cloud Pro's included decisions", () => {
-  // A Jev base URL whose one relay route is <QUATI_CLOUD_DECIDER_URL>/v1/systemone.
-  const RELAY = "https://cloud.example.test/api/cloud/services/decider";
-  const INCLUDED = "quati_decide_unit_included_token_0123456789";
-  const cloudPro = () => {
-    vi.stubEnv("QUATI_CLOUD_DECIDER_URL", RELAY);
-    vi.stubEnv("QUATI_CLOUD_DECIDER_TOKEN", INCLUDED);
-  };
-  // The app's real room request: the only one the relay takes besides the key check.
-  const ROOM = roomRoutingRequest({
-    room: "Launch", humans: ["Alex"],
-    members: [{ id: "maya", name: "Maya", title: "Product Designer" }, { id: "theo", name: "Theo", title: "Frontend Engineer" }],
-    recent: [{ from: "Alex", text: "PRIVATE-MESSAGE-TEXT we ship Friday" }],
-    message: { from: "Alex", text: "PRIVATE-MESSAGE-TEXT the navbar overlaps on Safari" },
-  });
-  const route = (d: ReturnType<typeof decider>) => d.choose("roomRouting", ROOM.state, ROOM.question);
-  const yes = () => vi.fn<typeof fetch>(async () => jsonResponse({ answers: { answer: { type: "noul", noul: 0.97 } } }));
-  const theo = () => vi.fn<typeof fetch>(async () => jsonResponse(choiceBody("theo", { theo: 0.97, maya: 0.03 })));
-  const sent = (fetchImpl: FetchMock, index = 0) => {
-    const [url, init] = fetchImpl.mock.calls[index]!;
-    return { url: String(url), auth: (init!.headers as Record<string, string>).authorization };
-  };
-  afterEach(() => vi.unstubAllEnvs());
-
-  it("with no own key, decides through exactly <QUATI_CLOUD_DECIDER_URL>/v1/systemone, on by default", async () => {
-    cloudPro();
-    const fetchImpl = theo();
-    for (const config of [{}, { decider: { baseUrl: "http://127.0.0.1:9" } }] as AppConfig[]) {
-      expect(deciderReady(config, "roomRouting")).toBe(true);
-      await expect(route(decider(config, fetchImpl))).resolves.toMatchObject({ ok: true, answers: { choice: "theo" } });
-    }
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    for (const index of [0, 1]) expect(sent(fetchImpl, index)).toEqual({ url: `${RELAY}/v1/systemone`, auth: `Bearer ${INCLUDED}` });
-  });
-
-  it("the person's own key wins, and goes only to Jev or their base URL", async () => {
-    cloudPro();
-    const fetchImpl = theo();
-    await route(decider(ON, fetchImpl));
-    expect(sent(fetchImpl)).toEqual({ url: "https://api.typesafe.ai/v1/systemone", auth: `Bearer ${KEY}` });
-    await route(decider({ decider: { ...ON.decider, baseUrl: "http://127.0.0.1:9" } }, fetchImpl));
-    expect(sent(fetchImpl, 1)).toEqual({ url: "http://127.0.0.1:9/v1/systemone", auth: `Bearer ${KEY}` });
-    expect(JSON.stringify(fetchImpl.mock.calls)).not.toContain(INCLUDED);
-    expect(describeDecider(ON)).toEqual({ provider: "jev", configured: true, enabled: true, jobs: { roomRouting: true } });
-  });
-
-  it("an own key is on only once switched on, as without Cloud Pro", async () => {
-    cloudPro();
-    const fetchImpl = theo();
-    const unswitched: AppConfig = { decider: { key: KEY } };
-    expect(deciderReady(unswitched, "roomRouting")).toBe(false);
-    await expect(route(decider(unswitched, fetchImpl))).resolves.toEqual({ ok: false, reason: "disabled" });
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it("an explicit off wins, and a job switched off stays off", async () => {
-    cloudPro();
-    const fetchImpl = theo();
-    const off: AppConfig = { decider: { enabled: false } };
-    expect(describeDecider(off)).toEqual({ provider: "jev", configured: true, included: true, enabled: false, jobs: { roomRouting: true } });
-    expect(deciderReady(off, "roomRouting")).toBe(false);
-    await expect(route(decider(off, fetchImpl))).resolves.toEqual({ ok: false, reason: "disabled" });
-    const jobOff: AppConfig = { decider: { jobs: { roomRouting: false } } };
-    expect(deciderReady(jobOff, "roomRouting")).toBe(false);
-    await expect(route(decider(jobOff, fetchImpl))).resolves.toEqual({ ok: false, reason: "job_off" });
-    await expect(route(decider({ decider: { provider: "off" } }, fetchImpl))).resolves.toEqual({ ok: false, reason: "disabled" });
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it("is on by default only while included: without the relay's URL and token nothing changes", async () => {
-    const fetchImpl = theo();
-    for (const env of [{}, { QUATI_CLOUD_DECIDER_TOKEN: INCLUDED }, { QUATI_CLOUD_DECIDER_URL: RELAY }]) {
-      vi.unstubAllEnvs();
-      for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
-      expect(describeDecider({})).toEqual({ provider: "jev", configured: false, enabled: false, jobs: { roomRouting: true } });
-      expect(deciderReady({}, "roomRouting")).toBe(false);
-      await expect(route(decider({}, fetchImpl))).resolves.toEqual({ ok: false, reason: "disabled" });
-      await expect(decider({}, fetchImpl).testKey()).resolves.toEqual({ ok: false, reason: "no_key" });
-    }
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it("Settings sees it as included and never sees the token", () => {
-    cloudPro();
-    const status = describeDecider({});
-    expect(status).toEqual({ provider: "jev", configured: true, included: true, enabled: true, jobs: { roomRouting: true } });
-    expect(JSON.stringify(status)).not.toContain(INCLUDED);
-  });
-
-  it("Test checks the relay with its one fixed call; a draft key goes only to Jev", async () => {
-    cloudPro();
-    const fetchImpl = yes();
-    const d = decider({ decider: { enabled: false } }, fetchImpl);
-    await expect(d.testKey()).resolves.toMatchObject({ ok: true, answers: { p: 0.97 } });
-    expect(sent(fetchImpl)).toEqual({ url: `${RELAY}/v1/systemone`, auth: `Bearer ${INCLUDED}` });
-    expect(JSON.parse(String(fetchImpl.mock.calls[0]![1]?.body))).toEqual({
-      state: KEY_CHECK_STATE, model: "jev-latest", questions: { answer: { type: "noul", instructions: KEY_CHECK_QUESTION } },
-    });
-    await expect(d.testKey({ key: "tsk_draft" })).resolves.toMatchObject({ ok: true });
-    expect(sent(fetchImpl, 1)).toEqual({ url: "https://api.typesafe.ai/v1/systemone", auth: "Bearer tsk_draft" });
-  });
-
-  it("sends nothing but the relay's two requests through the included token; an own key sends them to Jev", async () => {
-    cloudPro();
-    const fetchImpl = theo();
-    const huge = "x".repeat(RELAY_MAX_STATE_BYTES);
-    const refused: Array<[string, unknown, Record<string, unknown>]> = [
-      ["other instructions", ROOM.state, { answer: { type: "choice", instructions: "Which bot?", options: ROOM.question.options } }],
-      ["a second question", ROOM.state, { answer: { type: "choice", ...ROOM.question }, extra: { type: "yesno", instructions: "And?" } }],
-      ["another question id", ROOM.state, { pick: { type: "choice", ...ROOM.question } }],
-      ["a yes/no in the room seam", ROOM.state, { answer: { type: "yesno", instructions: ROOM.question.instructions } }],
-      ["an extra state key", { ...ROOM.state, files: ["~/.ssh/id_ed25519"] }, { answer: { type: "choice", ...ROOM.question } }],
-      ["a missing state key", { room: "Launch", new_message: ROOM.state.new_message }, { answer: { type: "choice", ...ROOM.question } }],
-      ["text as state", "the navbar overlaps", { answer: { type: "choice", ...ROOM.question } }],
-      ["a state over 24,000 bytes", { ...ROOM.state, new_message: { from: "Alex", text: huge } }, { answer: { type: "choice", ...ROOM.question } }],
-      ["a body over 64 KiB", ROOM.state, { answer: { type: "choice", instructions: ROOM.question.instructions, options: Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`bot${i}`, "y".repeat(400)])) } }],
-    ];
-    for (const [name, state, questions] of refused) {
-      const result = await decider({}, fetchImpl).ask("roomRouting", state, questions as never);
-      expect(result, name).toEqual({ ok: false, reason: "misconfigured" });
-      await decider(ON, fetchImpl).ask("roomRouting", state, questions as never);
-    }
-    expect(fetchImpl.mock.calls.every(([url, init]) =>
-      String(url) === "https://api.typesafe.ai/v1/systemone" && (init!.headers as Record<string, string>).authorization === `Bearer ${KEY}`)).toBe(true);
-    expect(fetchImpl.mock.calls.length).toBeGreaterThan(0);
-  });
-
-  it("a job the relay does not take uses only an own key", async () => {
-    cloudPro();
-    const fetchImpl = theo();
-    const later = "toolSelection" as DeciderJob;
-    expect(deciderReady({}, later)).toBe(false);
-    await expect(decider({}, fetchImpl).choose(later, STATE, QUESTION)).resolves.toEqual({ ok: false, reason: "no_key" });
-    expect(fetchImpl).not.toHaveBeenCalled();
-    expect(deciderReady(ON, later)).toBe(true);
-    await expect(decider(ON, fetchImpl).choose(later, STATE, QUESTION)).resolves.toMatchObject({ ok: true });
-    expect(sent(fetchImpl)).toEqual({ url: "https://api.typesafe.ai/v1/systemone", auth: `Bearer ${KEY}` });
-  });
-
-  it("the app's real room request fits the relay, even for a busy room with a long message", () => {
-    expect(relayAccepts("roomRouting", ROOM.state, { answer: { type: "choice", ...ROOM.question } })).toBe(true);
-    const busy = roomRoutingRequest({
-      room: "r".repeat(200), humans: Array.from({ length: 12 }, (_, i) => `Person ${i} ${"p".repeat(90)}`),
-      members: Array.from({ length: 24 }, (_, i) => ({ id: `bot-${i}`, name: `Bot ${i}`, title: "t".repeat(200), description: "d".repeat(900) })),
-      recent: Array.from({ length: 40 }, (_, i) => ({ from: `Person ${i}`, text: "m".repeat(700) })),
-      message: { from: "Alex", text: "n".repeat(7_000) },
-    });
-    expect(Object.keys(busy.state).every((key) => (ROOM_ROUTING_STATE_KEYS as readonly string[]).includes(key))).toBe(true);
-    expect(relayAccepts("roomRouting", busy.state, { answer: { type: "choice", ...busy.question } })).toBe(true);
-    expect(relayAccepts("keyCheck", KEY_CHECK_STATE, { answer: { type: "yesno", instructions: KEY_CHECK_QUESTION } })).toBe(true);
-    expect(relayAccepts("keyCheck", { purpose: "other" }, { answer: { type: "yesno", instructions: KEY_CHECK_QUESTION } })).toBe(false);
-    expect(relayAccepts("keyCheck", KEY_CHECK_STATE, { answer: { type: "yesno", instructions: "Is it?" } })).toBe(false);
-    expect(relayAccepts("toolSelection" as DeciderSeam, ROOM.state, { answer: { type: "choice", ...ROOM.question } })).toBe(false);
-  });
-
-  it.each([
-    [401, "rejected"],
-    [402, "http_error"],
-    [429, "rate_limited"],
-    [502, "http_error"],
-    [503, "overloaded"],
-  ])("a relay refusal (HTTP %i) is a fallback reason, never a throw", async (status, reason) => {
-    cloudPro();
-    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ error: { type: "quota_exceeded", message: `used up ${INCLUDED}` } }), { status }));
-    const result = await route(decider({}, fetchImpl));
-    expect(result).toMatchObject({ ok: false, reason, status });
-    expect(JSON.stringify(result)).not.toContain(INCLUDED);
-  });
-
-  it("the decision log never holds the token", async () => {
-    cloudPro();
-    const dataDir = mkdtempSync(join(tmpdir(), "quati-decider-included-log-"));
-    await route(decider({}, theo(), dataDir));
-    await flushDeciderLog(dataDir);
-    const dir = join(dataDir, DECIDER_LOG_DIR);
-    const log = readdirSync(dir).map((name) => readFileSync(join(dir, name), "utf8")).join("");
-    expect(log).toContain('"ok":true');
-    expect(log).not.toContain(INCLUDED);
-    expect(log).not.toContain("cloud.example.test");
-  });
-
-  it("clearing an own key falls back to the included decisions as they stand; switching on needs no key", () => {
-    expect(deciderSavePatch({ key: "" }, { enabled: true, key: KEY }, true)).toEqual({ ok: true, patch: { key: "" } });
-    expect(deciderSavePatch({ enabled: true }, {}, true)).toEqual({ ok: true, patch: { enabled: true } });
-    expect(deciderSavePatch({ enabled: false }, {}, true)).toEqual({ ok: true, patch: { enabled: false } });
-    expect(deciderSavePatch({ key: "tsk_new" }, { enabled: false }, true)).toEqual({ ok: true, patch: { key: "tsk_new", enabled: true, jobs: { roomRouting: true } } });
-    expect(deciderSavePatch({ key: "" }, { enabled: true, key: KEY }, false)).toEqual({ ok: true, patch: { key: "", enabled: false } });
-    expect(deciderSavePatch({ enabled: true }, {}, false)).toMatchObject({ ok: false });
-  });
-});
-
 describe("OpenRouter as the provider", () => {
   const OR_KEY = "sk-or-v1-unit-openrouter-key-0123456789";
   const OR: AppConfig = { decider: { enabled: true, provider: "openrouter", openrouterKey: OR_KEY, openrouterModel: "openai/gpt-4o-mini", jobs: { roomRouting: true } } };
@@ -556,9 +362,7 @@ describe("OpenRouter as the provider", () => {
     expect(row).not.toHaveProperty("model");
   });
 
-  it("Cloud Pro's included token is never used for OpenRouter", async () => {
-    vi.stubEnv("QUATI_CLOUD_DECIDER_URL", "https://cloud.example.test/api/cloud/services/decider");
-    vi.stubEnv("QUATI_CLOUD_DECIDER_TOKEN", "quati_decide_unit_included_token_0123456789");
+  it("requires an OpenRouter key before making requests", async () => {
     const fetchImpl = yes();
     const noKey: AppConfig = { decider: { provider: "openrouter" } };
     expect(deciderReady(noKey, "roomRouting")).toBe(false);
@@ -606,8 +410,8 @@ describe("settings rules with two providers", () => {
       .toMatchObject({ ok: true, patch: { enabled: true, jobs: { roomRouting: true } } });
   });
 
-  it("clearing the active OpenRouter key switches it off, even where Jev decisions are included", () => {
-    expect(deciderSavePatch({ openrouterKey: "" }, { provider: "openrouter", enabled: true, openrouterKey: "sk-or" }, true))
+  it("clearing the active OpenRouter key switches it off", () => {
+    expect(deciderSavePatch({ openrouterKey: "" }, { provider: "openrouter", enabled: true, openrouterKey: "sk-or" }))
       .toEqual({ ok: true, patch: { openrouterKey: "", enabled: false } });
   });
 
@@ -631,7 +435,6 @@ describe("settings rules with two providers", () => {
     expect(deciderSavePatch({ enabled: true }, { provider: "openrouter", key: KEY })).toMatchObject({ ok: false, error: expect.stringContaining("OpenRouter") });
     expect(deciderSavePatch({ enabled: true }, { provider: "openrouter", openrouterKey: "sk-or" })).toEqual({ ok: true, patch: { enabled: true } });
     expect(deciderSavePatch({ enabled: true }, {})).toEqual({ ok: false, error: "Save a Jev API key before turning on fast decisions." });
-    expect(deciderSavePatch({ provider: "openrouter", enabled: true }, {}, true)).toMatchObject({ ok: false });
   });
 
   it("picks the pasted key to check: the active provider's, with the model it will use", () => {

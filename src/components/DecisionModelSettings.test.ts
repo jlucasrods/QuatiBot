@@ -157,42 +157,21 @@ describe("DecisionModelSettings", () => {
     expect(render().html).toContain("Jev rejected this key. Check it at typesafe.ai.");
   });
 
-  it("shows Cloud Pro's included decisions as included, on, with nothing to clear", () => {
-    fixture.config = status({ provider: "jev", configured: true, included: true, enabled: true, jobs: { roomRouting: true } });
-    const view = render();
-    expect(view.html).toContain("Included with your Cloud plan");
-    expect(view.html).not.toContain("Connected");
-    expect(view.html).not.toContain("Not connected");
-    expect(view.html).not.toContain("Save a key below to turn this on.");
-    expect(view.master.props.checked).toBe(true);
-    expect(view.master.props.disabled).toBe(false);
-    expect(view.job.props.checked).toBe(true);
-    expect(view.html).not.toContain("Clear");
-    expect(view.html).not.toContain("Remove the saved key");
-    expect(view.save.props.disabled).toBe(true);
-    expect(view.input.props.placeholder).toBe("Paste your TypeSafe API key");
-    expect(view.test.props.disabled).toBe(false);
-  });
-
-  it("with an own key saved as well, shows Connected and offers Clear, as without Cloud Pro", () => {
+  it("shows Connected and offers Clear for a saved key", () => {
     fixture.config = status({ provider: "jev", configured: true, enabled: true, jobs: { roomRouting: true } });
     const view = render();
     expect(view.html).toContain("Connected");
-    expect(view.html).not.toContain("Included with your Cloud plan");
     expect(view.html).toContain("Clear");
     expect(view.save.props.disabled).toBe(false);
   });
 
-  it("can be switched off, and a pasted own key is saved to replace it", async () => {
-    fixture.config = status({ provider: "jev", configured: true, included: true, enabled: true, jobs: { roomRouting: true } });
-    fixture.api.mockResolvedValueOnce(status({ provider: "jev", configured: true, included: true, enabled: false, jobs: { roomRouting: true } }));
+  it("can be switched off, and a pasted key is saved to replace it", async () => {
+    fixture.config = status({ provider: "jev", configured: true, enabled: true, jobs: { roomRouting: true } });
+    fixture.api.mockResolvedValueOnce(status({ provider: "jev", configured: true, enabled: false, jobs: { roomRouting: true } }));
     click(render().master);
     await flush();
     expect(fixture.api).toHaveBeenLastCalledWith("/api/config", { method: "PUT", body: JSON.stringify({ decider: { enabled: false } }) });
     expect(render().master.props.checked).toBe(false);
-    click(render().save);
-    await flush();
-    expect(fixture.api).toHaveBeenCalledTimes(1);
     fixture.api.mockResolvedValueOnce(status({ provider: "jev", configured: true, enabled: true, jobs: { roomRouting: true } }));
     type(render().input, KEY);
     click(render().save);
@@ -201,34 +180,8 @@ describe("DecisionModelSettings", () => {
     expect(render().html).toContain("Connected");
   });
 
-  it("Test checks the included decisions, and says what a refusal from Cloud Pro means", async () => {
-    fixture.config = status({ provider: "jev", configured: true, included: true, enabled: true, jobs: { roomRouting: true } });
-    fixture.api.mockResolvedValueOnce({ ok: true, latencyMs: 210 });
-    click(render().test);
-    await flush();
-    expect(fixture.api).toHaveBeenLastCalledWith("/api/decider/test", { method: "POST", body: "{}" });
-    expect(render().html).toContain("Jev answered in 210 ms.");
-    for (const [result, text] of [
-      [{ ok: false, reason: "http_error", status: 402 }, "Decisions are included with an active Cloud subscription."],
-      [{ ok: false, reason: "rate_limited", status: 429 }, "Your Cloud plan&#x27;s decisions are busy or used up for this month. Try again later."],
-      [{ ok: false, reason: "rejected", status: 401 }, "Quati Cloud did not accept this machine&#x27;s decisions. Try again later."],
-    ] as const) {
-      fixture.api.mockResolvedValueOnce(result);
-      click(render().test);
-      await flush();
-      expect(render().html).toContain(text);
-      expect(render().html).not.toContain("typesafe.ai.");
-    }
-    fixture.api.mockResolvedValueOnce({ ok: false, reason: "rejected", status: 401 });
-    type(render().input, "tsk_draft");
-    click(render().test);
-    await flush();
-    expect(fixture.api).toHaveBeenLastCalledWith("/api/decider/test", { method: "POST", body: JSON.stringify({ key: "tsk_draft" }) });
-    expect(render().html).toContain("Jev rejected this key. Check it at typesafe.ai.");
-  });
-
   it("maps every failure to a fixed sentence", () => {
-    expect(deciderFailureText({ reason: "rejected" }, false, "jev")).toBe("Jev rejected this key. Check it at typesafe.ai.");
+    expect(deciderFailureText({ reason: "rejected" }, "jev")).toBe("Jev rejected this key. Check it at typesafe.ai.");
     expect(deciderFailureText({ reason: "overloaded" })).toBe("Jev is overloaded right now. Try again shortly.");
     expect(deciderFailureText({ reason: "http_error", status: 500 })).toBe("Jev returned an unexpected error (HTTP 500).");
     expect(deciderFailureText({ reason: "something-new" })).toBe("The test did not finish. Try again.");
@@ -345,7 +298,7 @@ describe("DecisionModelSettings", () => {
     });
 
     it("maps every OpenRouter failure to a fixed sentence", () => {
-      const text = (result: { reason: string; status?: number }) => deciderFailureText(result, false, "openrouter");
+      const text = (result: { reason: string; status?: number }) => deciderFailureText(result, "openrouter");
       expect(text({ reason: "rejected", status: 401 })).toBe("OpenRouter rejected this key. Check it at openrouter.ai/keys.");
       expect(text({ reason: "http_error", status: 402 })).toBe("Your OpenRouter account is out of credits. Add some at openrouter.ai/credits.");
       expect(text({ reason: "http_error", status: 500 })).toBe("OpenRouter returned an unexpected error (HTTP 500).");

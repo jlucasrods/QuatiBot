@@ -1,6 +1,5 @@
 // Runs on the harness, never the renderer: the key must not leave the server. QUATI_ELEVENLABS_API overrides the
 // base URL for dev and tests.
-import { elevenLabsProviderApi } from "../included-services.ts";
 
 const MODEL = "eleven_flash_v2_5";
 // 64kbps mono is indistinguishable for speech and a third of the bytes
@@ -44,7 +43,7 @@ function message(status: number, what: string, body: any): string {
 /** Checked against /voices, not /user: ElevenLabs keys carry per-endpoint scopes, and a speech-only key has no `user_read`. */
 export async function verifyKey(key: string): Promise<VerifyResult> {
   try {
-    const res = await fetch(`${elevenLabsProviderApi()}/voices`, {
+    const res = await fetch(`${process.env.QUATI_ELEVENLABS_API || "https://api.elevenlabs.io/v1"}/voices`, {
       headers: { "xi-api-key": key },
       signal: AbortSignal.timeout(20_000),
     });
@@ -55,7 +54,8 @@ export async function verifyKey(key: string): Promise<VerifyResult> {
   }
 }
 
-export async function listVoices(key: string, api: string): Promise<Voice[]> {
+export async function listVoices(key: string): Promise<Voice[]> {
+  const api = process.env.QUATI_ELEVENLABS_API || "https://api.elevenlabs.io/v1";
   const res = await fetch(`${api}/voices`, {
     headers: { "xi-api-key": key },
     signal: AbortSignal.timeout(20_000),
@@ -71,7 +71,8 @@ export async function listVoices(key: string, api: string): Promise<Voice[]> {
     .filter((v: Voice) => v.id);
 }
 
-export async function synthesize(text: string, voiceId: string, key: string, api: string): Promise<Audio> {
+export async function synthesize(text: string, voiceId: string, key: string): Promise<Audio> {
+  const api = process.env.QUATI_ELEVENLABS_API || "https://api.elevenlabs.io/v1";
   const res = await fetch(`${api}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=${FORMAT}`, {
     method: "POST",
     headers: { "xi-api-key": key, "content-type": "application/json", accept: "audio/mpeg" },

@@ -6,10 +6,7 @@ export const ROOM_ROUTING_TIMEOUT_MS = 1_500;
 export const ROOM_ROUTING_MIN_PROBABILITY = 0.6;
 export const EVERYONE_OPTION = "__everyone__";
 const EVERYONE_MEANING = "Several members: the message explicitly needs answers or work from more than one member of the room, for example it asks everyone or asks each member for their part.";
-/** Cloud Pro's decision relay accepts room routing only with these exact instructions. */
 export const ROOM_ROUTING_INSTRUCTIONS = "Which bot in this room should answer `new_message`? Choose __everyone__ only when the message needs several members to answer.";
-/** Cloud Pro's relay accepts no other key; `recent_messages` is left out when there are none. */
-export const ROOM_ROUTING_STATE_KEYS = ["room", "humans_in_room", "bots_in_room", "recent_messages", "new_message"] as const;
 
 const NAME_MAX = 80;
 const TITLE_MAX = 120;

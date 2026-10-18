@@ -31,7 +31,6 @@ const ENTRY_POINTS = [
   "pair-cli.ts",
   "workspace-backup.worker.ts",
   // the QUATI Cloud Pro home image's entry point
-  "cloud-home-start.ts",
   // the container image's entry point
   "server-launcher.ts",
   // Imported directly by the packaged smoke probes. An explicit root sibling,

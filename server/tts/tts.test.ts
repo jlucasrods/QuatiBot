@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { AppConfig } from "../config.ts";
 
@@ -30,8 +30,7 @@ beforeAll(async () => {
         res.end(JSON.stringify(payload));
       };
       if (refuse) return send(refuse.status, refuse.body);
-      // /relay plays Cloud Pro's voice relay: same routes, another base URL
-      const path = (req.url ?? "").split("?")[0].replace(/^\/relay\//, "/");
+      const path = (req.url ?? "").split("?")[0];
       // A restricted key (the common real case) has no user_read: verifying against /user would reject it.
       if (path === "/v1/user") return send(401, { detail: { status: "missing_permissions" } });
       if (path === "/v1/voices") {
@@ -520,76 +519,5 @@ describe("Chatterbox (local server)", () => {
       "Add the address of your Chatterbox server in Settings on the computer to turn on voice.",
     );
     expect(() => speak(cfg(chatCfg({ baseUrl: stubBase })), "hi")).toThrow("Pick a voice in the agent profile.");
-  });
-});
-
-describe("included voice", () => {
-  const INCLUDED = "quati_voice_included-relay-token";
-  const relayed = () => seen.filter((request) => request.url.startsWith("/relay/"));
-  const direct = () => seen.filter((request) => !request.url.startsWith("/relay/"));
-
-  afterEach(() => vi.unstubAllEnvs());
-  const include = () => {
-    refuse = null;
-    seen.length = 0;
-    vi.stubEnv("QUATI_TTS_KEY", undefined);
-    vi.stubEnv("QUATI_CLOUD_VOICE_URL", `${stubBase}/relay/v1`);
-    vi.stubEnv("QUATI_CLOUD_VOICE_TOKEN", INCLUDED);
-  };
-
-  it("with no own key, lists voices and speaks with the included token, only through the relay", async () => {
-    include();
-    const { listVoices, speak, voiceConfigured } = await voice();
-    const settings = cfg({ voice: "v-1" });
-    expect(voiceConfigured(settings)).toBe(true);
-    expect((await listVoices(settings)).map((v) => v.id)).toEqual(["v-1"]);
-    expect((await speak(settings, "hello")).mime).toBe("audio/mpeg");
-    expect(relayed().map((request) => request.url.split("?")[0])).toEqual(["/relay/v1/voices", "/relay/v1/text-to-speech/v-1"]);
-    expect(direct()).toEqual([]);
-    expect(seen.every((request) => request.headers["xi-api-key"] === INCLUDED)).toBe(true);
-  });
-
-  it("an own key saved in Settings wins and goes only to ElevenLabs; removing it falls back", async () => {
-    include();
-    const { speak } = await voice();
-    const settings = cfg({ key: "sk-own", voice: "v-1" });
-    await speak(settings, "hello");
-    expect(relayed()).toEqual([]);
-    expect(direct().map((request) => request.headers["xi-api-key"])).toEqual(["sk-own"]);
-    seen.length = 0;
-    settings.tts!.key = "";
-    await speak(settings, "hello");
-    expect(direct()).toEqual([]);
-    expect(relayed().map((request) => request.headers["xi-api-key"])).toEqual([INCLUDED]);
-  });
-
-  it("an own key from the environment (QUATI_TTS_KEY) wins and goes only to ElevenLabs", async () => {
-    include();
-    vi.stubEnv("QUATI_TTS_KEY", "sk-from-env");
-    const { loadConfig } = await import("../config.ts");
-    const { speak } = await voice();
-    await speak({ ...loadConfig(), tts: { ...loadConfig().tts, voice: "v-1" } }, "hello");
-    expect(relayed()).toEqual([]);
-    expect(direct().map((request) => request.headers["xi-api-key"])).toEqual(["sk-from-env"]);
-  });
-
-  it("verifies a key being saved against ElevenLabs only, never the relay", async () => {
-    include();
-    const { verifyKey } = await voice();
-    expect(await verifyKey("elevenlabs", "sk-new")).toEqual({ ok: true });
-    expect(seen.map((request) => [request.url, request.headers["xi-api-key"]])).toEqual([["/v1/voices", "sk-new"]]);
-  });
-
-  it("tells Settings the voice is included, and never the token", async () => {
-    include();
-    const { describeVoice } = await voice();
-    const described = describeVoice(cfg({ voice: "v-1" }));
-    expect(described).toEqual({ configured: true, ready: true, voice: "v-1", provider: "elevenlabs", baseUrl: "", model: "", included: true });
-    expect(JSON.stringify(described)).not.toContain(INCLUDED);
-    expect(describeVoice(cfg({ key: "sk-own", voice: "v-1" }))).not.toHaveProperty("included");
-    expect(describeVoice(cfg({ provider: "fish", voice: "v-1" }))).toMatchObject({ configured: false });
-    expect(describeVoice(cfg({ provider: "fish", voice: "v-1" }))).not.toHaveProperty("included");
-    vi.stubEnv("QUATI_CLOUD_VOICE_TOKEN", undefined);
-    expect(describeVoice(cfg({ voice: "v-1" }))).toMatchObject({ configured: false, ready: false });
   });
 });

@@ -12,7 +12,7 @@ import { CLOUD_PERSONAL_REFUSAL } from "../cloud-owner.ts";
 
 import { browserProfilePartitionTarget, browserProfileReplacementConflict, builtInBrowserEnabled, changedInstanceIds, engineLaunches, loadConfig, localVmMode, parseConfigPatch, saveConfig, syncCredentialEnv, type AppConfig } from "../config.ts";
 import type { InstanceConfigMap, ModelSelection } from "../contracts.ts";
-import { deciderIncludedHere, deciderPatchKey, deciderSavePatch, type Decider } from "../decider/index.ts";
+import { deciderPatchKey, deciderSavePatch, type Decider } from "../decider/index.ts";
 import type { ProviderRegistry } from "../harness/registry.ts";
 import { forgetKey } from "../key-rejections.ts";
 import type { LocalVmIdleTimer } from "../local-vm-idle.ts";
@@ -108,7 +108,7 @@ export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
       }
       if (!Object.keys(patch).length) return json(res, 400, { error: "nothing to save" });
       if (patch.decider) {
-        const planned = deciderSavePatch(patch.decider, cfg.decider, deciderIncludedHere());
+        const planned = deciderSavePatch(patch.decider, cfg.decider);
         if (!planned.ok) return json(res, 400, { error: planned.error });
         patch.decider = planned.patch;
       }

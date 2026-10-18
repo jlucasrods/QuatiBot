@@ -38,11 +38,6 @@ const FAILURES: Record<string, LocaleKey> = {
     no_key: "decider.error.noKey",
     misconfigured: "decider.error.misconfigured",
 };
-/** Cloud Pro's relay refuses an inactive subscription (402) and a used-up month of decisions (429). */
-const INCLUDED_FAILURES: Record<string, LocaleKey> = {
-    rejected: "decider.included.error.rejected",
-    rate_limited: "decider.included.error.limited",
-};
 const OPENROUTER_FAILURES: Record<string, LocaleKey> = {
     ...FAILURES,
     rejected: "decider.openrouter.error.rejected",
@@ -56,7 +51,7 @@ const OPENROUTER_FAILURES: Record<string, LocaleKey> = {
 export function deciderFailureText(result: {
     reason: string;
     status?: number;
-}, included = false, provider: Provider = "jev"): string {
+}, provider: Provider = "jev"): string {
     if (provider === "openrouter") {
         // 402 is OpenRouter's answer for an account with no credits left.
         if (result.reason === "http_error" && result.status === 402)
@@ -66,10 +61,6 @@ export function deciderFailureText(result: {
         const key = OPENROUTER_FAILURES[result.reason];
         return key ? t(key) : t("decider.error.other");
     }
-    if (included && result.reason === "http_error" && result.status === 402)
-        return t("decider.included.error.subscription");
-    if (included && INCLUDED_FAILURES[result.reason])
-        return t(INCLUDED_FAILURES[result.reason]!);
     if (result.reason === "http_error")
         return t("decider.error.http", { status: String(result.status ?? "?") });
     const key = FAILURES[result.reason];
@@ -82,8 +73,6 @@ export function DecisionModelSettings() {
     const provider: Provider = decider?.provider === "openrouter" ? "openrouter" : "jev";
     const openrouter = provider === "openrouter";
     const configured = decider?.configured ?? false;
-    const included = configured && decider?.included === true;
-    const ownKey = configured && !included;
     const enabled = decider?.enabled ?? false;
     const roomRouting = decider?.jobs.roomRouting ?? true;
     const [value, setValue] = useState("");
@@ -97,7 +86,7 @@ export function DecisionModelSettings() {
     } | null>(null);
     const [models, setModels] = useState<ModelList | null>(null);
     const draft = value.trim();
-    const clearing = !draft && ownKey;
+    const clearing = !draft && configured;
     const applied = (config: ConfigStatus) => dispatch({ type: "configStatus", config });
     const patch = async (decision: Record<string, unknown>) => {
         if (switching)
@@ -135,7 +124,7 @@ export function DecisionModelSettings() {
         void patch(decision);
     };
     const save = async () => {
-        if (saving || (!draft && !ownKey))
+        if (saving || (!draft && !configured))
             return;
         setSaving(true);
         setError(null);
@@ -158,7 +147,6 @@ export function DecisionModelSettings() {
         setTesting(true);
         setVerdict(null);
         setError(null);
-        const testingIncluded = !draft && included;
         try {
             const result = await api<TestResult>("/api/decider/test", { method: "POST", body: JSON.stringify(draft ? { key: draft } : {}) });
             setVerdict(result.ok
@@ -171,7 +159,7 @@ export function DecisionModelSettings() {
                         ].join(" ")
                         : t("decider.test.ok", { ms: String(result.latencyMs) }),
                 }
-                : { ok: false, text: deciderFailureText(result, testingIncluded, provider) });
+                : { ok: false, text: deciderFailureText(result, provider) });
         }
         catch (cause) {
             setVerdict({ ok: false, text: cause instanceof Error ? cause.message : String(cause) });
@@ -212,12 +200,12 @@ export function DecisionModelSettings() {
         <div role="status" className="mb-2 flex items-center gap-2 text-[13px] text-ink-secondary">
           <span className={cn("size-1.5 rounded-full", configured ? "bg-success" : "bg-raised-hover")}/>
           <span className={configured ? "text-success" : undefined}>
-            {included ? t("keys.includedWithCloudPro") : configured ? t("decider.status.connected") : t("decider.status.notConnected")}
+            {t(configured ? "decider.status.connected" : "decider.status.notConnected")}
           </span>
         </div>
         <div className="flex gap-2">
-          <input type="password" value={value} onChange={(event) => { setVerdict(null); setError(null); setValue(event.target.value); }} onKeyDown={(event) => event.key === "Enter" && void save()} disabled={saving} placeholder={ownKey ? t("keys.replace") : t(openrouter ? "decider.openrouter.key.placeholder" : "decider.key.placeholder")} aria-label={t(openrouter ? "decider.openrouter.key.label" : "decider.key.label")} autoComplete="off" spellCheck={false} className="w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:outline-none"/>
-          <button type="button" data-testid="decider-save" onClick={() => void save()} disabled={saving || (!draft && !ownKey)} title={clearing ? t("keys.removeKey") : t("common.save")} className={cn("flex w-[72px] shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-control py-2 text-[13px] hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50", clearing ? "text-danger" : "text-ink")}>
+          <input type="password" value={value} onChange={(event) => { setVerdict(null); setError(null); setValue(event.target.value); }} onKeyDown={(event) => event.key === "Enter" && void save()} disabled={saving} placeholder={configured ? t("keys.replace") : t(openrouter ? "decider.openrouter.key.placeholder" : "decider.key.placeholder")} aria-label={t(openrouter ? "decider.openrouter.key.label" : "decider.key.label")} autoComplete="off" spellCheck={false} className="w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:outline-none"/>
+          <button type="button" data-testid="decider-save" onClick={() => void save()} disabled={saving || (!draft && !configured)} title={clearing ? t("keys.removeKey") : t("common.save")} className={cn("flex w-[72px] shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-control py-2 text-[13px] hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50", clearing ? "text-danger" : "text-ink")}>
             {saving ? <Loader2 size={13} className="animate-spin"/> : clearing ? t("keys.clear") : <><Check size={13}/>{t("common.save")}</>}
           </button>
           <button type="button" data-testid="decider-test" onClick={() => void test()} disabled={testing || saving || (!draft && !configured)} className="flex shrink-0 cursor-pointer items-center justify-center rounded-lg border border-hairline/40 px-3 py-2 text-[13px] text-ink-secondary hover:bg-raised/50 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50">

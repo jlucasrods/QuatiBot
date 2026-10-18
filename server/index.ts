@@ -201,7 +201,6 @@ import { ProviderRegistry } from "./harness/registry.ts";
 import { mainThread, wasOldestThread } from "./main-thread.ts";
 import { CLOUD_HOME_SECRET_KEYS, CLOUD_IGNORED_KEYS, cloudHomeConfiguration, cloudHomeOffersPlace, cloudHomePlaceRefusal, firstCloudTurnPatch } from "./cloud-home.ts";
 import { CLOUD_PERSONAL_REFUSAL, settleCloudOwnership, type CloudOwnership } from "./cloud-owner.ts";
-import { holdIncludedServices } from "./included-services.ts";
 
 import type { ProviderInstance } from "./contracts.ts";
 import { readyToRun, selectDefaultModelSelection, withNewBotEffort, type SelectableInstance } from "./default-model-selection.ts";
@@ -563,10 +562,9 @@ if (CLOUD_HOME) {
   console.log(`cloud home ${CLOUD_HOME.machineId}: bots run on the engines the person signs in to here`);
   for (const warning of CLOUD_HOME.warnings) console.warn(`cloud home: ${warning}`);
 }
-holdIncludedServices(CLOUD_ENV);
 for (const key of CLOUD_HOME_SECRET_KEYS) delete process.env[key];
 if (CLOUD_HOME && Object.keys(CLOUD_SECRETS).length === 0) {
-  console.warn("cloud home: its secrets came in this process's environment, which anything running as the same user can read in /proc; start it with cloud-home-start");
+  console.warn("cloud home: its secrets came in this process's environment, which anything running as the same user can read in /proc");
 }
 const threadStarters = new ThreadStarters(join(DATA_DIR, "thread-starters.json"));
 const commandAllowlist = new CommandAllowlistStore(join(DATA_DIR, "command-allowlist.json"));

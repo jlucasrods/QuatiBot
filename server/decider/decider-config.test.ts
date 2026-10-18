@@ -36,26 +36,16 @@ describe("decider config", () => {
     expect(childEnv).toEqual({ PATH: "/usr/bin" });
   });
 
-  it("on Cloud Pro, a key in the environment is the person's own and wins over the included decisions", async () => {
-    const relay = "https://cloud.example.test/api/cloud/services/decider";
-    vi.stubEnv("QUATI_CLOUD_DECIDER_URL", relay);
-    vi.stubEnv("QUATI_CLOUD_DECIDER_TOKEN", "quati_decide_included");
-    try {
-      const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ answers: { answer: { type: "noul", noul: 0.9 } } })));
-      const decider = createDecider({ config: loadConfig, fetch: fetchImpl });
-      expect(describeDecider(loadConfig())).toMatchObject({ configured: true, included: true, enabled: true });
-      await decider.testKey();
-      // the desktop hands the saved key over as env: now it is the one in use
-      process.env.QUATI_JEV_API_KEY = KEY;
-      saveConfig({ decider: { enabled: true } });
-      expect(describeDecider(loadConfig())).toEqual({ provider: "jev", configured: true, enabled: true, jobs: { roomRouting: true } });
-      await decider.testKey();
-      const calls = fetchImpl.mock.calls.map(([url, init]) => [String(url), (init!.headers as Record<string, string>).authorization]);
-      expect(calls).toEqual([[`${relay}/v1/systemone`, "Bearer quati_decide_included"], ["https://api.typesafe.ai/v1/systemone", `Bearer ${KEY}`]]);
-      expect(readFileSync(join(DATA_DIR, "config.json"), "utf8")).not.toContain("quati_decide_included");
-    } finally {
-      vi.unstubAllEnvs();
-    }
+  it("uses the operator's environment key at the configured Jev endpoint", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ answers: { answer: { type: "noul", noul: 0.9 } } })));
+    const decider = createDecider({ config: loadConfig, fetch: fetchImpl });
+    process.env.QUATI_JEV_API_KEY = KEY;
+    saveConfig({ decider: { enabled: true, baseUrl: "https://decisions.example.test" } });
+
+    expect(describeDecider(loadConfig())).toEqual({ provider: "jev", configured: true, enabled: true, jobs: { roomRouting: true } });
+    await expect(decider.testKey()).resolves.toMatchObject({ ok: true });
+    const calls = fetchImpl.mock.calls.map(([url, init]) => [String(url), (init!.headers as Record<string, string>).authorization]);
+    expect(calls).toEqual([["https://decisions.example.test/v1/systemone", `Bearer ${KEY}`]]);
   });
 
   it("the env key wins over the file, and a save keeps the env in step", () => {
@@ -74,7 +64,8 @@ describe("decider config", () => {
     if (!planned.ok) throw new Error(planned.error);
     saveConfig({ decider: planned.patch });
     const disk = JSON.parse(readFileSync(join(DATA_DIR, "config.json"), "utf8"));
-    expect(disk.decider).toEqual({ key: KEY, enabled: true, jobs: { roomRouting: true } });
+    expect(disk.decider).toEqual({ enabled: true, jobs: { roomRouting: true } });
+    expect(loadConfig().decider?.key).toBe(KEY);
     expect(describeDecider(loadConfig())).toEqual({ provider: "jev", configured: true, enabled: true, jobs: { roomRouting: true } });
   });
 
@@ -97,7 +88,7 @@ describe("decider config", () => {
     saveConfig({ decider: planned.patch });
     const disk = JSON.parse(readFileSync(join(DATA_DIR, "config.json"), "utf8"));
     expect(disk.decider).toEqual({
-      provider: "openrouter", openrouterModel: "openai/gpt-4o-mini", openrouterApi: "chat", openrouterKey: OR_KEY, enabled: true, jobs: { roomRouting: true },
+      provider: "openrouter", openrouterModel: "openai/gpt-4o-mini", openrouterApi: "chat", enabled: true, jobs: { roomRouting: true },
     });
     expect(describeDecider(loadConfig())).toEqual({
       provider: "openrouter", model: "openai/gpt-4o-mini", api: "chat", configured: true, enabled: true, jobs: { roomRouting: true },

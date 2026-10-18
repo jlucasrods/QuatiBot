@@ -1,5 +1,4 @@
 import type { AppConfig } from "../config.ts";
-import { voiceCredential } from "../included-services.ts";
 import * as chatterbox from "./chatterbox.ts";
 import * as elevenlabs from "./elevenlabs.ts";
 import * as grok from "./grok.ts";
@@ -23,8 +22,6 @@ export class NoVoiceConfigured extends Error {
   }
 }
 
-const elevenLabs = (cfg: AppConfig) => voiceCredential(cfg.tts?.key);
-
 export function voiceProvider(cfg: AppConfig): VoiceProvider {
   const provider = cfg.tts?.provider;
   return provider === "xai" || provider === "fish" || provider === "system" || provider === "chatterbox" ? provider : "elevenlabs";
@@ -36,7 +33,7 @@ export function providerConfigured(cfg: AppConfig): boolean {
   if (provider === "system") return systemVoices.systemVoicesAvailable();
   if (provider === "chatterbox") return Boolean(cfg.tts?.baseUrl?.trim());
   if (provider === "fish") return Boolean(cfg.tts?.fishKey);
-  return Boolean(elevenLabs(cfg));
+  return Boolean(cfg.tts?.key);
 }
 
 export function voiceConfigured(cfg: AppConfig): boolean {
@@ -47,7 +44,7 @@ export function voiceConfigured(cfg: AppConfig): boolean {
   }
   if (provider === "chatterbox") return Boolean(cfg.tts?.baseUrl?.trim() && cfg.tts?.voice);
   if (provider === "fish") return Boolean(cfg.tts?.fishKey && cfg.tts?.voice);
-  return Boolean(elevenLabs(cfg) && cfg.tts?.voice);
+  return Boolean(cfg.tts?.key && cfg.tts?.voice);
 }
 
 export function voiceReady(cfg: AppConfig, voiceId?: string): boolean {
@@ -58,13 +55,12 @@ export function voiceReady(cfg: AppConfig, voiceId?: string): boolean {
   }
   if (provider === "chatterbox") return Boolean(cfg.tts?.baseUrl?.trim() && (voiceId || cfg.tts?.voice));
   if (provider === "fish") return Boolean(cfg.tts?.fishKey && (voiceId || cfg.tts?.voice));
-  return Boolean(elevenLabs(cfg) && (voiceId || cfg.tts?.voice));
+  return Boolean(cfg.tts?.key && (voiceId || cfg.tts?.voice));
 }
 
 /** Never includes the key. */
 export function describeVoice(cfg: AppConfig) {
   const provider = voiceProvider(cfg);
-  const included = provider === "elevenlabs" && elevenLabs(cfg)?.included === true;
   return {
     configured: providerConfigured(cfg),
     ready: voiceConfigured(cfg),
@@ -73,7 +69,6 @@ export function describeVoice(cfg: AppConfig) {
     baseUrl: provider === "chatterbox" ? (cfg.tts?.baseUrl ?? "") : "",
     model: provider === "chatterbox" ? (cfg.tts?.model ?? "") : "",
     ...(provider === "fish" ? { fishModel: cfg.tts?.fishModel ?? fish.DEFAULT_FISH_MODEL } : {}),
-    ...(included ? { included: true as const } : {}),
   };
 }
 
@@ -93,9 +88,9 @@ export async function listVoices(cfg: AppConfig, run?: systemVoices.Runner): Pro
     const key = cfg.tts?.fishKey;
     return key ? fish.listVoices(key) : [];
   }
-  const credential = elevenLabs(cfg);
-  if (!credential) return [];
-  return elevenlabs.listVoices(credential.token, credential.api);
+  const key = cfg.tts?.key;
+  if (!key) return [];
+  return elevenlabs.listVoices(key);
 }
 
 export function speak(cfg: AppConfig, text: string, voiceId?: string, run?: systemVoices.Runner) {
@@ -137,11 +132,11 @@ export function speak(cfg: AppConfig, text: string, voiceId?: string, run?: syst
     if (!voice) throw new NoVoiceConfigured("voice");
     return fish.synthesize(text, voice, key, cfg.tts?.fishModel);
   }
-  const credential = elevenLabs(cfg);
-  if (!credential) throw new NoVoiceConfigured("key");
+  const key = cfg.tts?.key;
+  if (!key) throw new NoVoiceConfigured("key");
   const voice = voiceId || cfg.tts?.voice;
   if (!voice) throw new NoVoiceConfigured("voice");
-  return elevenlabs.synthesize(text, voice, credential.token, credential.api);
+  return elevenlabs.synthesize(text, voice, key);
 }
 
 export type { Voice } from "./elevenlabs.ts";

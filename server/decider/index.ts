@@ -1,11 +1,7 @@
-// Never throws into a turn: every failure comes back as { ok: false, reason }. The included relay
-// token goes only to the relay's URL, and only with requests the relay accepts.
 import type { AppConfig } from "../config.ts";
-import { deciderCredential, type ServiceCredential } from "../included-services.ts";
-import { jevBackend } from "./jev.ts";
+import { JEV_DEFAULT_BASE_URL, jevBackend } from "./jev.ts";
 import { appendDeciderLog, stateHash } from "./log.ts";
 import { OPENROUTER_DEFAULT_API, OPENROUTER_DEFAULT_BASE_URL, OPENROUTER_DEFAULT_MODEL, openrouterBackend } from "./openrouter.ts";
-import { KEY_CHECK_QUESTION, KEY_CHECK_STATE, relayAccepts, relaySeam } from "./relay.ts";
 import type {
   Answers, AskOptions, BackendResult, ChoiceAnswer, ChoiceQuestion, DeciderBackend, DeciderFailure, DeciderJob,
   DeciderProvider, DeciderQuestion, DeciderResult, DeciderSeam, OpenRouterApi, ScoreAnswer, YesNoAnswer,
@@ -40,34 +36,27 @@ export function deciderApi(cfg: AppConfig): OpenRouterApi {
   return cfg.decider.openrouterApi === "decisions" ? "decisions" : "chat";
 }
 
-/** An own key goes to its provider (or the operator base URL); else Cloud Pro's included token goes to the
- * Admin's relay, Jev only, and only for seams the relay accepts. */
 function deciderAccount(
   cfg: AppConfig,
-  seam?: DeciderSeam,
   draft?: string,
   provider: DeciderProvider | "off" = deciderProvider(cfg),
-): ServiceCredential | null {
+): { token: string; api: string } | null {
   if (provider === "openrouter") {
     const token = draft?.trim() || cfg.decider?.openrouterKey?.trim();
-    return token ? { token, api: cfg.decider?.openrouterBaseUrl?.trim() || OPENROUTER_DEFAULT_BASE_URL, included: false } : null;
+    return token ? { token, api: cfg.decider?.openrouterBaseUrl?.trim() || OPENROUTER_DEFAULT_BASE_URL } : null;
   }
-  const account = deciderCredential(draft?.trim() || cfg.decider?.key, cfg.decider?.baseUrl);
-  return account?.included && seam && !relaySeam(seam) ? null : account;
+  const token = draft?.trim() || cfg.decider?.key?.trim();
+  return token ? { token, api: cfg.decider?.baseUrl?.trim() || JEV_DEFAULT_BASE_URL } : null;
 }
 
 export function deciderConfigured(cfg: AppConfig): boolean {
   return Boolean(deciderAccount(cfg));
 }
 
-export function deciderIncludedHere(): boolean {
-  return deciderCredential(undefined, undefined)?.included === true;
-}
-
 export function deciderEnabled(cfg: AppConfig): boolean {
   const account = deciderAccount(cfg);
   if (!account || deciderProvider(cfg) === "off") return false;
-  return account.included ? cfg.decider?.enabled !== false : cfg.decider?.enabled === true;
+  return cfg.decider?.enabled === true;
 }
 
 /** Absent means on. */
@@ -76,7 +65,7 @@ export function deciderJobOn(cfg: AppConfig, job: DeciderJob): boolean {
 }
 
 export function deciderReady(cfg: AppConfig, job: DeciderJob): boolean {
-  return deciderEnabled(cfg) && deciderJobOn(cfg, job) && Boolean(deciderAccount(cfg, job));
+  return deciderEnabled(cfg) && deciderJobOn(cfg, job);
 }
 
 /** Never the key, nor the base URL (an operator setting with no UI). */
@@ -87,7 +76,6 @@ export function describeDecider(cfg: AppConfig) {
     provider: provider === "off" ? "jev" as const : provider,
     ...(provider === "openrouter" ? { model: deciderModel(cfg), api: deciderApi(cfg) } : {}),
     configured: Boolean(account),
-    ...(account?.included ? { included: true as const } : {}),
     enabled: deciderEnabled(cfg),
     jobs: { roomRouting: deciderJobOn(cfg, "roomRouting") },
   };
@@ -97,12 +85,10 @@ export function describeDecider(cfg: AppConfig) {
 export function deciderSavePatch(
   patch: Partial<DeciderConfig>,
   current: DeciderConfig | undefined,
-  included = false,
 ): { ok: true; patch: Partial<DeciderConfig> } | { ok: false; error: string } {
   const next: Partial<DeciderConfig> = { ...patch };
   const provider = patch.provider ?? current?.provider ?? "jev";
   const field = provider === "openrouter" ? "openrouterKey" : "key";
-  const includedHere = included && field === "key";
   const activeKey = patch[field];
   const savingKey = typeof activeKey === "string" && Boolean(activeKey.trim());
   const clearingKey = typeof activeKey === "string" && !activeKey.trim();
@@ -113,11 +99,11 @@ export function deciderSavePatch(
     next.enabled = patch.enabled ?? true;
     next.jobs = { ...current?.jobs, roomRouting: true, ...patch.jobs };
   } else if (clearingKey) {
-    if (!includedHere) next.enabled = false;
+    next.enabled = false;
   } else if (patch.jobs) {
     next.jobs = { ...current?.jobs, ...patch.jobs };
   }
-  if (next.enabled === true && !savingKey && !current?.[field]?.trim() && !includedHere) {
+  if (next.enabled === true && !savingKey && !current?.[field]?.trim()) {
     const key = field === "key" ? "a Jev API key" : "an OpenRouter API key";
     return { ok: false, error: `Save ${key} before turning on fast decisions.` };
   }
@@ -188,7 +174,6 @@ export function createDecider(deps: DeciderDeps): Decider {
     if (!deciderConfigured(cfg)) return cfg.decider?.enabled === true ? "no_key" : "disabled";
     if (!deciderEnabled(cfg)) return "disabled";
     if (!deciderJobOn(cfg, seam)) return "job_off";
-    if (!deciderAccount(cfg, seam)) return "no_key";
     return null;
   }
 
@@ -265,9 +250,7 @@ export function createDecider(deps: DeciderDeps): Decider {
       if (refused) return { ok: false, reason: refused };
       const provider = deciderProvider(cfg);
       const backend = provider === "off" ? offBackend : BACKENDS[provider];
-      const account = deciderAccount(cfg, seam)!;
-      // Through the included token, only the exact requests the relay takes.
-      if (account.included && !relayAccepts(seam, state, questions)) return { ok: false, reason: "misconfigured" };
+      const account = deciderAccount(cfg)!;
       return await call(seam, backend, {
         key: account.token,
         baseUrl: account.api,
@@ -304,11 +287,10 @@ export function createDecider(deps: DeciderDeps): Decider {
       try {
         const cfg = deps.config();
         const provider = input.provider ?? deciderProvider(cfg);
-        const account = deciderAccount(cfg, "keyCheck", input.key, provider);
+        const account = deciderAccount(cfg, input.key, provider);
         if (!account) return { ok: false, reason: "no_key" };
         const backend = provider === "off" ? offBackend : BACKENDS[provider];
-        const questions = { answer: { type: "yesno" as const, instructions: KEY_CHECK_QUESTION } };
-        if (account.included && !relayAccepts("keyCheck", KEY_CHECK_STATE, questions)) return { ok: false, reason: "misconfigured" };
+        const questions = { answer: { type: "yesno" as const, instructions: "Is this a connection check?" } };
         return single(await call("keyCheck", backend, {
           key: account.token,
           baseUrl: account.api,
@@ -317,7 +299,7 @@ export function createDecider(deps: DeciderDeps): Decider {
               ? { model: input.model.trim(), api: input.api ?? "chat" }
               : { model: deciderModel(cfg), api: deciderApi(cfg) }
             : {}),
-          state: KEY_CHECK_STATE,
+          state: { purpose: "QuatiBot is checking that a decision-model key works." },
           questions,
         }, { timeoutMs: KEY_CHECK_TIMEOUT_MS, ...options }));
       } catch {

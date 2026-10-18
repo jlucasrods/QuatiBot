@@ -61,7 +61,6 @@
   "server/context-compaction.e2e.test.ts": 47,
   "server/control-quati.test.ts": 11,
   "server/create-bot-model.e2e.test.ts": 7,
-  "server/decider-included.e2e.test.ts": 4,
   "server/decider-rooms.e2e.test.ts": 5,
   "server/delta-context.e2e.test.ts": 316,
   "server/digest-control.e2e.test.ts": 5,
