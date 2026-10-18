@@ -22,10 +22,9 @@ import { failedTurnCause, signedOutEngine } from "@/lib/failed-turn";
 import { plainErrorLine } from "@/lib/plain-error";
 import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } from "@/lib/place-view";
 import type { PlaceRow } from "../../shared/place-view";
-import { trialCreditKind, type TrialCreditRefusal } from "../../shared/trial-credit";
 import { isPureLeakedSystemHarnessMessage, stripLeakedSystemHarnessMessages } from "../../shared/system-message-guard.ts";
 import { ConversationalReply, QuickModelNote, isConversational, useReplySegments, useThreadOpenedAt } from "./ConversationalReply";
-import type { LocaleKey } from "@/locales";
+
 import { isProviderSafetyBlock, PROVIDER_SAFETY_GUIDANCE, PROVIDER_SAFETY_HELP_URL } from "../../shared/provider-safety";
 import { isCancelledTranscriptRow } from "../../shared/client-cancel";
 import { BotAvatar } from "./Avatar";
@@ -225,18 +224,6 @@ function PlaceFailedRow({ place, botId, threadId, onRetry }: {
             : () => { openPlaceAction(id, { botId, threadId }, dispatch); };
     return <ErrorRow message={view.line} action={view.action && onClick ? { label: view.action.label, onClick } : null}/>;
 }
-const TRIAL_CREDIT_LINE: Record<TrialCreditRefusal, LocaleKey> = {
-    used_up: "engines.trialCreditUsedUp", ended: "engines.trialCreditEnded", paused: "engines.trialCreditPaused", too_low: "engines.trialCreditTooLow",
-};
-function TrialCreditFailedRow({ kind, onRetry }: {
-    kind: TrialCreditRefusal;
-    onRetry?: () => void;
-}) {
-    const { dispatch } = useStore();
-    if (kind === "paused")
-        return <ErrorRow message={t(TRIAL_CREDIT_LINE[kind])} onRetry={onRetry}/>;
-    return <ErrorRow message={t(TRIAL_CREDIT_LINE[kind])} action={{ label: t("chat.error.connectOwnAi"), onClick: () => dispatch({ type: "toggleAppSettings", open: true, section: "engines" }) }}/>;
-}
 export function claudeUpdateTarget(engine: InstanceInfo | undefined): InstanceInfo | undefined {
     return engine?.driverKind === "claudeAgent" && !engine.readOnly ? engine : undefined;
 }
@@ -249,9 +236,6 @@ export function FailedTurnRow({ tool, engine, onRetry, botId, threadId }: {
 }) {
     if (tool.place && botId)
         return <PlaceFailedRow place={tool.place} botId={botId} threadId={threadId} onRetry={onRetry}/>;
-    const credit = trialCreditKind(failedTurnCause(tool.name) ?? "");
-    if (credit)
-        return <TrialCreditFailedRow kind={credit} onRetry={onRetry}/>;
     const signedOut = signedOutEngine(tool, engine);
     const cause = failedTurnCause(tool.name) ?? tool.name;
     return (<ErrorRow message={cause} headline={signedOut ? t("chat.error.signedOut", { name: signedOut.displayName }) : plainErrorLine(cause)} onRetry={onRetry} setupInstance={tool.setup ? engine : undefined} claudeUpdateInstance={tool.claudeUpdate ? claudeUpdateTarget(engine) : undefined}/>);

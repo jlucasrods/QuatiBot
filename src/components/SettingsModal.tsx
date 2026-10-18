@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Archive, CircleUser, Coins, FlaskConical, LockKeyhole, Monitor, Palette, ScrollText, Search, Sparkles, TabletSmartphone, Terminal, User, X, Building2, Zap, BookOpen } from "lucide-react";
+import { Archive, CircleUser, Coins, FlaskConical, LockKeyhole, Monitor, Palette, ScrollText, Search, Sparkles, TabletSmartphone, Terminal, User, X, Zap, BookOpen } from "lucide-react";
 import { api, useStore, type AppSettingsSection, type ConfigStatus } from "@/state/store";
 import { builtInBrowserEnabled, routinesInConversationEnabled, showToolCallsEnabled, skillAuthoringEnabled, skillsLibraryEnabled } from "@/lib/feature-flags";
 import { localeChoices, type LocaleKey } from "@/locales";
@@ -68,11 +68,8 @@ export const SECTIONS: Array<{
     { id: "engines", group: "ai", labelKey: "settings.section.engines", icon: Terminal, keywords: ["models", "model providers", "engines", "claude", "codex", "grok", "providers", "cli", "sign in", "subscription"] },
     { id: "decisionModel", group: "ai", labelKey: "settings.section.decisionModel", icon: Zap, keywords: ["decision", "jev", "typesafe", "routing", "auto", "rooms", "who answers"] },
     { id: "skills", group: "ai", labelKey: "settings.section.skills", icon: BookOpen, keywords: ["skills", "library", "assign", "agent skills", "skill md"] },
-    { id: "desktopWorkspaces", group: "computers", labelKey: "settings.section.desktopWorkspaces", icon: Building2, keywords: ["workspace", "cloud", "hosted", "vps", "server", "servers", "connect", "pair", "switch", "local"] },
     { id: "computer", group: "computers", labelKey: "settings.section.computer", icon: Monitor, keywords: ["vm", "virtual", "desktop", "browser", "built-in browser", "profiles", "browser profiles"] },
     { id: "logins", group: "computers", labelKey: "settings.section.logins", icon: LockKeyhole, keywords: ["logins", "login", "passwords", "password", "sign in", "2fa", "one-time code", "totp", "fill_login", "1password", "vault"] },
-    { id: "cloudAccount", group: "account", labelKey: "settings.section.cloudAccount", icon: User, keywords: ["cloud", "account", "personal", "sign in", "pro", "subscription", "billing"] },
-    { id: "organization", group: "account", labelKey: "settings.section.organization", icon: Building2, keywords: ["company", "organization", "organisation", "sign in", "enroll", "managed", "models", "disconnect"] },
     { id: "usage", group: "account", labelKey: "settings.section.usage", icon: Coins, keywords: ["tokens", "cost", "history", "model", "used"] },
     { id: "backups", group: "account", labelKey: "settings.section.backups", icon: Archive, keywords: ["export", "import", "restore", "full backup", "password", "recovery"] },
     { id: "activity", group: "account", labelKey: "settings.section.activity", icon: ScrollText, keywords: ["activity", "audit", "log", "history", "who changed", "approvals", "decisions", "admin"] },
@@ -88,8 +85,8 @@ export const SIMPLE_PAGES: SimpleSettingsPage[] = [
     { id: "general", labelKey: "settings.section.general", icon: User, sections: ["general"] },
     { id: "appearance", labelKey: "settings.section.appearance", icon: Palette, sections: ["appearance"] },
     { id: "ai", labelKey: "settings.group.ai", icon: Sparkles, sections: ["engines", "decisionModel"] },
-    { id: "computers", labelKey: "settings.group.computers", icon: Monitor, sections: ["remoteAccess", "desktopWorkspaces", "computer", "logins"] },
-    { id: "account", labelKey: "settings.group.account", icon: CircleUser, sections: ["cloudAccount", "organization", "people", "activity"] },
+    { id: "computers", labelKey: "settings.group.computers", icon: Monitor, sections: ["remoteAccess", "computer", "logins"] },
+    { id: "account", labelKey: "settings.group.account", icon: CircleUser, sections: ["people", "activity"] },
 ];
 export const SIMPLE_HIDDEN_SECTIONS: readonly AppSettingsSection[] = ["usage", "backups", "experimental", "skills"];
 export function simpleSettingsPages(available: ReadonlyArray<(typeof SECTIONS)[number]>, open: AppSettingsSection): SimpleSettingsPage[] {
@@ -438,9 +435,6 @@ export function SettingsModal() {
     const q = query.trim().toLowerCase();
     const ownerOrAdmin = useOwnerOrAdmin();
     const baseSections = SECTIONS.filter((_entry) => true)
-        .filter((entry) => entry.id !== "desktopWorkspaces" || Boolean(undefined))
-        .filter((entry) => entry.id !== "organization" || Boolean(undefined))
-        .filter((entry) => entry.id !== "cloudAccount" || Boolean(undefined))
         .filter((entry) => entry.id !== "people" || (state.config?.cloudHome !== true))
         .filter((entry) => entry.id !== "activity" || (ownerOrAdmin === true));
     const availableSections = baseSections.filter((entry) => entry.id !== "skills" || skillsLibraryEnabled(state.config));
@@ -512,12 +506,6 @@ export function SettingsModal() {
     const openSection = (id: AppSettingsSection) => dispatch({ type: "toggleAppSettings", open: true, section: id });
     const renderSection = (id: AppSettingsSection) => {
         switch (id) {
-            case "desktopWorkspaces":
-                return null;
-            case "organization":
-                return null;
-            case "cloudAccount":
-                return null;
             case "general":
                 return (<>
             <AdvancedModeRow /><Card title={t("settings.profile.title")} subtitle={t("settings.profile.sharedSubtitle")}>

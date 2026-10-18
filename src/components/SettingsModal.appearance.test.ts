@@ -391,42 +391,4 @@ describe("Settings → Appearance", () => {
       setLocale("en");
     }
   });
-
-  it("offers desktop connections as a top-level page without exposing the list remotely", () => {
-    fixture.section = "desktopWorkspaces";
-    vi.stubGlobal("window", { quati: { environments: {} } });
-    const local = render();
-    expect(local).toContain('<option value="desktopWorkspaces" selected="">Servers</option>');
-    expect(local).toContain("Server address or pairing link");
-    expect(local).toContain("Name (optional)");
-    expect(local).toContain("Your servers");
-    expect(local).toContain("npx quatibot pair --label");
-    fixture.section = "general";
-    vi.stubGlobal("window", { quati: { workspaces: {} } });
-    expect(render()).not.toContain('<option value="desktopWorkspaces"');
-  });
-
-  it("offers optional Organisation settings only through the local desktop bridge", () => {
-    fixture.section = "organization";
-    vi.stubGlobal("window", { quati: { organization: {} } });
-    const local = render();
-    expect(local).toContain('<option value="organization" selected="">Organization</option>');
-    expect(local).toContain("personal and local models");
-    fixture.section = "appearance";
-    vi.stubGlobal("window", {});
-    expect(render()).not.toContain('<option value="organization"');
-    vi.stubGlobal("window", { quati: { organization: {}, remoteClient: { active: true } } });
-    expect(render()).not.toContain('<option value="organization"');
-    expect(render()).toContain("Midnight");
-  });
-  it("offers personal Cloud separately and only through the local desktop bridge", () => {
-    fixture.section = "cloudAccount";
-    vi.stubGlobal("window", { quati: { cloudAccount: {} } });
-    expect(render()).toContain('<option value="cloudAccount" selected="">Quati Cloud</option>');
-    expect(render()).toContain("Free local use");
-    fixture.section = "appearance";
-    vi.stubGlobal("window", {}); expect(render()).not.toContain('<option value="cloudAccount"');
-    vi.stubGlobal("window", { quati: { cloudAccount: {}, remoteClient: { active: true } } });
-    expect(render()).not.toContain('<option value="cloudAccount"');
-  });
 });

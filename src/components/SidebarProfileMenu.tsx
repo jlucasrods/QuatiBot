@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { CircleUserRound, Gauge, Info, Keyboard, Puzzle, Settings as SettingsIcon } from "lucide-react";
+import { Gauge, Info, Keyboard, Puzzle, Settings as SettingsIcon } from "lucide-react";
 import { InitialsAvatar } from "./Avatar";
 import { AboutDialog } from "./AboutDialog";
 import { SidebarPopoverMenu, type SidebarMenuItem } from "./SidebarPopoverMenu";
@@ -24,15 +24,13 @@ export function profileLabel(profile?: {
 }): string {
     return profile?.name?.trim() || profile?.email?.trim() || t("sidebar.profile.you");
 }
-export function profileMenuItems({ usage, account, onUsage, onApps, onSettings, onShortcuts, onAbout, onAccount }: {
+export function profileMenuItems({ usage, onUsage, onApps, onSettings, onShortcuts, onAbout }: {
     usage: boolean;
-    account: string | null;
     onUsage: () => void;
     onApps: () => void;
     onSettings: () => void;
     onShortcuts: () => void;
     onAbout: () => void;
-    onAccount: () => void;
 }): SidebarMenuItem[] {
     return [
         ...(usage ? [{ key: "usage", label: t("settings.section.usage"), icon: <Gauge size={18}/>, onSelect: onUsage }] : []),
@@ -40,7 +38,6 @@ export function profileMenuItems({ usage, account, onUsage, onApps, onSettings, 
         { key: "shortcuts", label: t("sidebar.menu.shortcuts"), icon: <Keyboard size={18}/>, trailing: <ShortcutHint id="shortcuts-cheat-sheet"/>, onSelect: onShortcuts },
         { key: "about", label: t("sidebar.menu.about"), icon: <Info size={18}/>, onSelect: onAbout },
         { key: "settings", label: t("sidebar.menu.settings"), icon: <SettingsIcon size={18}/>, onSelect: onSettings },
-        ...(account ? [{ key: "account", label: account, icon: <CircleUserRound size={18}/>, separatorBefore: true, onSelect: onAccount }] : []),
     ];
 }
 export function SidebarProfileMenu({ iconOnly = false }: {
@@ -50,10 +47,8 @@ export function SidebarProfileMenu({ iconOnly = false }: {
     const [aboutOpen, setAboutOpen] = useState(false);
     const triggerRef = useRef<HTMLSpanElement>(null);
     const name = profileLabel(state.config?.profile);
-    const cloudAccount = Boolean(undefined);
     const items = profileMenuItems({
         usage: true,
-        account: cloudAccount ? t("settings.section.cloudAccount") : null,
         onUsage: () => dispatch({ type: "toggleAppSettings", open: true, section: "usage" }),
         onApps: () => dispatch({ type: "togglePlugins", open: true }),
         onSettings: () => dispatch({ type: "toggleAppSettings" }),
@@ -62,7 +57,6 @@ export function SidebarProfileMenu({ iconOnly = false }: {
             dispatch({ type: "toggleShortcuts", open: true });
         },
         onAbout: () => setAboutOpen(true),
-        onAccount: () => dispatch({ type: "toggleAppSettings", open: true, section: "cloudAccount" }),
     });
     return (<>
       <SidebarPopoverMenu items={items} ariaLabel={name} triggerClassName={iconOnly ? "shrink-0 rounded-xl" : "w-full"} triggerTitle={iconOnly ? name : undefined} renderTrigger={({ open }) => iconOnly ? (<span ref={triggerRef} className={cn("relative flex size-[46px] items-center justify-center rounded-xl transition-colors", open ? "bg-raised" : "hover:bg-raised/50")}>

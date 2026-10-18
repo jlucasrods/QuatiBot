@@ -3,9 +3,8 @@ import { createElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError, CLOUD_LINK_SETTINGS, configStatusFromFrame, currentTaskBot, desktopApprovalBridge, initialState, liveCallFromFrame, loadSnapshotBoundary, openBot, openNotificationTarget, openThread, persistBotUpdate, persistTaskApproval, pinBotThreadAction, reducer, requestConfirmedBotDeletion, runtimeFrameAction, StoreProvider, useStore, visibleMessages, visibleNotificationThread, type AppState, type Bot, type BotAnnouncement, type ConfigStatusFrame, type Group, type Message, type Action, } from "./store";
+import { api, ApiError, configStatusFromFrame, currentTaskBot, initialState, liveCallFromFrame, loadSnapshotBoundary, openBot, openNotificationTarget, openThread, persistBotUpdate, persistTaskApproval, pinBotThreadAction, reducer, requestConfirmedBotDeletion, runtimeFrameAction, StoreProvider, useStore, visibleMessages, visibleNotificationThread, type AppState, type Bot, type BotAnnouncement, type ConfigStatusFrame, type Group, type Message, type Action, } from "./store";
 import { LAST_CONVERSATION_KEY } from "@/lib/last-conversation";
-import { cacheDesktopCapabilities, desktopCapabilitiesNow } from "@/lib/desktop";
 import { LAST_BOT_SECTION_KEY } from "@/lib/last-bot-section";
 import { transcriptLookups } from "@/lib/transcript-derivations";
 import { openLiveEvents, type LiveEventSourceLike, type LiveEventsPlatform } from "../lib/live-events";
@@ -71,23 +70,6 @@ describe("composer thread approval persistence", () => {
         const request = vi.fn();
         await expect(persistTaskApproval("bot", "thread", { approvalMode: "custom" }, undefined, request)).rejects.toThrow("packaged desktop");
         expect(request).not.toHaveBeenCalled();
-    });
-    it("uses the desktop bridge only where it works: the packaged app's own window", () => {
-        const approvals = { setMode: vi.fn() };
-        const packaged = (value: boolean) => {
-            const now = desktopCapabilitiesNow();
-            cacheDesktopCapabilities({ ...now, host: { ...now.host, packaged: value } });
-        };
-        try {
-            packaged(false);
-            expect(desktopApprovalBridge()).toBeUndefined();
-            packaged(true);
-            expect(desktopApprovalBridge()).toBe(approvals);
-            expect(desktopApprovalBridge()).toBeUndefined();
-        }
-        finally {
-            packaged(false);
-        }
     });
     it("propagates failed bridge grants", async () => {
         const request = vi.fn();
@@ -301,20 +283,6 @@ describe("keyboard shortcuts dialog state", () => {
         const closed = reducer(opened, { type: "toggleShortcuts" });
         expect(closed.shortcutsOpen).toBe(false);
         expect(closed.botSettingsSection).toBe("soul");
-    });
-});
-describe("Settings opened by the Cloud link", () => {
-    it("marks only the link's own opening, counts each link, and clears on any other Settings navigation", () => {
-        expect(initialState.appSettingsCloudLink).toBe(0);
-        const link = CLOUD_LINK_SETTINGS;
-        const opened = reducer(initialState, link);
-        expect(opened).toMatchObject({ appSettingsOpen: true, appSettingsSection: "cloudAccount", appSettingsCloudLink: 1 });
-        expect(reducer(opened, link).appSettingsCloudLink).toBe(2);
-        expect(reducer(opened, { type: "toggleAppSettings", open: true, section: "cloudAccount" }).appSettingsCloudLink).toBe(0);
-        expect(reducer(opened, { type: "toggleAppSettings", open: true, section: "general" }).appSettingsCloudLink).toBe(0);
-        expect(reducer(opened, { type: "toggleAppSettings", open: false })).toMatchObject({ appSettingsOpen: false, appSettingsCloudLink: 0 });
-        expect(reducer(opened, { type: "toggleAppSettings" }).appSettingsCloudLink).toBe(0);
-        expect(reducer(initialState, { ...link, open: false }).appSettingsCloudLink).toBe(0);
     });
 });
 describe("connector grants persistence", () => {

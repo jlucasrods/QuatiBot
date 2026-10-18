@@ -30,7 +30,6 @@ function SkeletonRow({ index }: {
 }
 export function EnginesBeat({ onNext, setMascot, bump }: BeatProps & {
     hosted?: boolean;
-    onOpenOrganisation?: () => void;
 }) {
     const { state, dispatch } = useStore();
     const [loaded, setLoaded] = useState(false);

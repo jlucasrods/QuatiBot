@@ -79,7 +79,7 @@ describe("who gets the welcome flow", () => {
     vi.stubGlobal("window", LOCAL_PAGE);
     const { tree } = gate(LOCAL_VIEWER);
     expect(tree?.type).toBe(WelcomeFlow);
-    expect(tree?.props).toMatchObject({ hosted: false, initialBeat: undefined, replay: false });
+    expect(tree?.props).toMatchObject({ hosted: false, replay: false });
   });
 
   it("opens the hosted beat set for a hosted workspace's admin", () => {
@@ -150,44 +150,14 @@ describe("who gets the welcome flow", () => {
     expect(admin.props.hosted).toBe(true);
   });
 
-  it("shows nothing to a remote client member or while a browser's session is unknown", () => {
+  it("waits for the browser session before showing onboarding", () => {
     expect(gate(null).tree).toBeNull();
-    vi.stubGlobal("window", { quati: { remoteClient: { active: true } } });
-    expect(gate({ hosted: true, canSave: false }).tree).toBeNull();
-    expect(gate(LOCAL_VIEWER).tree).toBeNull();
   });
 
   it("stays closed after the admin finished it", () => {
     store.state = { ...store.state, config: { onboarding: { ...EMPTY_ONBOARDING, completedAt: "2026-09-23T00:00:00.000Z", version: WELCOME_VERSION } } };
     expect(gate({ hosted: true, canSave: true }).tree).toBeNull();
     expect(gate(LOCAL_VIEWER).tree).toBeNull();
-  });
-
-  it("steps aside for QUATI Cloud opened by the Cloud link, not for a normal visit there", () => {
-    vi.stubGlobal("window", LOCAL_PAGE);
-    store.state = { ...store.state, appSettingsOpen: true, appSettingsSection: "cloudAccount", appSettingsCloudLink: 0 };
-    expect(gate(LOCAL_VIEWER).tree).not.toBeNull();
-    store.state = { ...store.state, appSettingsCloudLink: 1 };
-    expect(gate(LOCAL_VIEWER).tree).toBeNull();
-    store.state = { ...store.state, appSettingsSection: "general" };
-    expect(gate(LOCAL_VIEWER).tree).not.toBeNull();
-    store.state = { ...store.state, appSettingsOpen: false, appSettingsSection: "cloudAccount" };
-    expect(gate(LOCAL_VIEWER).tree).not.toBeNull();
-  });
-
-  it("resumes on the engines beat after the organisation row opens Settings", () => {
-    vi.stubGlobal("window", LOCAL_PAGE);
-    const first = gate(LOCAL_VIEWER).tree!;
-    first.props.onOpenOrganisation!();
-    expect(store.dispatch).toHaveBeenCalledWith({ type: "toggleAppSettings", open: true, section: "organization" });
-    store.state = { ...store.state, appSettingsOpen: true, appSettingsSection: "organization" };
-    expect(gate(LOCAL_VIEWER).tree).toBeNull();
-    store.state = { ...store.state, appSettingsOpen: false };
-    const resumed = gate(LOCAL_VIEWER).tree!;
-    expect(resumed.props.initialBeat).toBe("engines");
-    (resumed.props.onDone as () => void)();
-    store.state = { ...store.state, welcomeOpen: true };
-    expect(gate(LOCAL_VIEWER).tree?.props.initialBeat).toBeUndefined();
   });
 });
 
@@ -200,13 +170,6 @@ describe("useWelcomeViewer", () => {
     });
     return value;
   };
-
-  it("knows the desktop app's own window without asking", () => {
-    vi.stubGlobal("window", LOCAL_PAGE);
-    expect(viewer()).toEqual(LOCAL_VIEWER);
-    for (const effect of fixture.effects) effect();
-    expect(store.api).not.toHaveBeenCalled();
-  });
 
   it("asks the server from a hosted page the desktop app opened, whose bridge is reduced", async () => {
     vi.stubGlobal("window", REMOTE_PAGE);

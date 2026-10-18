@@ -17,11 +17,11 @@ describe("profile identity", () => {
 
 describe("profile menu", () => {
   it.each([
-    [true, "QuatiBot Cloud", ["usage", "apps", "shortcuts", "about", "settings", "account"]],
-    [false, null, ["apps", "shortcuts", "about", "settings"]],
-  ] as const)("offers the available local actions (usage: %s, account: %s)", (usage, account, keys) => {
-    const actions = { onUsage: vi.fn(), onApps: vi.fn(), onSettings: vi.fn(), onShortcuts: vi.fn(), onAbout: vi.fn(), onAccount: vi.fn() };
-    const items = profileMenuItems({ usage, account, ...actions });
+    [true, ["usage", "apps", "shortcuts", "about", "settings"]],
+    [false, ["apps", "shortcuts", "about", "settings"]],
+  ] as const)("offers the available local actions (usage: %s)", (usage, keys) => {
+    const actions = { onUsage: vi.fn(), onApps: vi.fn(), onSettings: vi.fn(), onShortcuts: vi.fn(), onAbout: vi.fn() };
+    const items = profileMenuItems({ usage, ...actions });
     expect(items.map(item => item.key)).toEqual(keys);
     expect(items.find(item => item.key === "apps")?.label).toBe("Extensões");
 
@@ -31,7 +31,5 @@ describe("profile menu", () => {
     expect(actions.onShortcuts).toHaveBeenCalledOnce();
     expect(actions.onAbout).toHaveBeenCalledOnce();
     expect(actions.onUsage).toHaveBeenCalledTimes(usage ? 1 : 0);
-    expect(actions.onAccount).toHaveBeenCalledTimes(account ? 1 : 0);
-    expect(items.filter(item => item.separatorBefore).map(item => item.key)).toEqual(account ? ["account"] : []);
   });
 });

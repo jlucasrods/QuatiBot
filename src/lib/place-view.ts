@@ -85,7 +85,7 @@ export function openPlaceAction(id: PlaceActionId, target: {
     threadId?: string;
     place?: Place;
 }, dispatch: (action: Action) => void): boolean {
-    const appSettings = (section: "engines" | "computer" | "connections" | "cloudAccount") => dispatch({ type: "toggleAppSettings", open: true, section });
+    const appSettings = (section: "engines" | "computer" | "connections") => dispatch({ type: "toggleAppSettings", open: true, section });
     switch (id) {
         case "choose-model":
             dispatch({ type: "toggleSettings", open: true, section: "model", botId: target.botId });
@@ -112,14 +112,6 @@ export function openPlaceAction(id: PlaceActionId, target: {
         case "open-team-map":
             dispatch({ type: "showTeamMap" });
             return true;
-        case "see-plan": {
-            appSettings("cloudAccount");
-            return true;
-        }
-        case "open-my-cloud": {
-            appSettings("cloudAccount");
-            return true;
-        }
         case "clear-pin":
             if (!target.threadId)
                 return false;

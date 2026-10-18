@@ -610,7 +610,7 @@ export interface InstanceInfo {
     };
     freeUpSpace?: boolean;
 }
-export type AppSettingsSection = "general" | "desktopWorkspaces" | "organization" | "cloudAccount" | "appearance" | "experimental" | "connections" | "decisionModel" | "engines" | "remoteAccess" | "remote" | "computer" | "logins" | "usage" | "people" | "activity" | "backups" | "skills";
+export type AppSettingsSection = "general" | "appearance" | "experimental" | "connections" | "decisionModel" | "engines" | "remoteAccess" | "remote" | "computer" | "logins" | "usage" | "people" | "activity" | "backups" | "skills";
 export type BotSettingsSection = "overview" | "identity" | "slack" | "soul" | "skills" | "memory" | "routines" | "access" | "model" | "permissions" | "voice" | "visibility" | "history" | "usage";
 export interface ModelVariantSession {
     instanceId: string;
@@ -666,12 +666,7 @@ export interface AppState {
     notifications: NotificationLogEntry[];
     appSettingsOpen: boolean;
     appSettingsSection: AppSettingsSection;
-    appSettingsCloudLink: number;
     shortcutsOpen: boolean;
-    cloudAdd: {
-        source: import("@/lib/cloud-plan").CloudSource;
-    } | null;
-    cloudHowTo: boolean;
     welcomeOpen: boolean;
     tourOpen: boolean;
     botSettingsSection: BotSettingsSection;
@@ -1250,7 +1245,6 @@ export type Action = {
     type: "toggleAppSettings";
     open?: boolean;
     section?: AppSettingsSection;
-    cloudLink?: boolean;
 } | {
     type: "togglePlugins";
     open?: boolean;
@@ -1301,14 +1295,6 @@ export type Action = {
 } | {
     type: "toggleShortcuts";
     open?: boolean;
-} | {
-    type: "openCloudAdd";
-    source: import("@/lib/cloud-plan").CloudSource;
-} | {
-    type: "closeCloudAdd";
-} | {
-    type: "cloudHowTo";
-    open: boolean;
 } | {
     type: "toggleWelcome";
     open?: boolean;
@@ -1397,7 +1383,6 @@ function optimisticUserMessage(text: string, sendId: string, replyToId?: string,
         channelMode,
     };
 }
-export const CLOUD_LINK_SETTINGS = { type: "toggleAppSettings", open: true, section: "cloudAccount", cloudLink: true } as const satisfies Action;
 export function reducer(state: AppState, action: Action): AppState {
     if (action.type === "messageAdded" || action.type === "messagePatched" || action.type === "threadActive" || action.type === "optimisticMessageRemoved") {
         const owner = state.bots.find((bot) => (bot.threadId !== action.threadId || bot.awaitingThreadSnapshot) && bot.tasks?.some((task) => task.threadId === action.threadId));
@@ -2049,7 +2034,6 @@ export function reducer(state: AppState, action: Action): AppState {
                 appSettingsOpen: open,
                 activityOpen: open ? false : state.activityOpen,
                 appSettingsSection: action.section ?? state.appSettingsSection,
-                appSettingsCloudLink: action.cloudLink && open ? state.appSettingsCloudLink + 1 : 0,
                 settingsOpen: open ? false : state.settingsOpen,
                 computerOpen: open ? false : state.computerOpen,
                 inspectorOpen: open ? false : state.inspectorOpen,
@@ -2065,12 +2049,6 @@ export function reducer(state: AppState, action: Action): AppState {
                 shortcutsOpen: open,
             };
         }
-        case "openCloudAdd":
-            return { ...state, cloudAdd: state.cloudAdd ?? { source: action.source }, cloudHowTo: false };
-        case "closeCloudAdd":
-            return state.cloudAdd ? { ...state, cloudAdd: null } : state;
-        case "cloudHowTo":
-            return state.cloudHowTo === action.open ? state : { ...state, cloudHowTo: action.open };
         case "toggleTour": {
             const open = action.open ?? !state.tourOpen;
             return { ...state, tourOpen: open, appSettingsOpen: open ? false : state.appSettingsOpen };
@@ -2432,10 +2410,7 @@ export const initialState: AppState = {
     notifications: [],
     appSettingsOpen: false,
     appSettingsSection: "general",
-    appSettingsCloudLink: 0,
     shortcutsOpen: false,
-    cloudAdd: null,
-    cloudHowTo: false,
     welcomeOpen: false,
     tourOpen: false,
     botSettingsSection: "overview",

@@ -59,7 +59,6 @@ export function WelcomeFlow({
   dictation,
   entrance = "arrive",
   hosted = false,
-  onOpenOrganisation,
 }: {
   bot: Bot | null;
   onDone: () => void;
@@ -70,7 +69,6 @@ export function WelcomeFlow({
   dictation?: boolean;
   entrance?: Motion;
   hosted?: boolean;
-  onOpenOrganisation?: () => void;
 }) {
   const { dispatch } = useStore();
   const { capabilities } = useDesktopCapabilities();
@@ -209,7 +207,7 @@ export function WelcomeFlow({
         <div key={beat} className={cn("flex flex-col", beat === "engines" ? "min-h-0" : "shrink-0")}>
           {beat === "hello" && <HelloBeat {...beatProps} hosted={hosted} />}
           {beat === "reel" && <FeatureReel {...beatProps} />}
-          {beat === "engines" && <EnginesBeat {...beatProps} hosted={hosted} onOpenOrganisation={onOpenOrganisation} />}
+          {beat === "engines" && <EnginesBeat {...beatProps} hosted={hosted} />}
           {beat === "permissions" && <PermissionsBeat {...beatProps} />}
           {beat === "bot" && (
             <MeetYourBotBeat
