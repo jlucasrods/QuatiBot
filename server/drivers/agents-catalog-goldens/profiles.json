@@ -1,10 +1,14 @@
 {
   "default": {
-    "bytes": 52510,
-    "sha256": "8dc1d66916fe044d4041b1da0774f127ee1510f152fdead9eb96ce724ca857f9",
+    "bytes": 54483,
+    "sha256": "1d0299d2903457bd5338c5fb1120b0f2df40017a90fddfc895e735d005ba0915",
     "tools": [
       "tool_result_read",
       "list_room_targets",
+      "background_tasks_list",
+      "background_task_details",
+      "background_task_interrupt",
+      "background_task_steer",
       "coordinate_bots",
       "assignment_status",
       "list_bots",
@@ -42,11 +46,15 @@
     ]
   },
   "voice": {
-    "bytes": 53251,
-    "sha256": "a62e2e33a5ecfb66a3ef9dfc77240046c00ff670a08e654c97ebc41d5874eecb",
+    "bytes": 55224,
+    "sha256": "8b8bff116a16702c3e5bb318654d909369fa88392a3484b04658c4defb9a3d86",
     "tools": [
       "tool_result_read",
       "list_room_targets",
+      "background_tasks_list",
+      "background_task_details",
+      "background_task_interrupt",
+      "background_task_steer",
       "coordinate_bots",
       "assignment_status",
       "list_bots",
@@ -85,11 +93,15 @@
     ]
   },
   "skills": {
-    "bytes": 55409,
-    "sha256": "693d73d282adf032f0663913c4f051a41026a116850b677d22d58d8f336ac914",
+    "bytes": 57382,
+    "sha256": "c2a85bee283261654656ce21832b7b87680a5ca9780e26299fe08c105adc1bae",
     "tools": [
       "tool_result_read",
       "list_room_targets",
+      "background_tasks_list",
+      "background_task_details",
+      "background_task_interrupt",
+      "background_task_steer",
       "coordinate_bots",
       "assignment_status",
       "list_bots",
@@ -129,11 +141,15 @@
     ]
   },
   "skills+voice": {
-    "bytes": 56150,
-    "sha256": "9e32548de1b51b70057297309492f93fe95ea27fe21948582660a1950bcbed83",
+    "bytes": 58123,
+    "sha256": "84cc6c15dec47cb56065032926ae426ca4330f2a62263cc45debe9fc2982fc35",
     "tools": [
       "tool_result_read",
       "list_room_targets",
+      "background_tasks_list",
+      "background_task_details",
+      "background_task_interrupt",
+      "background_task_steer",
       "coordinate_bots",
       "assignment_status",
       "list_bots",
@@ -174,11 +190,15 @@
     ]
   },
   "non-chief": {
-    "bytes": 42860,
-    "sha256": "00bea07611f0d40d5a62f276c539dcfedf237eac635fb92b68f5d88f6719ba29",
+    "bytes": 44833,
+    "sha256": "36ddd0d01ac2ab340a0bf5a96272d736ebb664c32d6e9d169e9de7bf560d8ffc",
     "tools": [
       "tool_result_read",
       "list_room_targets",
+      "background_tasks_list",
+      "background_task_details",
+      "background_task_interrupt",
+      "background_task_steer",
       "coordinate_bots",
       "assignment_status",
       "list_bots",
@@ -209,11 +229,15 @@
     ]
   },
   "voice+non-chief": {
-    "bytes": 43601,
-    "sha256": "5c4dd0b6f7d83fe264f1d62d9887a08d9fcc445a11a430ad5c70592d580aa205",
+    "bytes": 45574,
+    "sha256": "f0667654e070b2898aebd5d46e41f7c22900fecb2e0f96895b134956e9c34d1e",
     "tools": [
       "tool_result_read",
       "list_room_targets",
+      "background_tasks_list",
+      "background_task_details",
+      "background_task_interrupt",
+      "background_task_steer",
       "coordinate_bots",
       "assignment_status",
       "list_bots",
@@ -245,11 +269,15 @@
     ]
   },
   "skills+non-chief": {
-    "bytes": 45759,
-    "sha256": "f4378df9fc3aa7721cc9400986365f6af99c421f50a051fc365c7cd9b9ae6c25",
+    "bytes": 47732,
+    "sha256": "d506f78f85d90067ea9411931b61b005e9ac9b11f548b97ff9e6fe24c526f8d4",
     "tools": [
       "tool_result_read",
       "list_room_targets",
+      "background_tasks_list",
+      "background_task_details",
+      "background_task_interrupt",
+      "background_task_steer",
       "coordinate_bots",
       "assignment_status",
       "list_bots",
@@ -282,11 +310,15 @@
     ]
   },
   "skills+voice+non-chief": {
-    "bytes": 46500,
-    "sha256": "80328be40328bd9c3381a2d16aa1bab1523d1241adbb6c316f2bcafe901c28ba",
+    "bytes": 48473,
+    "sha256": "522fb5219a875696a11d82f8eb9e8faa9be8c32a6647508336debbea832b1192",
     "tools": [
       "tool_result_read",
       "list_room_targets",
+      "background_tasks_list",
+      "background_task_details",
+      "background_task_interrupt",
+      "background_task_steer",
       "coordinate_bots",
       "assignment_status",
       "list_bots",
@@ -320,11 +352,15 @@
     ]
   },
   "skills+voice+escalations": {
-    "bytes": 57010,
-    "sha256": "87cc77f2d42523285ae29f8f238235900bec3226cd8d02df44f70b80d088b686",
+    "bytes": 58983,
+    "sha256": "e4019e96302faee282e4ee8e08b89c396ecb53b2425b534399f7c21fe27f9001",
     "tools": [
       "tool_result_read",
       "list_room_targets",
+      "background_tasks_list",
+      "background_task_details",
+      "background_task_interrupt",
+      "background_task_steer",
       "coordinate_bots",
       "assignment_status",
       "raise_escalation",
@@ -366,11 +402,15 @@
     ]
   },
   "default+legacy-switches": {
-    "bytes": 52510,
-    "sha256": "8dc1d66916fe044d4041b1da0774f127ee1510f152fdead9eb96ce724ca857f9",
+    "bytes": 54483,
+    "sha256": "1d0299d2903457bd5338c5fb1120b0f2df40017a90fddfc895e735d005ba0915",
     "tools": [
       "tool_result_read",
       "list_room_targets",
+      "background_tasks_list",
+      "background_task_details",
+      "background_task_interrupt",
+      "background_task_steer",
       "coordinate_bots",
       "assignment_status",
       "list_bots",

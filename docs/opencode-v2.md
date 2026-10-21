@@ -31,3 +31,39 @@ Plugins and skills are read-only in the panel. Configure them in OpenCode. Skill
 QuatiBot supplies its browser, sandbox computer, data and coordination tools for the session. Their availability follows bot settings and execution authority. They are not written to the user's global OpenCode configuration.
 
 Approval settings govern QuatiBot's orchestration and ACP permission requests. Terminal commands still execute on the backend host; selecting a computer VM does not relocate the terminal.
+
+## Native background work
+
+OpenCode 2.0.32 is the verified baseline for native background subagents. The
+native `subagent` tool creates work and continues an existing child with
+`sessionID`; these children are not Quati bots. The **Work in progress** panel
+expands upward from the message box, lists work runs, shows final output, sends a message to the same child and
+interrupts only the selected child. An accepted interrupt remains pending until
+the native state confirms termination. It does not undo file changes.
+
+ACP remains the conversation transport. Quati opts into native child updates and
+keeps the executor alive while children run, including after the main reply.
+Supplementary controls and recovery use a bundled OpenCode plugin inside that
+same private executor, through a private per-process Unix socket. The integration
+does not discover OpenCode's private address or credentials, contact the global
+service, or modify the user's plugin configuration.
+
+Work identity includes the native parent message and tool call, not just the child
+session. Recovery reads native tool metadata and terminal outcomes without
+creating a prompt or restarting a job. Missing events and disconnected executors
+are not proof of success. Controls have persistent admission receipts; uncertain
+delivery is never automatically retried. UI and MCP controls share conversation
+authorization, and a native session ID alone does not grant access.
+
+The MCP tools are `background_tasks_list`, `background_task_details`,
+`background_task_steer` and `background_task_interrupt`. Creation and continuation
+still use OpenCode's native `subagent` tool. Executor configuration changes that
+would replace a still-running native root are refused until its children finish
+or are interrupted; an explicit new root keeps previous work separately tracked.
+
+Isolated verification against OpenCode 2.0.32 used a deterministic loopback model:
+two simultaneous children, another main prompt, steering the original child,
+interrupting only the other child, completion while idle, a child permission
+request answered after the main reply, and recovery after executor restart. A
+separate browser context exercised the real chat panel, native steering receipts
+and selective interruption. No live account or user workspace was used.

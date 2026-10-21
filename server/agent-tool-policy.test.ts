@@ -10,6 +10,8 @@ describe("built-in agent tool read policy", () => {
       "list_rooms",
       "list_threads",
       "assignment_status",
+      "background_tasks_list",
+      "background_task_details",
       "session_search",
       "session_read",
       "tool_result_read",

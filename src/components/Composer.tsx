@@ -648,6 +648,7 @@ export function Composer({ bot: profile, group, members, onEditLast, replyTo, on
                 dispatch({ type: "cancelQueued", botId: bot.id, threadId, queueId });
         }} onEdit={locked ? undefined : editQueued}/>
         <div className="relative">
+          {bot && !group && <BackgroundWork key={`${bot.id}:${threadId}`} botId={bot.id} threadId={threadId}/>}
           <div aria-hidden data-composer-backdrop className="pointer-events-none absolute -left-5 -right-5 -bottom-3 top-1/2 bg-app"/>
         <div data-tour="composer" className="@container/composer relative z-[1] rounded-3xl bg-composer px-2 py-1.5 ring-1 ring-composer-ring">
         {replyTo && <ComposerReplyStrip message={replyTo} fallbackName={bot?.name} onClear={onClearReply}/>}
@@ -812,3 +813,4 @@ export function Composer({ bot: profile, group, members, onEditLast, replyTo, on
       {commandAllowlistTarget && <CommandAllowlistDialog key={`${commandAllowlistTarget.botId}:${commandAllowlistTarget.threadId}`} {...commandAllowlistTarget} onClose={() => setCommandAllowlistTarget(null)}/>}</div>
     </div>);
 }
+import { BackgroundWork } from "./BackgroundWork";

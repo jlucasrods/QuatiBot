@@ -16,6 +16,7 @@ import { deletePromptSplitReceipt, promptHalves, readPromptSplitReceipt, splitSe
 import type { PromptSplitReceipt } from "../prompt-split.ts";
 import { describeSpawnFailure, execCli, killCliTree, spawnCli } from "../../procs.ts";
 import { runAcpOneShot } from "./background-text.ts";
+import { BackgroundWork, NativeWorkBridge } from "./background-work.ts";
 import { stripLeakedSystemHarnessMessages } from "../../../shared/system-message-guard.ts";
 import {
   classifyQuiet, describeQuiet, lastSeenPhrase, LogTail, quietKey, sampleProcessTree,
@@ -150,6 +151,7 @@ interface AcpConnection {
 }
 
 interface AcpSession {
+  threadId: string;
   child: ReturnType<typeof spawnCli>;
   acp: AcpConnection;
   launch: { command: string; args?: string[] };
@@ -169,6 +171,7 @@ interface AcpSession {
   dead: boolean;
   stderr: string;
   current: AcpTurn | null;
+  background?: { bridge: NativeWorkBridge; roots: Set<string>; children: Set<string>; host?: AcpTurn };
   fallbackNotice?: string;
   launchModel?: string;
 }
@@ -522,6 +525,13 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
       }
       const active = new Map<string, Turn>();
       const sessions = new Map<string, AcpSession>();
+      const backgroundSessions = new Set<AcpSession>();
+      const workByThread = new Map<string, BackgroundWork>();
+      const workFor = (threadId: string) => {
+        let work = workByThread.get(threadId);
+        if (!work) workByThread.set(threadId, work = new BackgroundWork(instanceId, threadId));
+        return work;
+      };
     // Retain every closing Qwen child until its tree is gone: closing drops the pool entry, not its native writer lease.
       const retiring = new Map<string, Set<ReturnType<typeof spawnCli>>>();
       const retireChild = async (threadId: string, child: ReturnType<typeof spawnCli>): Promise<boolean> => {
@@ -537,16 +547,22 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
       };
       const { idleMs: SESSION_IDLE_MS } = sessionIdlePolicy("ACP");
 
-      const closeSession = (threadId: string, why: string) => {
-        const session = sessions.get(threadId);
+      const closeSession = (threadId: string, why: string, session = sessions.get(threadId)) => {
         if (!session || session.closing) return;
+        if (["reset", "contract", "idle"].includes(why) && session.background?.children.size) {
+          if (sessions.get(threadId) === session) sessions.delete(threadId);
+          backgroundSessions.add(session);
+          return;
+        }
         session.closing = true;
         if (["stop", "cancel-timeout", "stopAll", "dispose"].includes(why)) {
           session.stopping = retireChild(threadId, session.child);
         }
         if (session.idleTimer) clearTimeout(session.idleTimer);
         appendNative(threadId, { dir: "out", source: SOURCE, msg: { close: why } });
-        sessions.delete(threadId);
+        if (sessions.get(threadId) === session) sessions.delete(threadId);
+        backgroundSessions.delete(session);
+        if (session.background) workFor(threadId).detach(session.background.bridge);
         session.acp.close();
       // EOF is no guaranteed exit: Qwen is tracked before another turn can resume its history.
         try {
@@ -561,11 +577,11 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           kill.unref?.();
         }
       };
-      const armIdle = (threadId: string) => {
-        const session = sessions.get(threadId);
+      const armIdle = (threadId: string, session = sessions.get(threadId)) => {
         if (!session) return;
         if (session.idleTimer) clearTimeout(session.idleTimer);
-        session.idleTimer = setTimeout(() => closeSession(threadId, "idle"), SESSION_IDLE_MS);
+        if (session.background?.children.size) return;
+        session.idleTimer = setTimeout(() => closeSession(threadId, "idle", session), SESSION_IDLE_MS);
         session.idleTimer.unref?.();
       };
     // Session allows the driver keeps when the agent offered no `allow_always`: exact operations per
@@ -717,7 +733,9 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         current.acknowledge();
         current.stopQuietWatch?.();
         if (current.interruptTimer) clearTimeout(current.interruptTimer);
-        for (const finish of current.asks.values()) finish("cancel", "system");
+        if (!session.background?.children.size) {
+          for (const finish of current.asks.values()) finish("cancel", "system");
+        }
         session.acp.failAll(new Error("turn settled"));
       // Detach before the final events: a listener may start the next turn synchronously.
         session.current = null;
@@ -761,6 +779,8 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         cwd: string,
         contractKey: string,
       ): AcpSession => {
+        env = { ...env };
+        const bridge = support.nativeContext ? new NativeWorkBridge(env) : undefined;
         const commandCwd = permissionLaunchCwd(cwd);
         const child = spawnCli(launch.command, argv, {
           cwd,
@@ -1061,10 +1081,22 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         };
 
         const handleNotification = (msg: any) => {
+          if (session.background && msg.method === "opencode/session/child_update") {
+            const update = msg.params;
+            if (!session.background.roots.has(update?.rootSessionId) || typeof update.childSessionId !== "string") return;
+            if (update.type === "status") {
+              if (["created", "running"].includes(update.status)) session.background.children.add(update.childSessionId);
+              else if (["completed", "failed", "interrupted"].includes(update.status)) session.background.children.delete(update.childSessionId);
+              if (!session.current) armIdle(threadId, session);
+            }
+            void workFor(threadId).refresh();
+            return;
+          }
           // Vendor side-channels (grok's `_x.ai/*`) are only teed to the native log.
           if (msg.method !== "session/update") return;
           const p = msg.params ?? {};
           if (p._meta?.isReplay === true) return;
+          if (session.background && p.update?._meta?.["opencode/child-session"]) return;
           const current = session.current;
           if (support.modelVariants && p.update?.sessionUpdate === "config_option_update") {
             if (current && !current.state.settled && session.sessionId && p.sessionId === session.sessionId) current.receiveModelVariants(p.update);
@@ -1171,6 +1203,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         };
 
         const session: AcpSession = {
+          threadId,
           child,
           acp,
           launch,
@@ -1188,6 +1221,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           dead: false,
           stderr: "",
           current: null,
+          ...(bridge ? { background: { bridge, roots: new Set<string>(), children: new Set<string>() } } : {}),
         };
         let buf = "";
         // decode as UTF-8 across chunk boundaries — a raw `buf += chunk` splits
@@ -1224,7 +1258,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                 }
               }
             } else if (msg.id !== undefined && msg.method) {
-              const current = session.current;
+              const current = session.current ?? (session.background?.children.size ? session.background.host : undefined);
               if (!current) {
               // Between turns nothing is brokered; the agent must never block on an unanswered request.
                 const question = questionRequestFor(support.questionRequests, msg.method);
@@ -1259,6 +1293,12 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         });
         child.on("close", (code) => {
           session.dead = true;
+          if (session.background) {
+            workFor(threadId).detach(session.background.bridge);
+            session.background.bridge.dispose();
+            for (const finish of session.background.host?.asks.values() ?? []) finish("cancel", "system");
+          }
+          backgroundSessions.delete(session);
           const current = session.current;
           if (current) {
             if (!current.state.stopped) {
@@ -1374,6 +1414,9 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           session = pooled;
         } else {
           if (pooled) {
+            if (pooled.background?.children.size && pooled.sessionId === turn.resumeCursor) {
+              throw new Error("Wait for or interrupt background work before changing this executor's configuration");
+            }
             if (pooled.dead) sessions.delete(threadId);
             else closeSession(threadId, "contract");
           }
@@ -1398,7 +1441,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           acknowledge = () => resolve({ turnId });
           rejectStartup = reject;
         }) : null;
-        const asks = new Map<string, AcpAskFinish>();
+        const asks = session.background?.host?.asks ?? new Map<string, AcpAskFinish>();
         let reportedModel = turn.model;
         let variant = turn.variant;
         let staleProcess = false;
@@ -1477,6 +1520,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         active.set(threadId, { stop: () => { state.stopped = true; closeSession(threadId, "stop"); }, interrupt, turnId, asks });
         emit({ ...base(threadId, turnId), type: "turn.started" });
         session.current = current;
+        if (session.background) session.background.host = current;
 
         (async () => {
           let pendingSplitReceipt: { key: string; receipt: PromptSplitReceipt; previous: PromptSplitReceipt | null } | null = null;
@@ -1503,6 +1547,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                         writeTextFile: support.clientFileSystem === true,
                       },
                       terminal: false,
+                      ...(support.nativeContext ? { _meta: { "opencode/child-session-updates": true } } : {}),
                     },
                   },
                   INIT_TIMEOUT,
@@ -1615,6 +1660,11 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             }
             const sessionId = session.sessionId;
             if (sessionId === null) throw new Error("session/new returned no sessionId");
+            if (session.background) {
+              session.background.host = current;
+              workFor(threadId).attach(session.background.bridge, sessionId, cwd);
+              session.background.roots.add(sessionId);
+            }
             let selectedModel: string | null = null;
             let sessionStarted = false;
             const emitSessionStarted = () => {
@@ -2009,10 +2059,51 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             ...(support.nativeContext ? { nativeContext: true, strictResume: true } : {}),
           },
           sendTurn,
+          ...(support.nativeContext ? { backgroundWork: {
+            list: async (threadId: string) => {
+              const work = workFor(threadId);
+              if (!sessions.has(threadId) && ![...backgroundSessions].some(session => session.threadId === threadId) && work.roots.length) {
+                const env = childEnv({ ...config, fullAuto: false });
+                await support.applyTurnEnv?.(env, { cli: config.cli, fullAuto: false, cwd: work.cwd, threadId, mcpServers: [] });
+                const launch = support.resolveCommand ? await support.resolveCommand(env, config, instanceId) : { command: config.cli };
+                const observer = openSession(threadId, launch, [...(launch.args ?? []), ...support.spawnArgs(config, { threadId, text: "" })],
+                  launch.env ?? env, work.cwd, "background-observer");
+                sessions.set(threadId, observer);
+                try {
+                  observer.initResult = await observer.acp.request("initialize", { protocolVersion: 1,
+                    clientInfo: { name: "quatibot", version: "0.0.0" }, clientCapabilities: { _meta: { "opencode/child-session-updates": true } } }, INIT_TIMEOUT);
+                  if (!observer.initResult?.agentCapabilities?._meta?.["opencode/child-session-updates"]) throw new Error("OpenCode child updates unavailable");
+                  for (const root of work.roots) {
+                    await observer.acp.request("session/resume", { sessionId: root, cwd: work.cwd, mcpServers: [] }, NEW_SESSION_TIMEOUT);
+                    if (observer.background) {
+                      work.attach(observer.background.bridge, root, work.cwd);
+                      observer.background.roots.add(root);
+                    }
+                  }
+                  armIdle(threadId, observer);
+                } catch {
+                  closeSession(threadId, "observer-failed", observer);
+                }
+              }
+              const observer = sessions.get(threadId);
+              if (observer?.background && observer.initResult) {
+                for (const root of work.disconnectedRoots) {
+                  try {
+                    await observer.acp.request("session/resume", { sessionId: root, cwd: observer.cwd, mcpServers: [] }, NEW_SESSION_TIMEOUT);
+                    work.attach(observer.background.bridge, root, observer.cwd);
+                    observer.background.roots.add(root);
+                  } catch { break; }
+                }
+              }
+              return work.refresh();
+            },
+            control: async (threadId: string, input: { id: string; taskId: string; action: "steer" | "interrupt"; text?: string }) => workFor(threadId).control(input),
+          } } : {}),
           interruptTurn: async (threadId) => active.get(threadId)?.interrupt(),
           respondToRequest: async (threadId, requestId, decision) => {
             const turn = active.get(threadId);
-            const finish = turn?.asks.get(requestId);
+            const finish = turn?.asks.get(requestId) ?? sessions.get(threadId)?.background?.host?.asks.get(requestId) ??
+              [...backgroundSessions].find(session => session.threadId === threadId && session.background?.host?.asks.has(requestId))?.background?.host?.asks.get(requestId);
             if (!finish) return "unavailable";
             return finish(decision.behavior, "user", decision.message, decision.always === true);
           },
@@ -2020,6 +2111,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           stopAll: async () => {
             for (const { stop } of active.values()) stop();
             for (const threadId of Array.from(sessions.keys())) closeSession(threadId, "stopAll");
+            for (const session of backgroundSessions) closeSession(session.threadId, "stopAll", session);
             for (const [threadId, children] of retiring) {
               for (const child of children) void retireChild(threadId, child);
             }
@@ -2033,6 +2125,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           await deviceSignIn?.dispose();
           for (const { stop } of active.values()) stop();
           for (const threadId of Array.from(sessions.keys())) closeSession(threadId, "dispose");
+          for (const session of backgroundSessions) closeSession(session.threadId, "dispose", session);
           for (const [threadId, children] of retiring) {
             for (const child of children) void retireChild(threadId, child);
           }

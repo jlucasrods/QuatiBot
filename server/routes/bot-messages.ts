@@ -5,6 +5,7 @@ import { approvalModeFor } from "../../shared/approval-mode.ts";
 import { isPersistentQuestionCard } from "../../shared/ask-question.ts";
 import type { ResolvedSender, SteerQueueReason } from "../../shared/wire.ts";
 import { admit } from "../admission.ts";
+import { backgroundControlSchema, type createBackgroundWorkService } from "../background-work.ts";
 import { dismissQuestionCard } from "../card-dismissal.ts";
 import { prepareWidgetPress, reopenCancelledPress } from "../chat-widgets.ts";
 import type { ModelSelection, RequestOutcome, SteerOutcome } from "../contracts.ts";
@@ -39,6 +40,7 @@ type CardAnswer = { botId: string; botName?: string; threadId: string; requestId
 type Behavior = "allow" | "deny" | "answer";
 
 export interface BotMessageRouteDeps {
+  backgroundWork?: ReturnType<typeof createBackgroundWorkService>;
   store: Pick<Store,
     | "activeLeaf" | "appendMessage" | "bot" | "botByThread" | "bots" | "groupByThread" | "messagesFor"
     | "patchMessage" | "patchTask" | "projectBotForTask" | "setActiveLeaf" | "setTaskAskedAt" | "taskByThread" | "tasks">;
@@ -136,6 +138,15 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     let m: RegExpMatchArray | null = null;
     const requirePinnedClientThread = pinnedClientThread(auth);
     const routines = deps.routines();
+    m = path.match(/^\/api\/bots\/([\w-]+)\/background-work$/);
+    if (m && method === "POST") {
+      const body = await readBody(req);
+      requirePinnedClientThread(m[1], body?.threadId);
+      const bot = requestedTaskBot(m[1], body?.threadId);
+      if (!deps.backgroundWork) return json(res, 409, { error: "Native work is unavailable" });
+      const control = body.control === undefined ? undefined : backgroundControlSchema.parse(body.control);
+      return json(res, 200, await deps.backgroundWork(bot.id, bot.threadId, control));
+    }
     m = path.match(/^\/api\/bots\/([\w-]+)\/messages(?:\/(guarded))?$/);
     if (m && method === "POST") {
       const guarded = m[2] === "guarded";

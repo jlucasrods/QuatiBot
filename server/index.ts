@@ -464,6 +464,7 @@ import { createLiveRoutes } from "./routes/live.ts";
 import { createNotificationRoutes } from "./routes/notifications.ts";
 import { createUsageRoutes } from "./routes/usage.ts";
 import { createBotMessageRoutes } from "./routes/bot-messages.ts";
+import { backgroundControlSchema, createBackgroundWorkService } from "./background-work.ts";
 import { createThreadRoutes } from "./routes/threads.ts";
 import { resolveAdbPath } from "./drivers/phone-proxy.ts";
 
@@ -4049,6 +4050,7 @@ const askMessageByRequest = new Map<string, string>();
 const unansweredApprovals = new UnansweredApprovals();
 // Only native, live permission metadata becomes a remembered grant, never an imported transcript or display summary.
 const pendingCommandRules = new Map<string, { botId: string; candidate: CommandAllowlistCandidate }>();
+const requestEngineById = new Map<string, string>();
 
 function commandRememberRefusal(auth: RequestAuth, threadId: string, requestId: string, behavior: string): string | null {
   if (!canManageCommandAllowlist(auth)) return "Only the owner or an admin can save bot-wide command permissions.";
@@ -4078,7 +4080,8 @@ async function answerRequest(
   const card = cardMessage?.card;
   const remembered = rememberCommand ? pendingCommandRules.get(`${threadId}:${requestId}`) : undefined;
   // The live turn owns this question, as it owns Stop and steer.
-  const instance = runningTurnEngines.get(threadId) ?? registry.get(instanceId);
+  const requestEngine = requestEngineById.get(`${threadId}:${requestId}`);
+  const instance = requestEngine ? registry.get(requestEngine) : runningTurnEngines.get(threadId) ?? registry.get(instanceId);
   let outcome: RequestOutcome = "unavailable";
   if (instance) {
     try {
@@ -5175,7 +5178,9 @@ bus.subscribe((event: RuntimeEvent) => {
   if (coordinatorVisibleText) pushAssistantText(coordinatorVisibleText, completedTurnId);
   if (bot) handoffs.onEvent(event); else roomSessions.onEvent(event);
 
-  if (event.turnId) liveTurnByThread.set(event.threadId, event.turnId);
+  if (event.type === "request.opened" && event.providerInstanceId) requestEngineById.set(`${event.threadId}:${event.requestId}`, event.providerInstanceId);
+  if (event.type === "request.resolved") requestEngineById.delete(`${event.threadId}:${event.requestId}`);
+  if (event.turnId && event.type !== "request.opened" && event.type !== "request.resolved") liveTurnByThread.set(event.threadId, event.turnId);
   const requestOwner = bot ? directRequestOwners.get(event.threadId) : undefined;
   if (requestOwner && event.turnId && !requestOwner.turnId && event.type === "turn.started" &&
       directTurnDispatchClaims.get(event.threadId)?.id === requestOwner.generation) requestOwner.turnId = event.turnId;
@@ -10929,7 +10934,9 @@ const workspaceBackupRoutes = createWorkspaceBackupRoutes({
 });
 ROUTES.push(createBotPresetRoutes({ presets: presetStore }));
 // `routines` is assigned at boot, so it is read per request.
+const backgroundWork = createBackgroundWorkService(store, registry);
 ROUTES.push(createBotMessageRoutes({
+  backgroundWork,
   store, registry, handoffs, directTurnDispatchClaims, groupSpeakers,
   routines: () => routines,
   desktopManaged: DESKTOP_MANAGED,  DirectSendRefused,
@@ -12486,6 +12493,11 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
         return { status: sent ? 200 : 409, body: { receipts, ...(sent ? { message: lead ? `${lead} ${message}` : message } : { error: refused.join("; ") }),
           ...(EXTERNAL && sent ? { rootId: generation } : {}) } };
       };
+      if (method === "POST" && path === "/api/internal/background-work") {
+        const body = await readInternalBody();
+        const control = body.control === undefined ? undefined : backgroundControlSchema.parse(body.control);
+        return json(res, 200, await backgroundWork(internalSender.id, internalCapability.threadId, control));
+      }
       if (method === "GET" && path === "/api/internal/assignment-status") {
         const id = url.searchParams.get("id")?.trim() ?? "";
         const fromThreadId = internalCapability.threadId;

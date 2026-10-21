@@ -482,6 +482,21 @@ export async function callTool(name: string, args: Json, context: ToolCallContex
       text: `Outstanding assignments of this conversation (${outstanding.length}):\n${outstanding.map((a) => `- ${assignmentLine(a)}`).join("\n")}\nEach resumes you when it settles; do not wait on them in this turn.`,
     };
   }
+  if (["background_tasks_list", "background_task_details", "background_task_interrupt", "background_task_steer"].includes(name)) {
+    const controls = name === "background_task_interrupt" || name === "background_task_steer";
+    const response = await api("/api/internal/background-work", { method: "POST", body: JSON.stringify(controls ? {
+      control: { id: args.request_id, taskId: args.task_id, action: name === "background_task_interrupt" ? "interrupt" : "steer",
+        ...(name === "background_task_steer" ? { text: args.text } : {}) },
+    } : {}) });
+    if (name === "background_task_details") {
+      const tasks = Array.isArray(response.tasks) ? response.tasks.filter(jsonRecord) : [];
+      const task = tasks.find(task => task.id === args.task_id);
+      if (!task) return { text: "No such work in this conversation", isError: true };
+      const receipts = Array.isArray(response.receipts) ? response.receipts.filter(jsonRecord).filter(receipt => receipt.taskId === task.id) : [];
+      return { text: JSON.stringify({ task, receipts, connected: response.connected }) };
+    }
+    return { text: JSON.stringify(response) };
+  }
   if (name === "list_bots") {
     const r = await api(`/api/internal/agents?self=${encodeURIComponent(BOT_ID)}`);
     const bots = (r.bots as Array<Json>) ?? [];

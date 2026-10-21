@@ -1,6 +1,7 @@
 // Ported from upstream's provider contracts with Promises for Effect and listeners for Stream; shapes and names are kept.
 
 import type { ApprovalMode } from "../shared/approval-mode.ts";
+import type { BackgroundReceipt, BackgroundSnapshot } from "../shared/background-work.ts";
 import type { ToolScope } from "../shared/tool-scope.ts";
 import type { EffortLevel } from "../shared/wire.ts";
 import type {
@@ -224,6 +225,11 @@ export interface ProviderAdapter {
     contextReading?: "meter";
   };
   sendTurn(input: SendTurnInput): Promise<TurnStartResult>;
+  /** Native work belongs to this instance and chat; controls never create or replay a root turn. */
+  backgroundWork?: {
+    list(threadId: ThreadId): Promise<BackgroundSnapshot>;
+    control(threadId: ThreadId, input: { id: string; taskId: string; action: "steer" | "interrupt"; text?: string }): Promise<BackgroundReceipt>;
+  };
   interruptTurn(threadId: ThreadId, turnId?: TurnId): Promise<void>;
   /** Never throws for a vanished ask: `unavailable` means nobody could take the answer, and the caller treats it as a deny. */
   respondToRequest(

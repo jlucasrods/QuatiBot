@@ -16,6 +16,23 @@ function context(overrides: Partial<ToolCallContext> = {}): ToolCallContext {
   };
 }
 
+describe("background controls", () => {
+  it.each(["background_task_interrupt", "background_task_steer"])("routes %s through the authorized chat service", async name => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    await callTool(name, { task_id: "run", request_id: "request", text: "Continue" }, context({ client: {
+      api: async (path, init) => {
+        calls.push({ path, body: JSON.parse(String(init?.body)) });
+        return { receipt: { id: "request", status: "accepted" } };
+      },
+      apiResponse: async () => ({ ok: true, status: 200, body: {} }),
+    } }));
+    expect(calls).toEqual([{ path: "/api/internal/background-work", body: { control: {
+      id: "request", taskId: "run", action: name === "background_task_steer" ? "steer" : "interrupt",
+      ...(name === "background_task_steer" ? { text: "Continue" } : {}),
+    } } }]);
+  });
+});
+
 describe("send_voice_note", () => {
   it("refuses a missing or blank note with the shape a retry needs", async () => {
     for (const args of [{}, { text: "" }, { text: "   " }]) {

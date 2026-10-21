@@ -209,6 +209,26 @@ const TOOL_DEFINITIONS = [
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
+    name: "background_tasks_list",
+    description: "Inspect this conversation's native OpenCode background subagents, not Quati teammates. Native subagent creates and continues work. Completion arrives automatically; do not poll to wait.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "background_task_details",
+    description: "Read one native background run's confirmed state, final result and control receipts in this conversation. Never exposes reasoning or partial child replies.",
+    inputSchema: { type: "object", properties: { task_id: { type: "string" } }, required: ["task_id"], additionalProperties: false },
+  },
+  {
+    name: "background_task_interrupt",
+    description: "Request interruption of one running native subagent in this conversation. Admission is not completion; wait for confirmed interrupted state. Does not undo files, delete history, stop sibling work or resume the root. Reuse request_id only to read its receipt, never resend an uncertain action with another id.",
+    inputSchema: { type: "object", properties: { task_id: { type: "string" }, request_id: { type: "string", description: "A UUID identifying this control." } }, required: ["task_id", "request_id"], additionalProperties: false },
+  },
+  {
+    name: "background_task_steer",
+    description: "Deliver a message to an already-running native child, using the same audited control and receipt as the chat UI. Does not create or continue a run; use native subagent for those. Never repeat uncertain delivery with another request_id.",
+    inputSchema: { type: "object", properties: { task_id: { type: "string" }, request_id: { type: "string", description: "A UUID identifying this control." }, text: { type: "string" } }, required: ["task_id", "request_id", "text"], additionalProperties: false },
+  },
+  {
     name: "coordinate_bots",
     description: "The one way to hand work on: ask existing QuatiBot teammates a question or assign them concrete work. In a room it defaults to this room; use group_id from list_room_targets for a specific room. Outside a room, everything you send a teammate from this conversation goes to one standing work thread with them and runs after anything still running there; thread \"new\" opens a fresh thread on them instead. Give 1-4 bot_ids — teammate ids as list_bots or your roster prints them; a unique teammate name also resolves: they see only what you send them and use their own model, tools and permissions. They can consult their own specialists; every result returns here and resumes you automatically, so after sending all assignments END your turn: do not poll or wait, and never call assignment_status in the same turn. consult true asks a question the teammate answers from what it knows, acting on nothing; reply \"none\" is a one-way notice nothing comes back from. Include exact file paths, constraints and what must be verified (done_when). On return, resolve tradeoffs, verify the requested outcome and request concrete corrections with rework true if necessary before giving one final answer. Never target whoever assigned you this work or anyone above it: to ask or report back, end your turn and your reply resumes them. Never thank or approve a finished teammate; its result already returned. Never repeat a refused call unchanged.",
     inputSchema: { type: "object", additionalProperties: false, properties: {
