@@ -8,8 +8,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { BotLogins } from "../bot-logins.ts";
 import { json, readBody } from "../harness/http.ts";
 import { LoginStore } from "../login-store.ts";
-import { OnePasswordLogins, sdkOnePasswordClient } from "../onepassword.ts";
-import { fakeOnePasswordSdk } from "../testing/fake-onepassword.ts";
 import { requiredScope, type RequestAuth } from "../request-auth.ts";
 import { createLoginRoutes, LOGIN_ERRORS } from "./logins.ts";
 import { dispatchRoutes } from "./table.ts";
@@ -17,8 +15,6 @@ import { dispatchRoutes } from "./table.ts";
 const PASSWORD = "fake-Settings-pass-1";
 const NEW_PASSWORD = "fake-Settings-pass-2";
 const KEY = "JBSWY3DPEHPK3PXP";
-const TOKEN = "ops_fake-route-token";
-const VAULT_PASSWORD = "fake-vault-pass";
 
 const servers: Server[] = [];
 const dirs: string[] = [];
@@ -31,11 +27,7 @@ async function serve() {
   const dir = mkdtempSync(join(tmpdir(), "quati-login-routes-"));
   dirs.push(dir);
   const store = new LoginStore({ dataDir: dir });
-  const { sdk } = fakeOnePasswordSdk({ token: TOKEN, vaults: { v1: { title: "Shared with QUATI", items: [
-    { id: "i1", title: "Example", urls: ["https://vault.example.com"], username: "vault-user", password: VAULT_PASSWORD },
-  ] } } });
-  const onePassword = new OnePasswordLogins({ token: () => store.onePasswordToken(), grants: () => store.onePasswordGrants(), connect: (token) => sdkOnePasswordClient(sdk, token, "0.0.0") });
-  const logins = new BotLogins(store, onePassword);
+  const logins = new BotLogins(store);
   const routes = [createLoginRoutes(logins.routes((id) => ["pepper", "quill"].includes(id)))];
   const answers: string[] = [];
   const server = createServer(async (req, res) => {
@@ -59,7 +51,6 @@ describe("Settings → Logins routes", () => {
   it("are for admins only", () => {
     for (const method of ["GET", "POST"]) expect(requiredScope(method, "/api/logins")).toBe("admin");
     for (const method of ["PATCH", "DELETE"]) expect(requiredScope(method, "/api/logins/abc")).toBe("admin");
-    expect(requiredScope("PATCH", "/api/logins/1password/vaults/v1")).toBe("admin");
   });
 
   it("add, list, change and delete a login, and never return its password or 2FA key", async () => {
@@ -71,7 +62,7 @@ describe("Settings → Logins routes", () => {
 
     const listed = await call("GET", "/api/logins");
     expect(listed).toMatchObject({ status: 200, cache: "no-store" });
-    expect(listed.body).toEqual({ logins: [added.body.login], onePassword: { connected: false } });
+    expect(listed.body).toEqual({ logins: [added.body.login] });
 
     expect((await call("PATCH", `/api/logins/${id}`, { password: NEW_PASSWORD, bots: "all" })).body.login).toMatchObject({ bots: "all", hasTotp: true });
     expect(store.get(id)?.password).toBe(NEW_PASSWORD);
@@ -105,53 +96,16 @@ describe("Settings → Logins routes", () => {
     expect((await call("GET", "/api/logins")).body.logins).toEqual([]);
   });
 
-  it("connects 1Password with a token it checks first, lists its logins read-only, and never returns the token", async () => {
-    const { store, call, answers } = await serve();
-    expect((await call("GET", "/api/logins")).body).toEqual({ logins: [], onePassword: { connected: false } });
-    for (const token of ["", "ops_ has spaces", "ops_wrong-fake-token"]) {
-      expect((await call("POST", "/api/logins/1password", { token })).status, token).toBe(400);
-    }
-    expect((await call("POST", "/api/logins/1password", { token: "ops_wrong-fake-token" })).body.error).toBe("1Password did not accept the token. Paste a service account token (it starts with ops_), or make a new one.");
-    expect(store.onePasswordToken()).toBeNull();
-
-    expect(await call("POST", "/api/logins/1password", { token: TOKEN })).toMatchObject({ status: 200, body: { onePassword: { connected: true, vaults: [{ id: "v1", title: "Shared with QUATI", items: 1, bots: "all" }], items: 1 } } });
-    expect(store.onePasswordToken()).toBe(TOKEN);
-    const listed = await call("GET", "/api/logins");
-    expect(listed.body.logins).toEqual([expect.objectContaining({ site: "example.com", hosts: ["vault.example.com"], username: "vault-user", source: "1password", bots: "all" })]);
-    const id = listed.body.logins[0].id as string;
-    for (const method of ["PATCH", "DELETE"]) {
-      expect(await call(method, `/api/logins/${encodeURIComponent(id)}`, method === "PATCH" ? { password: "fake-x-pass" } : undefined))
-        .toMatchObject({ status: 409, body: { error: LOGIN_ERRORS.readOnly } });
-    }
-    expect((await call("POST", "/api/logins/1password/refresh", {})).body.onePassword).toMatchObject({ connected: true, items: 1 });
-
-    expect(await call("DELETE", "/api/logins/1password")).toMatchObject({ status: 200, body: { onePassword: { connected: false } } });
-    expect(store.onePasswordToken()).toBeNull();
-    expect((await call("GET", "/api/logins")).body.logins).toEqual([]);
-    for (const answer of answers) for (const secret of [TOKEN, VAULT_PASSWORD]) expect(answer).not.toContain(secret);
-  });
-
-  it("keeps a vault's logins to the bots chosen for it, and only for a vault the token reads", async () => {
-    const { store, logins, call } = await serve();
-    await call("POST", "/api/logins/1password", { token: TOKEN });
-    expect(await call("PATCH", "/api/logins/1password/vaults/v1", { bots: ["quill"] }))
-      .toMatchObject({ status: 200, body: { onePassword: { vaults: [{ id: "v1", bots: ["quill"] }] } } });
-    expect(store.onePasswordGrants()).toEqual({ v1: ["quill"] });
-    expect(await logins.candidates("pepper", "vault.example.com")).toEqual([]);
-    expect(logins.sitesFor("pepper")).toEqual([]);
-    expect((await logins.candidates("quill", "vault.example.com")).map((login) => login.username)).toEqual(["vault-user"]);
-    expect((await call("GET", "/api/logins")).body.logins[0].bots).toEqual(["quill"]);
-    expect((await call("PATCH", "/api/logins/1password/vaults/v1", { bots: ["nobody"] })).body).toEqual({ error: LOGIN_ERRORS.bots });
-    expect((await call("PATCH", "/api/logins/1password/vaults/v1", {})).status).toBe(400);
-    expect((await call("PATCH", "/api/logins/1password/vaults/v9", { bots: "all" })).status).toBe(404);
-    expect((await call("PATCH", "/api/logins/1password/vaults/v1", { bots: "all" })).body.onePassword.vaults[0].bots).toBe("all");
-    expect(store.onePasswordGrants()).toEqual({});
-    expect((await logins.candidates("pepper", "vault.example.com")).map((login) => login.username)).toEqual(["vault-user"]);
+  it.each(["PATCH", "DELETE"])("handles an unavailable external reference on %s without changing local logins", async (method) => {
+    const { call } = await serve();
+    const added = await call("POST", "/api/logins", { site: "example.com", password: PASSWORD });
+    expect(await call(method, `/api/logins/${encodeURIComponent("1password:v1:i1:example.com")}`, method === "PATCH" ? { password: NEW_PASSWORD } : undefined))
+      .toMatchObject({ status: 410, body: { error: LOGIN_ERRORS.unavailable } });
+    expect((await call("GET", "/api/logins")).body).toEqual({ logins: [added.body.login] });
   });
 
   it("takes changes as JSON only, so another page's form cannot post one", async () => {
     const { call } = await serve();
     expect((await call("POST", "/api/logins", { site: "example.com", password: PASSWORD }, "text/plain")).status).toBe(415);
-    expect((await call("POST", "/api/logins/1password", { token: TOKEN }, "text/plain")).status).toBe(415);
   });
 });

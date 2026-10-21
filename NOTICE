@@ -46,8 +46,5 @@ The Local VM uses Cua Driver 0.20.0, Copyright (c) 2025 Cua AI, Inc.,
 under the MIT License. Runtime provenance, the license text and the limits
 of the retained dependency notices are in third_party/cua-driver/.
 
-The 1Password integration uses @1password/sdk under the MIT License;
-the license text is in third_party/onepassword-sdk/LICENSE.
-
 The agent-browser and optional Chromium bundle notices and provenance
 are in third_party/browser/.

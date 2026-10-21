@@ -1,10 +1,45 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { cardLoginPlace, cardSignInElsewhere, observeSignInPage } from "./bot-logins.ts";
+import { BotLogins, cardLoginPlace, cardSignInElsewhere, observeSignInPage } from "./bot-logins.ts";
+import { LoginStore } from "./login-store.ts";
 import { FakeLoginPage, LOGIN_FORM } from "./testing/fake-login-page.ts";
 
 let page: FakeLoginPage | null = null;
 afterEach(() => { page?.close(); page = null; });
+
+describe("local logins available to a bot", () => {
+  it.each([
+    ["pepper", "accounts.example.com", true],
+    ["pepper", "login.microsoftonline.com", true],
+    ["pepper", "www.example.com", false],
+    ["quill", "accounts.example.com", false],
+    ["pepper", "evil.test", false],
+  ])("respects bot %s and host %s when selecting a login", async (botId, host, allowed) => {
+    const dir = mkdtempSync(join(tmpdir(), "quati-bot-logins-"));
+    try {
+      const store = new LoginStore({ dataDir: dir, now: () => 7 });
+      const login = store.create({
+        site: "example.com", hosts: ["accounts.example.com", "login.microsoftonline.com"], exactHost: true,
+        username: "alice", password: "fixture-password", source: "card", bots: ["pepper"],
+      });
+      const logins = new BotLogins(store);
+
+      const candidates = await logins.candidates(botId, host);
+      expect(candidates.map((candidate) => candidate.id)).toEqual(allowed ? [login.id] : []);
+      expect(logins.sitesFor(botId).map((site) => site.username)).toEqual(botId === "pepper" ? ["alice"] : []);
+      if (allowed) {
+        expect(await candidates[0]!.secrets()).toEqual({ password: "fixture-password", totp: null });
+        logins.markUsed(login.id);
+        expect(store.list()[0]!.lastUsedAt).toBe(7);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("a login saved from a sign-in card", () => {
   it("fills on the card's site, at the sign-in page open on that site", () => {

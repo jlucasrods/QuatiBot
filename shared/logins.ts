@@ -6,9 +6,8 @@
  */
 import { getDomain } from "tldts";
 
-/** Where a login came from: the sign-in card's Save, Settings, or the person's
- * 1Password vault (read-only here). */
-export type LoginSource = "card" | "settings" | "1password";
+/** Where a login came from: the sign-in card's Save or Settings. */
+export type LoginSource = "card" | "settings";
 
 /** Which bots may use a login: every bot, or the ones named. */
 export type LoginBots = "all" | string[];
@@ -37,26 +36,6 @@ export interface LoginSummary extends LoginPlace {
   bots: LoginBots;
   createdAt: number;
   lastUsedAt?: number;
-}
-
-/** A 1Password vault the service account reads, and the bots that may use its
- * logins. A vault nobody narrowed is for every bot. */
-export interface OnePasswordVault {
-  id: string;
-  title: string;
-  /** Its Login items with a website and a password. */
-  items: number;
-  bots: LoginBots;
-}
-
-/** 1Password, connected with a service account. The token itself never leaves
- * the server. */
-export interface OnePasswordStatus {
-  connected: boolean;
-  vaults?: OnePasswordVault[];
-  /** How many items have a website and a password, across every vault. */
-  items?: number;
-  error?: string;
 }
 
 /** The longest username or password a form takes. */

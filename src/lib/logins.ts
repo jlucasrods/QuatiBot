@@ -1,4 +1,4 @@
-import type { LoginBots, LoginSummary, OnePasswordStatus } from "../../shared/logins";
+import type { LoginBots, LoginSummary } from "../../shared/logins";
 import type { ComputerHelpRef } from "../../shared/wire";
 import { api } from "@/state/store";
 
@@ -9,21 +9,8 @@ export interface LoginFieldsInput {
   totp: string;
 }
 
-export async function listLogins(): Promise<{ logins: LoginSummary[]; onePassword: OnePasswordStatus }> {
-  return await api<{ logins: LoginSummary[]; onePassword: OnePasswordStatus }>("/api/logins");
-}
-
-/** The server checks the token reaches 1Password before keeping it, and never sends it back. */
-export async function connectOnePassword(token: string): Promise<OnePasswordStatus> {
-  return (await api<{ onePassword: OnePasswordStatus }>("/api/logins/1password", { method: "POST", body: JSON.stringify({ token }) })).onePassword;
-}
-
-export async function refreshOnePassword(): Promise<OnePasswordStatus> {
-  return (await api<{ onePassword: OnePasswordStatus }>("/api/logins/1password/refresh", { method: "POST", body: "{}" })).onePassword;
-}
-
-export async function disconnectOnePassword(): Promise<OnePasswordStatus> {
-  return (await api<{ onePassword: OnePasswordStatus }>("/api/logins/1password", { method: "DELETE" })).onePassword;
+export async function listLogins(): Promise<{ logins: LoginSummary[] }> {
+  return await api<{ logins: LoginSummary[] }>("/api/logins");
 }
 
 export async function addLogin(site: string, fields: LoginFieldsInput, bots: LoginBots, exactHost = false): Promise<LoginSummary> {
@@ -43,14 +30,6 @@ export async function changeLogin(id: string, change: { password?: string; totp?
       ...(change.exactHost === undefined ? {} : { exactHost: change.exactHost }),
     }),
   })).login;
-}
-
-/** Which bots may use the logins in one 1Password vault. */
-export async function grantVault(vaultId: string, bots: LoginBots): Promise<OnePasswordStatus> {
-  return (await api<{ onePassword: OnePasswordStatus }>(`/api/logins/1password/vaults/${encodeURIComponent(vaultId)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ bots }),
-  })).onePassword;
 }
 
 export async function deleteLogin(id: string): Promise<void> {

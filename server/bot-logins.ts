@@ -1,7 +1,6 @@
 import { loginPageCheck, loginPlace, loginSite, type LoginPlace } from "../shared/logins.ts";
 import type { FillCandidate } from "./login-fill.ts";
 import type { LoginStore } from "./login-store.ts";
-import type { OnePasswordLogins } from "./onepassword.ts";
 import type { LoginRouteDeps } from "./routes/logins.ts";
 
 /** What the bot's browser shows while the person answers a sign-in card. */
@@ -40,36 +39,29 @@ export function cardLoginPlace(cardHost: string, observed: ObservedPage | null, 
   return loginPlace(cardHost, [onSite, ...(elsewhere && confirmedHost === elsewhere ? [elsewhere] : [])]);
 }
 
-/** Saved logins and 1Password items, as each bot may use them. */
+/** Saved logins as each bot may use them. */
 export class BotLogins {
   readonly store: LoginStore;
-  readonly onePassword: OnePasswordLogins;
 
-  constructor(store: LoginStore, onePassword: OnePasswordLogins) {
+  constructor(store: LoginStore) {
     this.store = store;
-    this.onePassword = onePassword;
   }
 
   /** Where each login the bot may use fills, with its username. */
   sitesFor(botId: string): Array<LoginPlace & { username: string }> {
-    return [...this.store.sitesFor(botId), ...this.onePassword.sitesFor(botId)];
+    return this.store.sitesFor(botId);
   }
 
   /** Secrets are read only when one is filled. */
   async candidates(botId: string, pageHost: string): Promise<FillCandidate[]> {
-    await this.onePassword.fresh();
-    return [
-      ...this.store.usableFor(pageHost, botId).map((login): FillCandidate => ({
-        id: login.id, site: login.site, hosts: login.hosts, exactHost: login.exactHost, username: login.username, source: login.source,
-        secrets: async () => ({ password: login.password, totp: login.totp ?? null }),
-      })),
-      ...this.onePassword.candidates(pageHost, botId),
-    ];
+    return this.store.usableFor(pageHost, botId).map((login): FillCandidate => ({
+      id: login.id, site: login.site, hosts: login.hosts, exactHost: login.exactHost, username: login.username, source: login.source,
+      secrets: async () => ({ password: login.password, totp: login.totp ?? null }),
+    }));
   }
 
   markUsed(id: string): void {
     this.store.markUsed(id);
-    this.onePassword.markUsed(id);
   }
 
   routes(botExists: (id: string) => boolean): LoginRouteDeps {
@@ -79,26 +71,6 @@ export class BotLogins {
       update: (id, patch) => this.store.update(id, patch),
       remove: (id) => this.store.remove(id),
       botExists,
-      onePassword: {
-        status: () => this.onePassword.status(),
-        list: () => { void this.onePassword.fresh(); return this.onePassword.list(); },
-        connect: async (token) => {
-          const status = await this.onePassword.refresh(token);
-          this.store.setOnePasswordToken(token);
-          return status;
-        },
-        refresh: () => this.onePassword.refresh(),
-        disconnect: () => {
-          this.store.setOnePasswordToken(null);
-          this.onePassword.clear();
-          return this.onePassword.status();
-        },
-        grant: (vaultId, bots) => {
-          if (!this.onePassword.hasVault(vaultId)) return null;
-          this.store.setOnePasswordGrant(vaultId, bots);
-          return this.onePassword.status();
-        },
-      },
     };
   }
 }

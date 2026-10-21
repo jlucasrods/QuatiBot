@@ -44,9 +44,6 @@ const diskLoginSchema = z.object({
 const fileSchema = z.object({
   version: z.literal(1),
   logins: z.array(diskLoginSchema),
-  onePassword: z.object({ token: z.string().min(1), connectedAt: z.number() }).optional(),
-  /** Vault id → the bots that may use its logins; a vault not named here is for every bot. Kept across reconnects. */
-  onePasswordGrants: z.record(z.string(), botsSchema).optional(),
 });
 
 type DiskLogin = z.infer<typeof diskLoginSchema>;
@@ -126,16 +123,20 @@ export class LoginStore {
   private read(): StoreFile {
     if (this.cache) return this.cache;
     let data: StoreFile = EMPTY;
+    let migrate = false;
     if (existsSync(this.file)) {
       const key = this.key(false);
       try {
         if (!key) throw new Error("missing key");
-        const disk = fileSchema.parse(JSON.parse(decryptBrowserState(readFileSync(this.file), key)));
+        const raw = JSON.parse(decryptBrowserState(readFileSync(this.file), key));
+        const disk = fileSchema.parse(raw);
         data = { ...disk, logins: disk.logins.map(fromDisk) };
+        migrate = Object.hasOwn(raw, "onePassword") || Object.hasOwn(raw, "onePasswordGrants");
       } catch {
         throw new Error("Saved logins cannot be decrypted. Restore the original vault key before making changes.");
       }
     }
+    if (migrate) this.write(data);
     this.cache = data;
     this.version++;
     return data;
@@ -225,35 +226,9 @@ export class LoginStore {
     this.write({ ...data, logins: data.logins.map((login) => login.id === id ? { ...login, lastUsedAt: at } : login) });
   }
 
-  onePasswordToken(): string | null {
-    return this.read().onePassword?.token ?? null;
-  }
-
-  setOnePasswordToken(token: string | null): void {
-    const data = this.read();
-    const { onePassword: _previous, ...rest } = data;
-    this.write(token ? { ...rest, onePassword: { token, connectedAt: this.now() } } : rest);
-  }
-
-  onePasswordGrants(): Record<string, LoginBots> {
-    return this.read().onePasswordGrants ?? {};
-  }
-
-  /** "all" opens a vault to every bot again. */
-  setOnePasswordGrant(vaultId: string, bots: LoginBots): void {
-    const data = this.read();
-    const { [vaultId]: _previous, ...others } = data.onePasswordGrants ?? {};
-    const grants = bots === "all" ? others : { ...others, [vaultId]: bots };
-    const { onePasswordGrants: _grants, ...rest } = data;
-    this.write(Object.keys(grants).length ? { ...rest, onePasswordGrants: grants } : rest);
-  }
-
   secretValues(): string[] {
     const data = this.read();
-    return [
-      ...data.logins.flatMap((login) => [login.password, ...(login.totp ? [login.totp.secret] : [])]),
-      ...(data.onePassword ? [data.onePassword.token] : []),
-    ];
+    return data.logins.flatMap((login) => [login.password, ...(login.totp ? [login.totp.secret] : [])]);
   }
 }
 

@@ -329,6 +329,7 @@ type Submitted = { kind: "no-control" } | { kind: "done"; changed: boolean; href
 class LoginRun {
   private readonly nonce = randomBytes(12).toString("hex");
   private readonly login: FillCandidate;
+  private readonly who: string;
   private readonly submit: boolean;
   private readonly deps: FillLoginDeps;
   private readonly now: () => number;
@@ -341,6 +342,7 @@ class LoginRun {
 
   constructor(login: FillCandidate, options: { submit: boolean; host: string; deps: FillLoginDeps; now: () => number; sleep: (ms: number) => Promise<void> }) {
     this.login = login;
+    this.who = login.username || "the saved login";
     this.submit = options.submit;
     this.host = options.host;
     this.deps = options.deps;
@@ -355,10 +357,6 @@ class LoginRun {
 
   private async page(script: string, ...args: unknown[]): Promise<Record<string, unknown> | null> {
     try { return evaluated(await this.deps.engine(["eval", call(script, ...args)])); } catch { return null; }
-  }
-
-  private who(): string {
-    return `${this.login.username || "the saved login"}${this.login.source === "1password" ? " (from 1Password)" : ""}`;
   }
 
   private filledWords(): string {
@@ -412,19 +410,19 @@ class LoginRun {
       if (!fields) {
         return step === 0
           ? this.outcome(false, "The browser closed or did not answer. Open the login page again, then call fill_login.")
-          : this.finish(true, `Submitted ${this.filledWords()} for ${this.who()}; the page has not answered since. Check you are signed in.`);
+          : this.finish(true, `Submitted ${this.filledWords()} for ${this.who}; the page has not answered since. Check you are signed in.`);
       }
       if (!this.stillHere(fields.href)) {
         if (step === 0) return this.outcome(false, `The page moved away from ${this.host} before anything was filled. Open its login page again, then call fill_login.`);
-        return this.finish(true, `Submitted ${this.filledWords()} for ${this.who()}; the page is now ${pageAddress(fields.href)}, where this login is not used. Check you are signed in, or call request_sign_in.`);
+        return this.finish(true, `Submitted ${this.filledWords()} for ${this.who}; the page is now ${pageAddress(fields.href)}, where this login is not used. Check you are signed in, or call request_sign_in.`);
       }
       if ((fields.password && this.done.has("password")) || (fields.code > 0 && this.done.has("code"))) {
         const said = fields.alert ? ` It said: “${fields.alert}”.` : "";
-        return this.failed(`The site did not accept the login for ${this.who()} on ${this.host}: it asked for it again, and nothing was submitted twice.${said} Check the saved login in Settings → Logins, or call request_sign_in.`);
+        return this.failed(`The site did not accept the login for ${this.who} on ${this.host}: it asked for it again, and nothing was submitted twice.${said} Check the saved login in Settings → Logins, or call request_sign_in.`);
       }
       if (step > 0 && !fields.password && fields.code === 0) {
-        if (fields.human) return this.finish(true, `Submitted ${this.filledWords()} for ${this.who()}, and a human check (CAPTCHA) appeared. Call request_sign_in so the person finishes signing in.`);
-        if (!this.done.has("password")) return this.finish(true, `Submitted ${this.filledWords()} for ${this.who()}, but no password box followed on ${this.host}. Look at the page, then call fill_login again once it shows the password box.`);
+        if (fields.human) return this.finish(true, `Submitted ${this.filledWords()} for ${this.who}, and a human check (CAPTCHA) appeared. Call request_sign_in so the person finishes signing in.`);
+        if (!this.done.has("password")) return this.finish(true, `Submitted ${this.filledWords()} for ${this.who}, but no password box followed on ${this.host}. Look at the page, then call fill_login again once it shows the password box.`);
         return this.finish(true, this.signedIn(fields.href, ""));
       }
       const typed = await this.fillStep(step, fields);
@@ -436,7 +434,7 @@ class LoginRun {
         await this.page(UNMARK, this.nonce);
         if (fields.code > 0 && !this.secretsHaveTotp()) {
           return step > 0
-            ? this.outcome(true, `Submitted ${this.filledWords()} for ${this.who()}. The page now asks for a one-time code, and the saved login has no 2FA key: call request_sign_in so the person enters it.`)
+            ? this.outcome(true, `Submitted ${this.filledWords()} for ${this.who}. The page now asks for a one-time code, and the saved login has no 2FA key: call request_sign_in so the person enters it.`)
             : this.outcome(false, `This page on ${this.host} asks for a one-time code, and the saved login has no 2FA key. Call request_sign_in so the person can enter the code.`);
         }
         return !fields.username && !fields.password && fields.code === 0
@@ -451,13 +449,13 @@ class LoginRun {
       try {
         sent = await this.submitStep(step, typed.last, fields.alert);
       } catch {
-        return this.failed(`Filled ${this.filledWords()} for ${this.who()} on ${this.host}, but the browser did not take the Enter key or the click to submit it.`);
+        return this.failed(`Filled ${this.filledWords()} for ${this.who} on ${this.host}, but the browser did not take the Enter key or the click to submit it.`);
       }
       if (sent.kind === "no-control") return this.leave(`It was not submitted: Enter did nothing and the page has no sign-in button to press. Press the page's own sign-in button now.${codeNote}`);
-      if (sent.human) return this.failed(`A human check (CAPTCHA) appeared on ${this.host} after the login for ${this.who()} was submitted. Call request_sign_in so the person finishes signing in.`);
+      if (sent.human) return this.failed(`A human check (CAPTCHA) appeared on ${this.host} after the login for ${this.who} was submitted. Call request_sign_in so the person finishes signing in.`);
       if (!sent.changed) {
         const said = sent.alert ? ` It said: “${sent.alert}”.` : " The page did not change.";
-        return this.failed(`The site did not accept the login for ${this.who()} on ${this.host}.${said} Check the saved login in Settings → Logins, or call request_sign_in.`);
+        return this.failed(`The site did not accept the login for ${this.who} on ${this.host}.${said} Check the saved login in Settings → Logins, or call request_sign_in.`);
       }
       if (step + 1 >= MAX_STEPS) return this.finish(true, this.signedIn(sent.href, sent.title));
       const waitMs = !this.done.has("password") ? NEXT_STEP_WAIT_MS : this.secretsHaveTotp() && !this.done.has("code") ? 5_000 : 1_500;
@@ -474,14 +472,14 @@ class LoginRun {
 
   private signedIn(href: string, title: string): string {
     const named = title ? ` (“${title.slice(0, 120)}”)` : "";
-    return `Filled ${this.filledWords()} for ${this.who()} on ${this.host} and submitted it; the page is now ${pageAddress(href)}${named}. Check you are signed in.`;
+    return `Filled ${this.filledWords()} for ${this.who} on ${this.host} and submitted it; the page is now ${pageAddress(href)}${named}. Check you are signed in.`;
   }
 
   /** The filled values stay for the bot or the person to submit, and are cleared if they are still there when the hold ends. */
   private leave(next: string): FillLoginOutcome {
     const held = this.secretUrl ? { url: this.secretUrl, ms: SECRET_HOLD_MS, clear: () => this.clear() } : undefined;
     const kept = held ? ` The password is cleared from the page in ${SECRET_HOLD_MS / 1000} seconds.` : "";
-    return this.outcome(true, `Filled ${this.filledWords()} for ${this.who()} on ${this.host}. ${next}${kept} You never see the password; do not read it back from the page.`, held);
+    return this.outcome(true, `Filled ${this.filledWords()} for ${this.who} on ${this.host}. ${next}${kept} You never see the password; do not read it back from the page.`, held);
   }
 
   private async type(key: string, text: string, keep?: string): Promise<"typed" | "kept" | "missed" | "moved"> {

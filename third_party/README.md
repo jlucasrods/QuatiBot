@@ -8,7 +8,6 @@ package-managed dependencies also carry their own licenses.
 |---|---|
 | `browser/` | agent-browser and optional Chromium headless bundle notices |
 | `cua-driver/` | Local VM runtime provenance and dependency-license coverage limits |
-| `onepassword-sdk/` | MIT license for the `@1password/sdk` integration |
 | `provider-icons/` | Provider SVG artwork attribution |
 | `puppeteer/` | Keyboard layout and event rules adapted by `server/browser/cdp/keyboard.ts` |
 | `t3-code/` | MIT license for browser and citation adaptations described in `NOTICE` |

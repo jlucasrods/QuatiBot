@@ -316,8 +316,6 @@ import { BROWSER_CONTROL_REFUSAL, BROWSER_UPLOAD_TOOL, browserRuntimeEnv } from 
 import { namedUploadPaths, uploadableFiles } from "./browser-upload.ts";
 import { listSignedInSites, signOutOfSites } from "./browser-sites.ts";
 import { HeldSecrets, LoginStore } from "./login-store.ts";
-import { OnePasswordLogins, sdkOnePasswordClient, type OnePasswordSdk } from "./onepassword.ts";
-import { nativeRequire } from "./data/engine.ts";
 import { fillLogin } from "./login-fill.ts";
 import { BotLogins, cardLoginPlace, cardSignInElsewhere, observeSignInPage, type ObservedPage } from "./bot-logins.ts";
 import { relayFrame } from "./browser-relay.ts";
@@ -526,18 +524,9 @@ const commandAllowlist = new CommandAllowlistStore(join(DATA_DIR, "command-allow
 const logins = new LoginStore({ dataDir: DATA_DIR });
 const heldSecrets = new HeldSecrets(logins);
 addHeldSecretScrubber((text) => heldSecrets.scrub(text));
-const onePassword = new OnePasswordLogins({
-  token: () => logins.onePasswordToken(),
-  grants: () => logins.onePasswordGrants(),
-  connect: async (token) => {
-    let sdk: OnePasswordSdk;
-    try { sdk = nativeRequire()("@1password/sdk") as OnePasswordSdk; }
-    catch { throw new Error("1Password is not available in this build of QuatiBot."); }
-    return sdkOnePasswordClient(sdk, token, serverVersion());
-  },
-});
-if (logins.onePasswordToken()) void onePassword.refresh();
-const botLogins = new BotLogins(logins, onePassword);
+try { logins.list(); }
+catch { console.warn("Saved logins are unavailable. The vault has been left unchanged."); }
+const botLogins = new BotLogins(logins);
 const SESSION_COOKIE = sessionCookieName(PORT, ENVIRONMENT_ID);
 const DESKTOP_MANAGED = process.env.QUATI_DESKTOP_PARENT === "1";
 // On a shared workspace loopback is a service, not the owner: every bot's shell is a loopback caller too.

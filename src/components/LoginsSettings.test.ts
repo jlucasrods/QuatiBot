@@ -19,8 +19,6 @@ let root: Root;
 const CARD_LOGIN = { id: "l1", site: "example.com", hosts: ["example.com", "login.microsoftonline.com"], exactHost: false, username: "alice@example.com", hasTotp: true, source: "card", bots: ["pepper"], createdAt: 1, lastUsedAt: Date.now() - 120_000 };
 const SHARED_LOGIN = { id: "l2", site: "example.org", hosts: ["crm.example.org"], exactHost: false, username: "team", hasTotp: false, source: "settings", bots: "all", createdAt: 2 };
 const TENANT_LOGIN = { id: "l3", site: "okta.com", hosts: ["acme.okta.com"], exactHost: true, username: "ops", hasTotp: false, source: "settings", bots: "all", createdAt: 3 };
-const VAULT_LOGIN = { id: "1password:v1:i1:example.com", site: "example.com", hosts: ["vault.example.com"], exactHost: false, username: "vault-user", hasTotp: false, source: "1password", bots: "all", createdAt: 0 };
-const OFF = { connected: false };
 
 beforeEach(() => {
   fixture.api.mockReset();
@@ -54,7 +52,7 @@ async function submit() {
 
 describe("Settings → Logins", () => {
   it("lists each login by site, the sign-in hosts it also fills on, username, 2FA, source, who may use it and last use", async () => {
-    fixture.api.mockResolvedValueOnce({ logins: [CARD_LOGIN, SHARED_LOGIN, TENANT_LOGIN], onePassword: OFF });
+    fixture.api.mockResolvedValueOnce({ logins: [CARD_LOGIN, SHARED_LOGIN, TENANT_LOGIN] });
     await render();
     expect(fixture.api).toHaveBeenCalledWith("/api/logins");
     const rows = [...host.querySelectorAll("[data-login-row]")].map((row) => row.textContent);
@@ -70,7 +68,7 @@ describe("Settings → Logins", () => {
   });
 
   it("adds a login for the bots chosen, and keeps nothing it was typed once saved", async () => {
-    fixture.api.mockResolvedValueOnce({ logins: [], onePassword: OFF }).mockResolvedValueOnce({ login: SHARED_LOGIN }).mockResolvedValueOnce({ logins: [SHARED_LOGIN], onePassword: OFF });
+    fixture.api.mockResolvedValueOnce({ logins: [] }).mockResolvedValueOnce({ login: SHARED_LOGIN }).mockResolvedValueOnce({ logins: [SHARED_LOGIN] });
     await render();
     expect(host.textContent).toContain("No saved logins yet.");
     await click("Add login");
@@ -86,7 +84,7 @@ describe("Settings → Logins", () => {
   });
 
   it("keeps a new login to its exact address when asked", async () => {
-    fixture.api.mockResolvedValueOnce({ logins: [], onePassword: OFF }).mockResolvedValueOnce({ login: TENANT_LOGIN }).mockResolvedValueOnce({ logins: [TENANT_LOGIN], onePassword: OFF });
+    fixture.api.mockResolvedValueOnce({ logins: [] }).mockResolvedValueOnce({ login: TENANT_LOGIN }).mockResolvedValueOnce({ logins: [TENANT_LOGIN] });
     await render();
     await click("Add login");
     await type("site", "acme.okta.com");
@@ -100,7 +98,7 @@ describe("Settings → Logins", () => {
   });
 
   it("replaces a password, keeps the 2FA key unless asked, and changes who may use it", async () => {
-    fixture.api.mockResolvedValueOnce({ logins: [CARD_LOGIN], onePassword: OFF }).mockResolvedValueOnce({ login: CARD_LOGIN }).mockResolvedValueOnce({ logins: [CARD_LOGIN], onePassword: OFF });
+    fixture.api.mockResolvedValueOnce({ logins: [CARD_LOGIN] }).mockResolvedValueOnce({ login: CARD_LOGIN }).mockResolvedValueOnce({ logins: [CARD_LOGIN] });
     await render();
     await click("Change the login for example.com");
     expect(host.querySelector<HTMLInputElement>('input[name="password"]')!.value).toBe("");
@@ -111,7 +109,7 @@ describe("Settings → Logins", () => {
   });
 
   it("keeps a login to its sign-in hosts, or lets it fill on its whole site again", async () => {
-    fixture.api.mockResolvedValueOnce({ logins: [CARD_LOGIN], onePassword: OFF }).mockResolvedValueOnce({ login: CARD_LOGIN }).mockResolvedValueOnce({ logins: [CARD_LOGIN], onePassword: OFF });
+    fixture.api.mockResolvedValueOnce({ logins: [CARD_LOGIN] }).mockResolvedValueOnce({ login: CARD_LOGIN }).mockResolvedValueOnce({ logins: [CARD_LOGIN] });
     await render();
     await click("Change the login for example.com");
     const exact = host.querySelector<HTMLInputElement>('input[name="exactHost"]')!;
@@ -122,69 +120,12 @@ describe("Settings → Logins", () => {
   });
 
   it("deletes only on a second click", async () => {
-    fixture.api.mockResolvedValueOnce({ logins: [CARD_LOGIN], onePassword: OFF }).mockResolvedValueOnce({ ok: true }).mockResolvedValueOnce({ logins: [], onePassword: OFF });
+    fixture.api.mockResolvedValueOnce({ logins: [CARD_LOGIN] }).mockResolvedValueOnce({ ok: true }).mockResolvedValueOnce({ logins: [] });
     await render();
     await click("Delete the login for example.com");
     expect(fixture.api).toHaveBeenCalledTimes(1);
     await click("Delete for good");
     expect(fixture.api).toHaveBeenNthCalledWith(2, "/api/logins/l1", { method: "DELETE" });
-  });
-
-  it("connects 1Password with a masked token it then forgets, lists its logins read-only, and disconnects", async () => {
-    const on = { connected: true, vaults: [{ id: "v1", title: "Shared with QUATI", items: 1, bots: "all" }], items: 1 };
-    fixture.api
-      .mockResolvedValueOnce({ logins: [], onePassword: OFF })
-      .mockResolvedValueOnce({ onePassword: on })
-      .mockResolvedValueOnce({ logins: [VAULT_LOGIN], onePassword: on })
-      .mockResolvedValueOnce({ onePassword: OFF })
-      .mockResolvedValueOnce({ logins: [], onePassword: OFF });
-    await render();
-    expect(host.querySelector("[data-onepassword]")!.textContent).toContain("create a service account that can read one vault only");
-    const field = host.querySelector<HTMLInputElement>('input[name="onePasswordToken"]')!;
-    expect(field.type).toBe("password");
-    await type("onePasswordToken", "ops_fake-typed-token");
-    await click("Connect 1Password");
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    expect(fixture.api).toHaveBeenNthCalledWith(2, "/api/logins/1password", { method: "POST", body: JSON.stringify({ token: "ops_fake-typed-token" }) });
-    expect(host.querySelector("[data-onepassword]")!.textContent).toContain("Connected to Shared with QUATI · 1 logins with a website");
-    expect(host.innerHTML).not.toContain("ops_fake-typed-token");
-    const row = host.querySelector('[data-login-row="example.com"]')!;
-    expect(row.textContent).toContain("From 1Password · All bots");
-    expect(row.querySelectorAll("button")).toHaveLength(0);
-    await click("Disconnect");
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    expect(fixture.api).toHaveBeenNthCalledWith(4, "/api/logins/1password", { method: "DELETE" });
-    expect(host.querySelector<HTMLInputElement>('input[name="onePasswordToken"]')!.value).toBe("");
-  });
-
-  it("keeps a 1Password vault to the bots chosen for it, on the same screen", async () => {
-    const vault = { id: "v1", title: "Shared with QUATI", items: 2, bots: "all" };
-    const on = { connected: true, vaults: [vault], items: 2 };
-    const narrowed = { ...on, vaults: [{ ...vault, bots: ["quill"] }] };
-    fixture.api
-      .mockResolvedValueOnce({ logins: [VAULT_LOGIN], onePassword: on })
-      .mockResolvedValueOnce({ onePassword: narrowed })
-      .mockResolvedValueOnce({ logins: [{ ...VAULT_LOGIN, bots: ["quill"] }], onePassword: narrowed });
-    await render();
-    const row = () => host.querySelector('[data-vault="Shared with QUATI"]')!;
-    expect(row().textContent).toContain("2 logins · All bots");
-    await click("Change who can use Shared with QUATI");
-    await act(async () => { [...row().querySelectorAll<HTMLInputElement>('input[type="radio"]')][1]!.click(); });
-    await act(async () => { [...row().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')][1]!.click(); });
-    await click("Save changes");
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    expect(fixture.api).toHaveBeenNthCalledWith(2, "/api/logins/1password/vaults/v1", { method: "PATCH", body: JSON.stringify({ bots: ["quill"] }) });
-    expect(row().textContent).toContain("2 logins · Quill");
-    expect(host.querySelector('[data-login-row="example.com"]')!.textContent).toContain("From 1Password · Quill");
-  });
-
-  it("says why 1Password refused a token", async () => {
-    fixture.api.mockResolvedValueOnce({ logins: [], onePassword: OFF }).mockRejectedValueOnce(new Error("1Password did not accept the token."));
-    await render();
-    await type("onePasswordToken", "ops_fake-wrong");
-    await click("Connect 1Password");
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    expect(host.querySelector("[data-onepassword] [role=alert]")!.textContent).toBe("1Password did not accept the token.");
   });
 
   it("is for admins only", async () => {

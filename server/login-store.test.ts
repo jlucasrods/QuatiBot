@@ -91,7 +91,7 @@ describe("the saved logins store", () => {
     const written = JSON.parse(decryptBrowserState(readFileSync(join(dir, LOGINS_FILE)), KEY));
     expect(written.logins[0]).toMatchObject({ id: "old-1", host: "example.com", site: "example.com", hosts: ["example.com"], exactHost: false, lastUsedAt: 9 });
     expect(previousRelease.parse(written).logins.map((login) => login.host)).toEqual(["example.com", "alice.github.io", "login.example.org"]);
-    expect(new LoginStore({ dataDir: dir }).onePasswordToken()).toBe("ops_fake-token");
+    expect(new LoginStore({ dataDir: dir }).get("old-1")?.password).toBe(PASSWORD);
   });
 
   it("fills a login on its site and its sign-in hosts, for the bots allowed", () => {
@@ -141,19 +141,45 @@ describe("the saved logins store", () => {
     expect(store.update("missing", { password: "x-x-x-x" })).toBeNull();
   });
 
-  it("keeps the 1Password token in the same sealed file, and which bots each vault is for across reconnects", () => {
+  it.each([
+    { onePassword: { token: "ops_fake-service-account-token", connectedAt: 7 }, onePasswordGrants: { v1: ["pepper"] } },
+    { onePasswordGrants: { v1: [] } },
+    { onePassword: { token: null } },
+  ])("migrates legacy settings while preserving local secrets and access: %j", (legacy) => {
+    const saved = new LoginStore({ dataDir: dir, now: () => 7 }).create({
+      ...at("example.com", ["accounts.example.com", "login.microsoftonline.com"], true),
+      username: "alice", password: PASSWORD, totp: TOTP, source: "card", bots: ["pepper"],
+    });
+    const original = JSON.parse(decryptBrowserState(readFileSync(join(dir, LOGINS_FILE)), readFileSync(join(dir, LOGINS_KEY_FILE), "utf8").trim()));
+    writeFileSync(join(dir, LOGINS_KEY_FILE), `${KEY}\n`, { mode: 0o600 });
+    writeFileSync(join(dir, LOGINS_FILE), encryptBrowserState(JSON.stringify({ ...original, ...legacy }), KEY));
+
     const store = new LoginStore({ dataDir: dir });
-    store.setOnePasswordToken("ops_fake-service-account-token");
-    expect(new LoginStore({ dataDir: dir }).onePasswordToken()).toBe("ops_fake-service-account-token");
-    expect(readFileSync(join(dir, LOGINS_FILE)).includes(Buffer.from("ops_fake"))).toBe(false);
-    expect(store.onePasswordGrants()).toEqual({});
-    store.setOnePasswordGrant("v1", ["pepper"]);
-    store.setOnePasswordGrant("v2", []);
-    store.setOnePasswordToken(null);
-    expect(new LoginStore({ dataDir: dir }).onePasswordToken()).toBeNull();
-    expect(new LoginStore({ dataDir: dir }).onePasswordGrants()).toEqual({ v1: ["pepper"], v2: [] });
-    store.setOnePasswordGrant("v1", "all");
-    expect(new LoginStore({ dataDir: dir }).onePasswordGrants()).toEqual({ v2: [] });
+    expect(store.list()).toEqual([saved]);
+    const migrated = readFileSync(join(dir, LOGINS_FILE));
+    expect(JSON.parse(decryptBrowserState(migrated, KEY))).toEqual(original);
+    expect(store.usableFor("accounts.example.com", "pepper")[0]).toMatchObject({ password: PASSWORD, totp: TOTP });
+    expect(store.usableFor("accounts.example.com", "quill")).toEqual([]);
+    expect(store.usableFor("www.example.com", "pepper")).toEqual([]);
+    expect(store.secretValues()).toEqual([PASSWORD, TOTP.secret]);
+    expect(new LoginStore({ dataDir: dir }).list()).toEqual([saved]);
+    expect(readFileSync(join(dir, LOGINS_FILE))).toEqual(migrated);
+    expect(statSync(join(dir, LOGINS_FILE)).mode & 0o777).toBe(0o600);
+  });
+
+  it.each(["missing-key", "wrong-key", "corrupt-file", "invalid-login"])("leaves a legacy vault unchanged on %s", (problem) => {
+    const file = join(dir, LOGINS_FILE);
+    const keyFile = join(dir, LOGINS_KEY_FILE);
+    const login = { id: "old-1", host: "example.com", username: "alice", password: PASSWORD, source: "card", bots: ["pepper"], createdAt: 5, updatedAt: 5 };
+    writeFileSync(file, encryptBrowserState(JSON.stringify({ version: 1, logins: [{ ...login, ...(problem === "invalid-login" ? { password: null } : {}) }], onePassword: { token: "ops_fake-token", connectedAt: 7 } }), KEY));
+    if (problem !== "missing-key") writeFileSync(keyFile, problem === "wrong-key" ? "0".repeat(64) : KEY);
+    if (problem === "corrupt-file") writeFileSync(file, "unreadable");
+    const before = readFileSync(file);
+    const store = new LoginStore({ dataDir: dir });
+
+    expect(() => store.list()).toThrow("Saved logins cannot be decrypted");
+    expect(() => store.create({ ...at("example.net"), username: "b", password: PASSWORD, source: "settings", bots: "all" })).toThrow("Saved logins cannot be decrypted");
+    expect(readFileSync(file)).toEqual(before);
   });
 });
 

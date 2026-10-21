@@ -4155,7 +4155,6 @@ await import(${JSON.stringify(FAKE_ACP_CLI)});
         site: "example.com", hosts: ["accounts.example.com"], exactHost: false, username: "alice@example.com", hasTotp: true, source: "card", bots: [bot.id],
       })]);
       loginId = listed.body.logins[0].id;
-      expect(listed.body.onePassword).toEqual({ connected: false });
 
       const transcript = JSON.stringify((await api("GET", `/api/threads/${bot.threadId}/messages`)).body);
       const sealed = readFileSync(join(home, ".quatibot", "logins.json.enc"));
