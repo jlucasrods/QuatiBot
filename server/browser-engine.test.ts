@@ -555,7 +555,7 @@ describe("finding the browser engine", () => {
     const asset = resolveAgentBrowserReleaseAsset("linux", "x64")!;
     expect(asset).toEqual({
       target: "linux-x64", asset: "agent-browser-linux-x64",
-      bytes: 14253776, sha256: "78e0c5a14a7fa1f3d1ae2acdbdcc94a047b435b998a8c505fcc49d7fa4935a49",
+      bytes: 18305528, sha256: "6906d3a2a67b05809932a93d99e53d1132373f0a52a617b2d6032dbb954df6fc",
     });
     expect(agentBrowserReleaseVersion(asset)).toBe(AGENT_BROWSER_VERSION);
     expect(browserBundleSpec("linux-x64").engine).toEqual({
@@ -563,13 +563,13 @@ describe("finding the browser engine", () => {
       bytes: asset.bytes, sha256: asset.sha256, executable: "agent-browser",
     });
     for (const [platform, arch] of [["linux", "arm64"], ["linux", "x64"]] as const) {
-      expect(agentBrowserReleaseVersion(resolveAgentBrowserReleaseAsset(platform, arch))).toBe("0.37.0");
+      expect(agentBrowserReleaseVersion(resolveAgentBrowserReleaseAsset(platform, arch))).toBe("0.39.1");
     }
   });
 
   it("does not reuse an older Linux managed install for a revised release", () => {
     const dataDir = join(tmpdir(), "quati-versioned-browser-fixture");
-    const old = join(dataDir, "tools", "agent-browser", "0.36.0", "agent-browser");
+    const old = join(dataDir, "tools", "agent-browser", "0.37.0", "agent-browser");
     const revised = pinnedBinaryPath(dataDir, "linux", "x64");
     expect(revised).toBe(join(dataDir, "tools", "agent-browser", AGENT_BROWSER_VERSION, "agent-browser"));
     const files = new Set([old]);

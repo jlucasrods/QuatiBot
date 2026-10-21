@@ -26,7 +26,7 @@ ARG OPENCODE_VERSION=2.0.31
 RUN HOME=/tmp/quati-install npm install -g --cache /tmp/npm-cache @opencode/cli@${OPENCODE_VERSION} \
     && HOME=/tmp/quati-install opencode --version | grep -E '^opencode v?2\.' \
     && rm -rf /tmp/quati-install /tmp/npm-cache /tmp/node-compile-cache
-ARG AGENT_BROWSER_VERSION=0.37.0
+ARG AGENT_BROWSER_VERSION=0.39.1
 ARG CHROME_CACHE_TAG=""
 RUN echo "Chrome cache: ${CHROME_CACHE_TAG:-Stable}" \
     && npm install -g --cache /tmp/npm-cache agent-browser@${AGENT_BROWSER_VERSION} \

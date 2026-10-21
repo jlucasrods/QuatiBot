@@ -2,12 +2,12 @@
 
 QuatiBot supports Linux and uses these third-party browser components:
 
-- **agent-browser 0.37.0**, the official Vercel release executables:
-  <https://github.com/vercel-labs/agent-browser/releases/tag/v0.37.0>.
+- **agent-browser 0.39.1**, the official Vercel release executables:
+  <https://github.com/vercel-labs/agent-browser/releases/tag/v0.39.1>.
   `server/browser-engine-release.ts` pins the Linux glibc and musl assets by
   size and SHA-256. Its Apache-2.0 license is in `agent-browser-LICENSE.txt`;
   bundled axe-core notices are in `LICENSE-axe-core.txt` and
-  `LICENSE-axe-core-THIRD-PARTY.txt`. These notices match the v0.37.0 source
+  `LICENSE-axe-core-THIRD-PARTY.txt`. These notices match the v0.39.1 source
   tag, which has no root-level NOTICE.
 - **Chromium Headless Shell 153.0.8010.47**, the optional bundled browser
   prepared by `scripts/prepare-browser.mjs` for Linux x64 and arm64.

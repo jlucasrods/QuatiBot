@@ -1,6 +1,5 @@
-// Digests computed from the official GitHub assets on 2026-09-08, except the versioned Windows vendor build; update pins
-// only through a reviewed native end-to-end run. The Dockerfile keeps the official Linux version.
-export const AGENT_BROWSER_VERSION = "0.37.0";
+// https://github.com/vercel-labs/agent-browser/pull/2003
+export const AGENT_BROWSER_VERSION = "0.39.1";
 export interface AgentBrowserReleaseAsset {
     /** `<platform>-<arch>`; Linux adds `-musl` on Alpine-style systems. */
     target: string;
@@ -15,19 +14,19 @@ export interface AgentBrowserReleaseAsset {
 const RELEASES = new Map<string, AgentBrowserReleaseAsset>([
     [
         "linux-arm64",
-        { target: "linux-arm64", asset: "agent-browser-linux-arm64", sha256: "0315a8c4f7bf167cc5fd5eeaea79009b0e6b5d2ae8b3057bf6f96be978483426", bytes: 12507840 },
+        { target: "linux-arm64", asset: "agent-browser-linux-arm64", sha256: "9d8fdc586056df65747927ae166157c83af91b52cea287175e5544afd2591d33", bytes: 15844112 },
     ],
     [
         "linux-musl-arm64",
-        { target: "linux-musl-arm64", asset: "agent-browser-linux-musl-arm64", sha256: "db67c0e84e0668c052c2cbdca325c57f896e309c3723755dcdd65b700f8a2b52", bytes: 12369352 },
+        { target: "linux-musl-arm64", asset: "agent-browser-linux-musl-arm64", sha256: "c4959f3e193c5bc8f333613363f25f2eaceecafe25a0821843b271906474a20f", bytes: 15642552 },
     ],
     [
         "linux-musl-x64",
-        { target: "linux-musl-x64", asset: "agent-browser-linux-musl-x64", sha256: "5cff3bc7b2486867aba2901f92c9ce6029bd2a37951630d9feec1c5b3fee402e", bytes: 14092888 },
+        { target: "linux-musl-x64", asset: "agent-browser-linux-musl-x64", sha256: "74507cdab98aa91bdc14346c545aff974640a225e43f8c3d6c23164f8c0f9bb9", bytes: 18102976 },
     ],
     [
         "linux-x64",
-        { target: "linux-x64", asset: "agent-browser-linux-x64", sha256: "78e0c5a14a7fa1f3d1ae2acdbdcc94a047b435b998a8c505fcc49d7fa4935a49", bytes: 14253776 },
+        { target: "linux-x64", asset: "agent-browser-linux-x64", sha256: "6906d3a2a67b05809932a93d99e53d1132373f0a52a617b2d6032dbb954df6fc", bytes: 18305528 },
     ]
 ]);
 export function agentBrowserReleaseUrl(asset: AgentBrowserReleaseAsset): string {
