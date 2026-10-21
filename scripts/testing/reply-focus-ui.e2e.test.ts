@@ -6,6 +6,7 @@ import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlQuati } from "../control-quati.ts";
 import { UI_TOOLS_DIR } from "./control-quati-ui.ts";
+import { waitForUiLaunch } from "./ui-launch.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const binary = resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env });
@@ -16,17 +17,10 @@ if (!enabled) console.info("skipping reply focus UI e2e: set QUATI_UI_E2E=1 to i
   let child: ChildProcess | undefined;
   let info: { ui: string } | undefined;
   try {
-    let stdout = "", stderr = "";
     child = spawn(process.execPath, ["--experimental-strip-types", join(ROOT, "scripts/control-quati.ts"), "ui", "launch"], {
       cwd: ROOT, env: process.env, stdio: ["ignore", "pipe", "pipe"],
     });
-    child.stdout!.on("data", (chunk: Buffer) => { stdout += String(chunk); });
-    child.stderr!.on("data", (chunk: Buffer) => { stderr += String(chunk); });
-    child.on("error", error => { stderr += error.message; });
-    await expect.poll(() => {
-      if (child!.exitCode !== null || child!.signalCode !== null) throw new Error(`UI launcher exited: ${stderr}`);
-      try { info = JSON.parse(stdout); return Boolean(info?.ui); } catch { return false; }
-    }, { timeout: binary ? 180_000 : 600_000, interval: 250 }).toBe(true);
+    info = await waitForUiLaunch(child, binary ? 180_000 : 600_000);
     const ui = (verb: string, ...args: string[]) => runControlQuati(["ui", verb, "--ui", info!.ui, ...args]) as Promise<Record<string, any>>;
     const evaluate = async (js: string) => (await ui("eval", "--js", js)).result;
     const focused = () => evaluate("document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName");

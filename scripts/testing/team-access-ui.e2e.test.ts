@@ -6,6 +6,7 @@ import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlQuati } from "../control-quati.ts";
 import { UI_TOOLS_DIR } from "./control-quati-ui.ts";
+import { waitForUiLaunch } from "./ui-launch.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const enabled = process.env.QUATI_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
@@ -14,17 +15,8 @@ const enabled = process.env.QUATI_UI_E2E === "1" || Boolean(resolveAgentBrowserB
   const child = spawn(process.execPath, ["--experimental-strip-types", "scripts/control-quati.ts", "ui", "launch"], {
     cwd: ROOT, env: process.env, stdio: ["ignore", "pipe", "pipe"],
   });
-  let output = "";
-  let error = "";
-  child.stdout.on("data", chunk => { output += String(chunk); });
-  child.stderr.on("data", chunk => { error += String(chunk); });
-  child.on("error", caught => { error += caught.message; });
-  let info: { ui: string; url: string; botId: string; logPath: string };
   try {
-    await expect.poll(() => {
-      if (child.exitCode !== null || child.signalCode !== null) throw new Error(error);
-      try { info = JSON.parse(output); return Boolean(info.ui); } catch { return false; }
-    }, { timeout: 180_000, interval: 250 }).toBe(true);
+    const info = await waitForUiLaunch(child, 180_000);
     const api = async (path: string, body?: unknown, method = "PATCH") => {
       const response = await fetch(info.url + path, body === undefined ? {} : {
         method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),

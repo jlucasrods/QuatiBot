@@ -31,9 +31,26 @@ Stop the launcher with Ctrl-C when finished. It owns the child server and its te
 
 Fake ACP proves the application protocol and orchestration, not real provider inference. A browser test proves browser behavior, not VM behavior. To verify VM lifecycle, interactions and recordings, provide a working container runtime and sandbox image in a disposable environment. Do not claim a missing dependency was validated.
 
-## CI checks
+## Run the affected test group
 
-Before committing, run `pnpm ci:local`. It runs every application check below,
+Choose tests from the behavior changed, including its callers and shared helpers:
+
+| Change | Command |
+| --- | --- |
+| Fixture launcher, startup failures or isolated preview | `pnpm test:fixtures` |
+| Saved logins, vault persistence, permissions or fill | `pnpm test:logins` |
+| Another feature | `pnpm exec vitest run path/to/related.test.ts path/to/caller.test.ts` |
+
+These groups do not build the app or run unrelated suites. Narrow a group further
+with Vitest's name filter, for example `pnpm test:fixtures -t 'startup error'`.
+Add a `test:<area>` package script when a feature needs a reusable group rather
+than introducing another test runner. Renderer behavior changes still need the
+relevant UI test or fixture interaction; launcher tests are not a substitute.
+
+## Full CI checks
+
+Run `pnpm ci:local` only when a full local validation is explicitly requested,
+not for every edit or commit. It runs every application check below,
 forces a fresh frontend typecheck, runs four application-test shards in parallel,
 and continues after failures to report all
 failed stages with a nonzero exit code. It uses a temporary HOME and data directory;

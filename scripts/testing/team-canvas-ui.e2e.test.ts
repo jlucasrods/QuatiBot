@@ -7,6 +7,7 @@ import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlQuati } from "../control-quati.ts";
 import { UI_TOOLS_DIR } from "./control-quati-ui.ts";
+import { waitForUiLaunch } from "./ui-launch.ts";
 import { fixtureApi } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -25,17 +26,10 @@ type BotRecord = {
   let info: { ui: string; url: string; botId: string; logPath: string } | undefined;
   const receipts: Record<string, unknown> = { pointerInput: "synthetic DOM events; native pointer capture is not proven" };
   try {
-    let stdout = "", stderr = "";
     child = spawn(process.execPath, ["--experimental-strip-types", join(ROOT, "scripts/control-quati.ts"), "ui", "launch"], {
       cwd: ROOT, env: process.env, stdio: ["ignore", "pipe", "pipe"],
     });
-    child.stdout!.on("data", (chunk: Buffer) => { stdout += String(chunk); });
-    child.stderr!.on("data", (chunk: Buffer) => { stderr += String(chunk); });
-    child.on("error", error => { stderr += error.message; });
-    await expect.poll(() => {
-      if (child!.exitCode !== null || child!.signalCode !== null) throw new Error(`UI launcher exited: ${stderr}`);
-      try { info = JSON.parse(stdout); return Boolean(info?.ui); } catch { return false; }
-    }, { timeout: binary ? 180_000 : 600_000, interval: 250 }).toBe(true);
+    info = await waitForUiLaunch(child, binary ? 180_000 : 600_000);
     const fixture = info!;
     const api = fixtureApi(fixture.url);
     const ui = (verb: string, ...args: string[]) => runControlQuati(["ui", verb, "--ui", fixture.ui, ...args]) as Promise<Record<string, any>>;

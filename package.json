@@ -39,6 +39,8 @@
     "bench:observation": "node --experimental-strip-types scripts/bench-observation.ts",
     "bench:persistence": "node --experimental-strip-types scripts/bench-persistence.ts",
     "test:watch": "vitest",
+    "test:fixtures": "vitest run scripts/control-quati.test.ts scripts/testing/ui-launch.test.ts scripts/testing/preview-fixture.test.ts",
+    "test:logins": "vitest run shared/logins.test.ts server/login-store.test.ts server/bot-logins.test.ts server/login-fill.test.ts server/routes/logins.test.ts server/saved-login.e2e.test.ts src/components/LoginsSettings.test.ts",
     "test:cua-container": "node scripts/smoke-cua-container.mjs",
     "preview": "vite preview",
     "gen:bodies": "node --experimental-strip-types scripts/gen-mascot-bodies.ts",

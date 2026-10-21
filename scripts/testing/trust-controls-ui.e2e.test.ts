@@ -6,10 +6,10 @@ import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlQuati } from "../control-quati.ts";
 import { UI_TOOLS_DIR } from "./control-quati-ui.ts";
+import { waitForUiLaunch } from "./ui-launch.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const enabled = process.env.QUATI_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
-interface FixtureInfo { ui: string; url: string; logPath: string }
 interface SavedBot { id: string; name: string; modelSelection: { instanceId: string; model: string }; fallback?: unknown }
 
 describe("trust controls in the real renderer", () => {
@@ -20,8 +20,6 @@ describe("trust controls in the real renderer", () => {
   });
 
   (enabled ? it : it.skip)("refreshes receipts, saves recovery choices and serializes memory edits", async () => {
-    let output = "", errors = "";
-    let info!: FixtureInfo;
     const launcher = new URL("./control-quati-ui.ts", import.meta.url).href;
     const bootstrap = `import { launchUi } from ${JSON.stringify(launcher)};
       process.on('message', message => { if (message === 'stop') process.emit('SIGINT'); });
@@ -29,13 +27,7 @@ describe("trust controls in the real renderer", () => {
     child = spawn(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", bootstrap], {
       cwd: ROOT, env: process.env, stdio: ["ignore", "pipe", "pipe", "ipc"],
     });
-    child.stdout!.on("data", (chunk: Buffer) => { output += String(chunk); });
-    child.stderr!.on("data", (chunk: Buffer) => { errors += String(chunk); });
-    child.on("error", error => { errors += error.message; });
-    await expect.poll(() => {
-      if (child!.exitCode !== null || child!.signalCode !== null) throw new Error(`UI launcher exited: ${errors}`);
-      try { info = JSON.parse(output); return Boolean(info.ui); } catch { return false; }
-    }, { timeout: 300_000, interval: 250 }).toBe(true);
+    const info = await waitForUiLaunch(child, 300_000);
 
     const ui = (verb: string, ...args: string[]) => runControlQuati(["ui", verb, "--ui", info.ui, ...args]) as Promise<Record<string, any>>;
     const evaluate = async (js: string) => (await ui("eval", "--js", js)).result;

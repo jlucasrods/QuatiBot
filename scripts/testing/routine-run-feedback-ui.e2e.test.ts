@@ -3,19 +3,15 @@ import { fileURLToPath } from "node:url";
 import { afterAll, expect, it } from "vitest";
 import { runControlQuati } from "../control-quati.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
+import { waitForUiLaunch } from "./ui-launch.ts";
 
 let child: ChildProcess | undefined;
 afterAll(() => waitForExit(child, { signal: "SIGINT", graceMs: 30_000 }));
 
 (process.env.QUATI_UI_E2E === "1" ? it : it.skip)("Run now shows pending, its exact result, and retryable request errors", async () => {
   const root = fileURLToPath(new URL("../..", import.meta.url));
-  let output = "";
   child = spawn(process.execPath, ["--experimental-strip-types", "scripts/control-quati.ts", "ui", "launch"], { cwd: root, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
-  child.stdout!.on("data", chunk => { output += chunk; });
-  let fixture: { ui: string; url: string; botId: string };
-  await expect.poll(() => {
-    try { fixture = JSON.parse(output); return Boolean(fixture.ui); } catch { return false; }
-  }, { timeout: 120_000 }).toBe(true);
+  const fixture = await waitForUiLaunch(child, 120_000);
   const ui = (verb: string, ...args: string[]) => runControlQuati(["ui", verb, "--ui", fixture.ui, ...args]) as Promise<any>;
   const evaluate = async (js: string) => (await ui("eval", "--js", js)).result;
   const click = (name: string) => ui("click", "--name", name);

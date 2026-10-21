@@ -7,11 +7,11 @@ import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlQuati } from "../control-quati.ts";
 import { UI_TOOLS_DIR } from "./control-quati-ui.ts";
+import { waitForUiLaunch } from "./ui-launch.ts";
 import { mountPreview, type MountedPreview } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const enabled = process.env.QUATI_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
-interface FixtureInfo { ui: string; url: string; dataDir: string; logPath: string }
 
 describe("isolated VM preview recovery in the real renderer", () => {
   let child: ChildProcess | undefined;
@@ -22,19 +22,10 @@ describe("isolated VM preview recovery in the real renderer", () => {
   });
 
   (enabled ? it : it.skip)("retains frames without cancelling busy captures and rejects stale conversations and viewers", async () => {
-    let stdout = "";
-    let stderr = "";
-    let info: FixtureInfo;
     child = spawn(process.execPath, ["--experimental-strip-types", join(ROOT, "scripts/control-quati.ts"), "ui", "launch"], {
       cwd: ROOT, env: process.env, stdio: ["ignore", "pipe", "pipe"],
     });
-    child.stdout!.on("data", (chunk: Buffer) => { stdout += String(chunk); });
-    child.stderr!.on("data", (chunk: Buffer) => { stderr += String(chunk); });
-    child.on("error", error => { stderr += error.message; });
-    await expect.poll(() => {
-      if (child!.exitCode !== null || child!.signalCode !== null) throw new Error(`UI launcher exited: ${stderr}`);
-      try { info = JSON.parse(stdout); return Boolean(info.ui); } catch { return false; }
-    }, { timeout: 600_000, interval: 250 }).toBe(true);
+    const info = await waitForUiLaunch(child, 600_000);
     const ui = (verb: string, ...args: string[]) => runControlQuati(["ui", verb, "--ui", info.ui, ...args]) as Promise<Record<string, unknown>>;
     const evaluate = async (js: string) => (await ui("eval", "--js", js)).result;
     const click = (name: string) => ui("click", "--name", name);

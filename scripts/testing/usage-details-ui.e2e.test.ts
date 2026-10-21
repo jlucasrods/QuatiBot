@@ -7,6 +7,7 @@ import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlQuati } from "../control-quati.ts";
 import { agentBrowser, sessionEnv, UI_TOOLS_DIR, type UiHandle } from "./control-quati-ui.ts";
+import { waitForUiLaunch } from "./ui-launch.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const enabled = process.env.QUATI_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
@@ -16,19 +17,13 @@ if (!enabled) console.log("skipping usage details UI: set QUATI_UI_E2E=1 to inst
   let child: ChildProcess | undefined;
   let info: { ui: string; url: string; botId: string; logPath: string } | undefined;
   try {
-    let stdout = "", stderr = "";
     child = spawn(process.execPath, ["--experimental-strip-types", join(ROOT, "scripts/control-quati.ts"), "ui", "launch"], {
       cwd: ROOT, env: {
         ...process.env,
         FAKE_ACP_TOKEN_USAGE: JSON.stringify({ inputTokens: 10, outputTokens: 5, cachedReadTokens: 2, totalTokens: 17 }),
       }, stdio: ["ignore", "pipe", "pipe"],
     });
-    child.stdout!.on("data", chunk => { stdout += String(chunk); });
-    child.stderr!.on("data", chunk => { stderr += String(chunk); });
-    await expect.poll(() => {
-      if (child!.exitCode !== null || child!.signalCode !== null) throw new Error(`UI launcher exited: ${stderr}`);
-      try { info = JSON.parse(stdout); return Boolean(info?.ui); } catch { return false; }
-    }, { timeout: 600_000, interval: 250 }).toBe(true);
+    info = await waitForUiLaunch(child, 600_000);
     const handle = info!;
     const ui = (verb: string, ...args: string[]) => runControlQuati(["ui", verb, "--ui", handle.ui, ...args]) as Promise<Record<string, any>>;
     await ui("type", "--name", "Message Pepper", "--text", "Check the fixture usage");

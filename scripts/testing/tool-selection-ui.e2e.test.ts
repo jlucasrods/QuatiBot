@@ -6,6 +6,7 @@ import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlQuati } from "../control-quati.ts";
 import { UI_TOOLS_DIR } from "./control-quati-ui.ts";
+import { waitForUiLaunch } from "./ui-launch.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const enabled = Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env })) || process.env.QUATI_UI_E2E === "1";
@@ -15,20 +16,13 @@ interface SavedBot { id: string; name: string; toolScope?: { allow?: string[]; d
 (enabled ? it : it.skip)("saves, clears, rejects and duplicates owner tool selections without crossing bots", async () => {
   let child: ChildProcess | undefined;
   try {
-    let stdout = "", stderr = "";
-    let info: { ui: string; url: string };
     const launcher = new URL("./control-quati-ui.ts", import.meta.url).href;
     child = spawn(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
       import { launchUi } from ${JSON.stringify(launcher)};
       process.on('message', message => { if (message === 'stop') process.emit('SIGINT'); });
       try { await launchUi(['--entry', 'settings', '--mode', 'hang']); } finally { process.disconnect(); }
     `], { cwd: ROOT, env: process.env, stdio: ["ignore", "pipe", "pipe", "ipc"] });
-    child.stdout!.on("data", chunk => { stdout += String(chunk); });
-    child.stderr!.on("data", chunk => { stderr += String(chunk); });
-    await expect.poll(() => {
-      if (child!.exitCode !== null || child!.signalCode !== null) throw new Error(stderr);
-      try { info = JSON.parse(stdout); return Boolean(info.ui); } catch { return false; }
-    }, { timeout: 600_000, interval: 250 }).toBe(true);
+    const info = await waitForUiLaunch(child, 600_000);
     const ui = (verb: string, ...args: string[]) => runControlQuati(["ui", verb, "--ui", info.ui, ...args]) as Promise<Record<string, any>>;
     const evaluate = async (js: string) => (await ui("eval", "--js", js)).result;
     const click = (name: string) => ui("click", "--name", name);

@@ -1,8 +1,7 @@
 // The one Vite preview every verify-* fixture mounts: an isolated page for a
 // single entry module whose /api calls reach only the disposable fake-engine
 // server. vite.config.ts is inherited on purpose (react, tailwind, the @ alias)
-// so the page renders exactly what the app renders; only the host, the port
-// and the /api target are pinned here.
+// so the page renders exactly what the app renders.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -63,6 +62,10 @@ export async function mountPreview(
     } },
     plugins: [{
       name: "isolated-preview",
+      configResolved(config) {
+        // Vite 7 ignores null overrides when merging the inherited watch options.
+        config.server.watch = null;
+      },
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
           const pathname = (req.url ?? "").split("?")[0]!;
@@ -83,7 +86,12 @@ export async function mountPreview(
       },
     }],
   });
-  await ui.listen();
+  try {
+    await ui.listen();
+  } catch (error) {
+    await ui.close();
+    throw error;
+  }
   const base = ui.resolvedUrls?.local[0];
   if (!base) {
     await ui.close();

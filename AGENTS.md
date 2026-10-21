@@ -6,13 +6,18 @@ isolated fixture; never verify mutations against the user's live app or data.
 
 ## Before every commit
 
-Run `pnpm ci:local` from the repository root before committing. It forces a fresh
-TypeScript check and runs four application-test shards in parallel, offline evals, packaged smoke
-and real UI/browser checks in disposable environments. Linux, Node.js 24+, pnpm,
-Chrome and `xvfb-run` are required. Browser fixtures may download their pinned tools.
-Do not substitute an incremental typecheck or silently skip unavailable checks.
-Report failures or missing dependencies explicitly; never claim the run passed
-when it did not. No Docker, publication or paid model inference is part of this command.
+Run the test group for the behavior changed, not the entire local CI. Use
+`pnpm test:fixtures` for fixture launch/preview changes and `pnpm test:logins`
+for saved-login changes. For other areas, pass the related test files to
+`pnpm exec vitest run`; add a `test:<area>` script when that group becomes useful.
+Include affected callers and shared-path regressions. See
+[`docs/verification/README.md`](docs/verification/README.md) for targeted commands.
+
+Run `pnpm ci:local` only when explicitly requested. It performs the full fresh
+typecheck, sharded tests, evals, packaged smoke and UI/browser checks in disposable
+environments, requiring Linux, Node.js 24+, pnpm, Chrome and `xvfb-run`.
+Report failures or missing dependencies explicitly; never claim a skipped or
+cancelled check passed. No Docker, publication or paid model inference is involved.
 
 ## Architecture
 
