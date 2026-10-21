@@ -264,7 +264,7 @@ export class Handoffs {
       if (pending.replaced) this.store.write(pending.botId, event.threadId, pending.instanceId, { ids: [] });
       return;
     }
-    if ((actedOn(event) || (event.type === "turn.completed" && event.ok)) && !pending.accepted) {
+    if ((actedOn(event) || (event.type === "turn.completed" && event.ok && !pending.stopped && event.stopReason !== "cancelled")) && !pending.accepted) {
       pending.accepted = true;
       pending.turnId ??= event.turnId;
       this.accept(event.threadId, pending);

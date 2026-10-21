@@ -119,6 +119,7 @@ interface AcpTurn {
     usagePeak: number | null;
     usageLast: number | null;
     usageCompacted: boolean;
+    nativeCompaction?: "started" | "completed" | "failed";
   };
   acknowledge: () => void;
   asks: Map<string, AcpAskFinish>;
@@ -194,6 +195,7 @@ export interface AcpSupport {
   defaultCli: string;
   /** Required major release of the native CLI and ACP agent. */
   minimumMajorVersion?: number;
+  nativeContext?: boolean;
   /** Optional live model catalog; a failed lookup keeps the last usable one. `config` lets a
    *  support ask the binary it will spawn, not whatever is on PATH. */
   resolveModels?(
@@ -725,6 +727,11 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
       // and still answer end_turn.
         let finalOk = ok;
         let finalStopReason = stopReason;
+        if (current.turn.nativeCommand === "compact" && current.state.nativeCompaction !== "completed") {
+          finalOk = false;
+          finalStopReason = "compaction_unconfirmed";
+          emit({ ...base(threadId, current.turnId), type: "runtime.error", message: "OpenCode did not confirm that compaction completed" });
+        }
         if (current.state.stopped) {
           finalOk = true;
           finalStopReason = "cancelled";
@@ -1068,6 +1075,20 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           }
           if (!current || !current.state.promptSent) return;
           const u = p.update ?? {};
+          const compaction = support.nativeContext && p.sessionId === session.sessionId &&
+            !u._meta?.["opencode/child-session"] && u.sessionUpdate === "session_info_update"
+            ? u._meta?.["opencode/compaction"] : undefined;
+          if (compaction && ["started", "completed", "failed"].includes(compaction.status)) {
+            current.state.nativeCompaction = compaction.status;
+            const itemId = `compaction-${String(compaction.messageId)}`;
+            if (compaction.status === "started") {
+              emit({ ...base(threadId, current.turnId), type: "item.started", itemType: "tool", itemId, title: "OpenCode compaction" });
+            } else {
+              current.state.producedItem = true;
+              emit({ ...base(threadId, current.turnId), type: "item.completed", itemType: "tool", itemId,
+                ok: compaction.status === "completed", output: compaction.status === "failed" ? toolDetailPreview(compaction.error) : undefined });
+            }
+          }
           switch (u.sessionUpdate) {
             case "agent_message_chunk": {
               const content = u.content;
@@ -1532,6 +1553,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
               const selectionParams = narrowsNativeTools(turn.toolScope)
                 ? support.toolScopeSessionParams!(turn, init, mcpServers.length > 0, { config: turnConfig, env, cwd }) : {};
               let loaded = false;
+              let sessionMissing = false;
               if (cursor) {
                 try {
                   await request(
@@ -1554,11 +1576,16 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                   const data = (error as any)?.data;
                   const missingSession = data && typeof data === "object" && !Array.isArray(data)
                     && data.sessionId === cursor && Object.keys(data).length === 1;
+                  sessionMissing = (error as { code?: number }).code === -32602 && missingSession === true;
+                  if (support.nativeContext && !sessionMissing) throw error;
                   if (classification === "invalid_credentials" || classification === "inactive_subscription"
                       || ((error as any)?.code === -32602 && !missingSession)) throw error;
                 }
               }
               if (loaded) break;
+              if (support.nativeContext && (turn.nativeCommand || (cursor && !sessionMissing))) {
+                throw new Error(`${support.displayName} did not confirm session restoration`);
+              }
               if (cursor && liveSessionId === cursor) {
                 session.current = null;
                 closeSession(threadId, "reestablish");
@@ -1700,7 +1727,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             emitSessionStarted();
             const halves = promptHalves(turn);
             let promptInput = promptTurn;
-            if (halves.stable !== null) {
+            if (halves.stable !== null && !turn.nativeCommand) {
               const receiptKey = JSON.stringify([threadId, sessionId]);
               const previousReceipt = readPromptSplitReceipt(DRIVER_KIND, receiptKey);
               state.usagePeak = previousReceipt?.peakUsed ?? previousReceipt?.lastUsed ?? null;
@@ -1711,12 +1738,12 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                 promptTurn.system,
                 promptTurn.text,
                 Boolean(turn.mentionTurn),
-                ACP_PROMPT_RE_ANCHOR_TURNS,
+                support.nativeContext ? 0 : ACP_PROMPT_RE_ANCHOR_TURNS,
               );
               promptInput = { ...promptTurn, system: "", text: composed.text };
               pendingSplitReceipt = { key: receiptKey, receipt: composed.receipt, previous: previousReceipt };
             }
-            const text = support.buildPromptText
+            const text = turn.nativeCommand ? `/${turn.nativeCommand}` : support.buildPromptText
               ? support.buildPromptText(promptInput)
               : promptInput.system
                 ? `${promptInput.system}\n\n${promptInput.text}`
@@ -1979,6 +2006,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             modelVariants: support.modelVariants === true,
             localComputerMcp: true,
             contextReading: "meter",
+            ...(support.nativeContext ? { nativeContext: true, strictResume: true } : {}),
           },
           sendTurn,
           interruptTurn: async (threadId) => active.get(threadId)?.interrupt(),

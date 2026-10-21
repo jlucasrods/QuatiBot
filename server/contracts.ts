@@ -87,6 +87,8 @@ export interface SendTurnInput {
   /** Drivers namespace process-level resources (broker socket, CLI session) by botId too: threadIds may coincide across bots. */
   botId?: string;
   text: string;
+  /** Dispatch a supported native command without wrapping it in persona or replay text. */
+  nativeCommand?: "compact";
   /** The recall block the harness put in front of `text`; it informs this turn only, so a replay can leave it out. */
   recalled?: string;
   /** Reasserted every turn so a resumed native session cannot keep a stale, more permissive mode. */
@@ -214,6 +216,8 @@ export interface ProviderAdapter {
     /** A resumeCursor turn runs in that exact native session, or fails, or starts a new one from recoveryText (session.started says
      * `rebuilt`), never a blank one. */
     strictResume?: boolean;
+    /** The native harness owns context selection and compaction; local replay is recovery-only. */
+    nativeContext?: boolean;
     /** sendTurn can register the harness's hook helper with the engine (integrations.hooks). */
     hooks?: boolean;
     /** "meter": `contextTokens` / `contextWindow` are the engine's own report, shown on the context meter but never used to time compaction. */

@@ -5866,6 +5866,7 @@ async function compactConversation(input: {
   excludedIds: ReadonlySet<string>; manual: boolean;
 }): Promise<void> {
   const { bot, threadId, generation, instance, model, excludedIds, manual } = input;
+  if (instance.adapter.capabilities.nativeContext) return;
   const task = store.taskByThread(bot.id, threadId);
   if (!task || (!manual && cfg.context?.autoCompact === false)) return;
   const messages = store.activePath(threadId);
@@ -6676,7 +6677,7 @@ async function startTurn(
       await compactConversation({ bot, threadId, generation: dispatchClaimId, instance, model,
         excludedIds: new Set([userMessage.id, ...(opts?.excludeMessageIds ?? [])]), manual: opts?.compactOnly === true });
       if (!directTurnClaimIsCurrent(bot.id, dispatchClaimId, threadId)) throw new DirectTurnSetupCancelled("turn stopped during context setup");
-      if (opts?.compactOnly) {
+      if (opts?.compactOnly && !instance.adapter.capabilities.nativeContext) {
         clearDirectTurnDispatch(threadId, dispatchClaimId);
         revokeInternalCapabilityGeneration(threadId, dispatchClaimId);
         settleDirectFollowup(dispatchClaimId);
@@ -6702,7 +6703,7 @@ async function startTurn(
       const record = latestCompaction(activeMessages);
       const selection = selectReplay(context, { budgetBytes: cfg.context?.rebuildBytes ?? DEFAULT_REBUILD_BYTES, excludedIds: skipTranscript, compaction: record, tools: replayToolCalls(activeMessages, cfg.context) });
       const transcript = selection.transcript.map(({ role, text }) => ({ role, text }));
-      const contextReset = selection.compacted > 0 && record?.id !== task.appliedCompactionId;
+      const contextReset = !instance.adapter.capabilities.nativeContext && selection.compacted > 0 && record?.id !== task.appliedCompactionId;
       if (contextReset) store.patchTask(bot.id, threadId, { resumeCursors: {} });
 
       // After a rewind the native session still holds the abandoned branch; the flag clears only once dispatched, or a failed dispatch loses the next attempt's history.
@@ -7161,6 +7162,7 @@ async function startTurn(
       const dispatch = await guardTurnDispatch(shareNote.after(instance.adapter.sendTurn({
         threadId,
         botId: bot.id,
+        ...(opts?.compactOnly && instance.adapter.capabilities.nativeContext ? { nativeCommand: "compact" as const } : {}),
         startupRecovery: cfg.automaticRecovery?.enabled === true &&
           (opts?.automaticRecoveryIndex ?? 0) < ((liveBot ?? bot).fallback?.length || (cfg.automaticRecovery.backup ? 1 : 0)),
         text: withTurnClock(clock, withRecalled(recalled, dispatchContext.turnText + shareNote.text)),

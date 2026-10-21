@@ -332,13 +332,17 @@ describe("Handoffs", () => {
     expect(handedStateUsable(f.records.get("claude")!, "surprise", order)).toBe(false);
   });
 
-  it("withdraws what the person sent into a turn they stopped before any output, but not external content", () => {
+  it.each([
+    { ok: false, stopReason: "interrupted" },
+    { ok: true, stopReason: "cancelled" },
+    { ok: true, stopReason: null },
+  ])("withdraws stopped user input without accepting external content: %j", ({ ok, stopReason }) => {
     const order = ids(6);
     const f = setup(order, { session: "s", through: "m1", ids: [] });
     f.start({ resumeCursor: "s", placed: ["m2"], carried: ["m3"], own: ["m3"] });
     f.handoffs.steered("t", f.handoffs.current("t"), "claude", "m4");
     f.handoffs.stoppedByPerson("t");
-    f.event({ type: "turn.completed", ok: false, stopReason: "interrupted" });
+    f.event({ type: "turn.completed", ok, stopReason });
     expect(unseenIds(order, f.records.get("claude")!)).toEqual(["m2", "m5"]);
   });
 

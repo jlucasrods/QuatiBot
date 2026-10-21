@@ -70,12 +70,10 @@ async function setup() {
   } finally { if (!ready) await session.close(); }
 }
 
-it("compacts durably, keeps corrections and starts a fresh native session without deleting any chats", () => fixture(async f => {
+it("requests native compaction and resumes the same session after restart, preserving history and explicit edits", () => fixture(async f => {
   await f.send("OLDER_REQUEST use port 9000");
   await f.send("CORRECTION use port 9001 instead; cancel the earlier request");
   const before = await f.messages();
-  const previousRequest = before.findLast(message => message.role === "user");
-  expect(previousRequest.requestPending).toBe(false);
   const oldSession = f.task().resumeCursors.opencodeGo;
   expect(oldSession).toBeTruthy();
   const turnsBefore = f.turns().length;
@@ -84,25 +82,17 @@ it("compacts durably, keeps corrections and starts a fresh native session withou
   await f.compact();
   await f.idle();
   const after = await f.messages();
-  const record = after.at(-1);
-  expect(after.slice(0, before.length)).toEqual(before.map(message =>
-    message.id === previousRequest.id ? { ...message, requestPending: true } : message));
-  expect(record.kind).toBe("compaction");
-  expect(record.compaction.summary).toContain("CORRECTION");
-  expect(Buffer.byteLength(record.compaction.summary)).toBeLessThanOrEqual(6_000);
-  expect(record.compaction.by).toBe("person");
-  expect(f.turns()).toHaveLength(turnsBefore);
-  await f.compact();
-  await f.idle();
-  expect((await f.messages()).filter(m => m.kind === "compaction")).toHaveLength(1);
+  for (const message of before) expect(after.find(entry => entry.id === message.id)?.text).toBe(message.text);
+  expect(after.filter(message => message.kind === "compaction")).toHaveLength(0);
+  expect(f.turns()).toHaveLength(turnsBefore + 1);
+  expect(f.turns().at(-1).prompt.message.content).toBe("/compact");
+  expect(f.turns().at(-1).sessionId).toBe(oldSession);
   await f.restart();
   await f.send("What port did we settle on?");
   const next = f.turns().at(-1);
-  expect(String(next.prompt.message.content)).toContain("Earlier conversation summary");
-  expect(String(next.prompt.message.content)).toContain("CORRECTION");
-  expect(f.task().resumeCursors.opencodeGo).not.toBe(oldSession);
+  expect(String(next.prompt.message.content)).not.toContain("CORRECTION");
+  expect(f.task().resumeCursors.opencodeGo).toBe(oldSession);
   expect(next.sessionId).toBe(f.task().resumeCursors.opencodeGo);
-  expect(f.task().appliedCompactionId).toBe(record.id);
   const compactedSession = f.task().resumeCursors.opencodeGo;
   await f.send("Continue with the corrected port");
   expect(f.task().resumeCursors.opencodeGo).toBe(compactedSession);
@@ -112,22 +102,20 @@ it("compacts durably, keeps corrections and starts a fresh native session withou
   await f.idle();
   expect(f.turns().at(-1).sessionId).not.toBe(compactedSession);
   expect(String(f.turns().at(-1).prompt.message.content)).not.toContain("CORRECTION");
-  expect((await f.messages()).some(m => m.id === record.id)).toBe(true);
+  expect((await f.messages()).some(m => m.id === original.id)).toBe(true);
 }), 90_000);
 
-it("automatically folds old exchanges while keeping the two latest and the incoming request", () => fixture(async f => {
+it("keeps native context despite a tiny local compaction budget", () => fixture(async f => {
   await f.api("/api/config", { context: { compactAt: 1 } }, "PATCH");
   await f.send("FIRST_EXCHANGE historical request");
   await f.send("SECOND_EXCHANGE keep verbatim");
   await f.send("THIRD_EXCHANGE correction -5 != 5");
   await f.send("INCOMING do not summarize this request");
   const records = (await f.messages()).filter(m => m.kind === "compaction");
-  expect(records).toHaveLength(1);
-  expect(records[0].compaction.by).toBe("harness");
-  expect(records[0].compaction.summary).not.toContain("INCOMING");
+  expect(records).toHaveLength(0);
   const prompt = String(f.turns().at(-1).prompt.message.content);
-  expect(prompt).toContain("SECOND_EXCHANGE keep verbatim");
-  expect(prompt).toContain("THIRD_EXCHANGE correction -5 != 5");
+  expect(prompt).not.toContain("SECOND_EXCHANGE keep verbatim");
+  expect(prompt).not.toContain("THIRD_EXCHANGE correction -5 != 5");
   expect(prompt).toContain("INCOMING do not summarize this request");
-  expect(f.turns().at(-1).sessionId).not.toBe(f.turns().at(-2).sessionId);
+  expect(new Set(f.turns().map(turn => turn.sessionId)).size).toBe(1);
 }), 70_000);

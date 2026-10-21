@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, runControlQuati, verificationServerEnvironment } from "../scripts/control-quati.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 
-it.each([false, true])("rehydrates the same conversation after an ACP internal error only on explicit retry (output: %s)", async (afterOutput) => {
+it.each([false, true])("resumes the native conversation after an ACP internal error only on explicit retry (output: %s)", async (afterOutput) => {
   const fixture = await launchVerificationServer();
   const { dataDir, url, logPath } = fixture.info;
   let server: ChildProcess | undefined;
@@ -100,9 +100,9 @@ it.each([false, true])("rehydrates the same conversation after an ACP internal e
     expect(prompts()[2].pid).not.toBe(firstProcess);
     const prompt = JSON.stringify(JSON.parse(readFileSync(`${dumpFile}.prompt.json`, "utf8")));
     expect(prompt.split(retryText).length - 1).toBe(1);
-    expect(prompt.split(firstText).length - 1).toBe(1);
-    expect(prompt.split(failedText).length - 1).toBe(1);
-    expect(prompt).toContain("complete current history follows");
+    expect(prompt).not.toContain(firstText);
+    expect(prompt.split(failedText).length - 1).toBe(afterOutput ? 0 : 1);
+    expect(calls().some(call => call.method === "session/load" && call.pid === prompts()[2].pid)).toBe(true);
     const finalMessages = await messages();
     for (const text of [firstText, failedText, retryText]) {
       expect(finalMessages.filter((message) => message.role === "user" && message.text === text)).toHaveLength(1);

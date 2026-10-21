@@ -216,6 +216,7 @@ const support = (loadCatalog: OpenCodeCatalogLoader): AcpSupport => ({
   models: NO_MODELS,
   defaultCli: "opencode",
   minimumMajorVersion: 2,
+  nativeContext: true,
   images: true,
   nativeSource: "opencode.acp",
   loginNote: "Configure providers in OpenCode V2 with `opencode auth login`, then refresh models.",

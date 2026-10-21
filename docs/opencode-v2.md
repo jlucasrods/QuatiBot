@@ -8,6 +8,14 @@ QuatiBot discovers the models offered by ACP and lets each bot or conversation s
 
 The backend communicates over `opencode acp` using ACP session creation, loading, configuration options, prompt updates and permission requests. Session reuse depends on the working directory, environment and injected internal tools.
 
+## Sessions and context
+
+OpenCode owns its context window and automatic compaction. QuatiBot keeps the conversation history for display and recovery, but its local byte budgets do not compact or replace an OpenCode session. Normal turns and executor restarts resume the saved native session and send only new input.
+
+Recovery replay creates a replacement session only when OpenCode explicitly reports that the saved session no longer exists. Authentication, configuration and temporary transport failures do not authorize replay. Editing or rewinding a conversation still deliberately branches its context.
+
+Manual compaction sends the native ACP `/compact` command to the existing session. HTTP acceptance starts the operation; the compaction tool step records OpenCode's completion or failure notification. A prompt response without native completion confirmation is not reported as successful compaction. Manual compaction never reconstructs a missing session.
+
 ## Global extensions
 
 The profile menu's **Extensões** panel lists global user MCP servers, plugins and skills from OpenCode. Project extension definitions are not included in this global inventory. MCP rows show configured or disabled state; configured does not mean connected.

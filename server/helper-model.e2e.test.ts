@@ -54,7 +54,7 @@ describe("OpenCode background jobs and helper boundaries", () => {
     if (scratch) await removeTempDir(scratch);
   });
 
-  it("books native memory capture and skill review to the bot, and uses an excerpt when no summary writer exists", async () => {
+  it("books native memory capture and skill review to the bot without a separate compaction writer", async () => {
     const created = await api("POST", "/api/bots", { name: "Background jobs", modelSelection: { instanceId: "opencodeGo", model: "fixture/default" } });
     expect(created.status).toBe(201);
     const bot = created.body.bot;
@@ -77,8 +77,7 @@ describe("OpenCode background jobs and helper boundaries", () => {
     }
     expect(rows.some(row => row.trigger.kind === "helper")).toBe(false);
     expect((await api("POST", `/api/bots/${bot.id}/compact`, { threadId: bot.threadId })).status).toBe(202);
-    await expect.poll(async () => (await botState(bot.id)).messages.find((message: { kind: string }) => message.kind === "compaction")?.compaction.summary,
-      { timeout: 15_000 }).toMatch(/^Historical excerpts in chronological order/);
+    await expect.poll(async () => (await botState(bot.id)).busy, { timeout: 15_000 }).toBe(false);
     expect(ledger(bot.id).some(row => row.trigger.kind === "helper")).toBe(false);
   }, 90_000);
 

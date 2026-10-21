@@ -92,7 +92,7 @@ async function fixture(test: (f: any) => Promise<void>, options: { env?: NodeJS.
     };
     const rejectLoad = async (alsoFailPrompt = false) => {
       rmSync(promptError, { force: true });
-      writeFileSync(loadError, JSON.stringify({ code: -32603, message: "Session not found" }));
+      writeFileSync(loadError, JSON.stringify({ code: -32602, message: "Session not found", data: { sessionId: nativeSession() } }));
       if (alsoFailPrompt) failPrompt();
       const pid = nativeTurns().at(-1)?.pid;
       if (pid) {
@@ -243,6 +243,7 @@ it("offers the results again when the person stops the return turn before the pr
   await f.send("Please have Engineering build the export.");
   await expect.poll(() => f.nodes().find((node: any) => node.botId === f.lead.id)?.status, { timeout: 20_000 }).toBe("completed");
   await expect.poll(() => f.root()?.status, { timeout: 20_000 }).toBe("running");
+  await expect.poll(() => f.nativeTurns().length, { timeout: 20_000 }).toBe(3);
   await f.api(`/api/bots/${f.chief.id}/interrupt`, { threadId: f.thread });
   await f.idle();
 
@@ -259,16 +260,20 @@ it("offers the results again when the person stops the return turn before the pr
 
 it("rebuilds a rejected resume with each result exactly once", () => fixture(async (f) => {
   await warmUp(f);
-  f.plan[f.lead.id] = { reply: `RECOVERY_RESULT_START ${"r".repeat(900)} RECOVERY_RESULT_END` };
+  f.plan[f.lead.id] = { reply: `RECOVERY_RESULT_START ${"r".repeat(900)} RECOVERY_RESULT_END`, gateFile: f.gate("recovery") };
   f.plan[f.chief.id] = f.delegate("build", [f.lead], "Build the export");
   await f.send("Please have Engineering build the export.");
+  await expect.poll(() => f.nodes().find((node: { botId: string }) => node.botId === f.lead.id)?.status, { timeout: 20_000 }).toBe("running");
+  await expect.poll(() => f.turns().length, { timeout: 20_000 }).toBe(2);
+  await f.rejectLoad();
+  f.open(f.gate("recovery"));
   await f.wait();
   const recovered = f.prompt(f.turns().at(-1));
   expect(recovered).toContain("received an update outside your provider session");
   expect(recovered).toContain("ORCHID_7Q");
   expect(count(recovered, "RECOVERY_RESULT_START")).toBe(1);
   expect(count(recovered, "RECOVERY_RESULT_END")).toBe(1);
-}, { env: { FAKE_CLAUDE_MODE: "dead-session" } }), hostTimeout(60_000));
+}), hostTimeout(60_000));
 
 it("keeps provenance and exactly-once delivery across rework rounds to the same teammate", () => fixture(async (f) => {
   await warmUp(f);
@@ -505,11 +510,11 @@ const resultAcrossRestart = async (f: any) => {
   return f.turns().at(-1);
 };
 
-it("replays a delegated result once when it arrives after restart before model discovery", () => fixture(async (f) => {
+it("delivers a delegated result once to the saved session after restart before model discovery", () => fixture(async (f) => {
   const turn = await resultAcrossRestart(f);
   expect(count(f.prompt(turn), "RESULT_AFTER_RESTART")).toBe(1);
-  expect(f.prompt(turn)).toContain("ORCHID_7Q");
-  expect(f.nativeTurns().at(-1).rpcMethods).toContain("session/new");
+  expect(f.prompt(turn)).not.toContain("ORCHID_7Q");
+  expect(f.nativeTurns().at(-1).rpcMethods).toContain("session/load");
   const rebuilt = f.nativeSession();
   f.plan[f.chief.id] = { reply: "ok" };
   await f.send("Thanks.");
@@ -719,11 +724,12 @@ it("does not repeat failed requests after a successful recovery replay", () => f
   }
   f.clearFaults();
   f.plan[f.chief.id] = { reply: "Rebuilt" };
+  await f.rejectLoad();
   await f.send("Recover now.");
   await f.wait();
   f.clearFaults();
   const recovery = f.prompt(f.turns().at(-1));
-  expect(recovery).toContain("This conversation received an update outside your provider session");
+  expect(recovery).toContain("could not be resumed");
   for (const mark of marks) expect(count(recovery, mark), mark).toBe(1);
 
   f.plan[f.chief.id] = { reply: "Nothing to repeat" };
@@ -871,7 +877,7 @@ it("applies a soul change to the next ordinary turn", () => fixture(async (f) =>
   expect(withoutTurnClock(f.prompt(f.turns().at(-1)))).toBe("Second message.");
 }), hostTimeout(60_000));
 
-it("replays a result that reaches a newly selected model with today's update preamble", () => fixture(async (f) => {
+it("delivers a result to a newly selected model without replaying its native history", () => fixture(async (f) => {
   await warmUp(f);
   f.plan[f.lead.id] = { reply: "EARLY_SWITCH_RESULT", gateFile: f.gate("lead") };
   f.plan[f.chief.id] = { turns: [{}, f.delegate("build", [f.lead], "Build the export"), { reply: "Reviewed on Codex" }] };
@@ -882,9 +888,10 @@ it("replays a result that reaches a newly selected model with today's update pre
   f.open(f.gate("lead"));
   await f.wait();
   const returned = f.prompt(f.turns().at(-1));
-  expect(returned).toContain("received an update outside your provider session");
+  expect(returned).not.toContain("received an update outside your provider session");
   expect(returned).not.toContain("switched this bot over to you");
-  expect(returned).toContain("ORCHID_7Q");
+  expect(returned).not.toContain("ORCHID_7Q");
+  expect(f.nativeSession()).toBe(f.nativeTurns()[0].sessionId);
   expect(count(returned, "EARLY_SWITCH_RESULT")).toBe(1);
 }), hostTimeout(90_000));
 

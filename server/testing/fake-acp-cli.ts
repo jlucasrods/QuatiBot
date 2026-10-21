@@ -831,6 +831,14 @@ function handle(msg: any) {
         writeFileSync(`${process.env.FAKE_ACP_DUMP}.prompt.json`, JSON.stringify(msg.params?.prompt ?? null, null, 2));
       }
       if (failRpc(msg)) return;
+      if (msg.params.prompt?.length === 1 && msg.params.prompt[0].text === "/compact") {
+        for (const status of ["started", process.env.FAKE_ACP_COMPACTION_STATUS ?? "completed"]) {
+          if (status === "none") continue;
+          out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params.sessionId, update: {
+            sessionUpdate: "session_info_update", _meta: { "opencode/compaction": { status, messageId: `compact-${msg.id}`, reason: "manual" } },
+          } } });
+        }
+      }
       if (process.env.FAKE_ACP_ROOM_PLAN) {
         const entry = sessionMcp.find((server) => server.name === "agents");
         if (!entry?.command) throw new Error("Scripted ACP turns require the agents MCP");

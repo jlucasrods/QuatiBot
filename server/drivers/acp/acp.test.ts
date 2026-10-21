@@ -65,6 +65,37 @@ describe("OpenCode V2 ACP turns", () => {
   });
 
   it.each([
+    { error: { code: -32603, message: "Temporary service failure" }, recovered: false },
+    { error: { code: -32602, message: "Invalid model", data: { model: "wrong" } }, recovered: false },
+    { error: { code: -32602, message: "Session not found", data: { sessionId: "lost-session" } }, recovered: true },
+  ])("only rebuilds on confirmed session loss: $error.message", async ({ error, recovered }) => {
+    const recorder = await create({ FAKE_ACP_LOAD_ERROR: JSON.stringify(error) });
+    await instance.adapter.sendTurn({ threadId: "thread", text: "Continue", cwd: home,
+      resumeCursor: "lost-session", recoveryText: "Original history, then Continue" });
+    expect(await recorder.until(event => event.type === "turn.completed")).toMatchObject({ ok: recovered });
+    const methods: string[] = JSON.parse(readFileSync(join(home, "rpc.json"), "utf8"));
+    expect(methods.includes("session/new")).toBe(recovered);
+    expect(methods.includes("session/prompt")).toBe(recovered);
+  });
+
+  it.each(["completed", "failed", "none"])("requires a native compaction completion, not just admission: %s", async status => {
+    const recorder = await create({ FAKE_ACP_COMPACTION_STATUS: status });
+    await instance.adapter.sendTurn({ threadId: "thread", text: "Summarize", cwd: home, nativeCommand: "compact", resumeCursor: "fake-acp-session" });
+    expect(await recorder.until(event => event.type === "turn.completed")).toMatchObject({ ok: status === "completed" });
+    expect(recorder.events.some(event => event.type === "item.started" && event.itemType === "tool" && event.title === "OpenCode compaction")).toBe(true);
+  });
+
+  it.each([undefined, "lost-session"])("does not create a replacement session for manual compaction: %s", async resumeCursor => {
+    const recorder = await create({ FAKE_ACP_LOAD_ERROR: JSON.stringify({ code: -32602, message: "Session not found", data: { sessionId: "lost-session" } }) });
+    await instance.adapter.sendTurn({ threadId: "thread", text: "Summarize", cwd: home, nativeCommand: "compact", resumeCursor });
+    expect(await recorder.until(event => event.type === "turn.completed")).toMatchObject({ ok: false });
+
+    const methods: string[] = JSON.parse(readFileSync(join(home, "rpc.json"), "utf8"));
+    expect(methods).not.toContain("session/new");
+    expect(methods).not.toContain("session/prompt");
+  });
+
+  it.each([
     { kind: "execute", title: "shell" },
     { kind: "read", title: "git push origin release" },
   ])("keeps the semantic kind of a $kind tool", async ({ kind, title }) => {
